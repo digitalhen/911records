@@ -78,7 +78,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "entities": [
         ("id", "TEXT"), ("type", "TEXT"), ("slug", "TEXT"), ("label", "TEXT"), ("n_docs", "INTEGER"),
         ("n_pages", "INTEGER"), ("first_date", "DATE"), ("last_date", "DATE"), ("variants", "JSONB"),
-        ("bbl", "TEXT"), ("bin", "TEXT"), ("method", "TEXT"),
+        ("bbl", "TEXT"), ("bin", "TEXT"), ("method", "TEXT"), ("borough", "TEXT"), ("address_role", "TEXT"),
     ],
     "entity_pages": [
         ("entity_id", "TEXT"), ("doc", "TEXT"), ("page", "INTEGER"), ("role", "TEXT"),
@@ -117,7 +117,8 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("bbl", "TEXT"), ("bin", "TEXT"), ("address", "TEXT"), ("zip", "TEXT"),
         ("year_built", "INTEGER"), ("num_floors", "DOUBLE PRECISION"),
         ("units_res", "INTEGER"), ("units_total", "INTEGER"), ("bldg_area", "BIGINT"),
-        ("bldg_class", "TEXT"), ("num_bldgs", "INTEGER"), ("source", "TEXT"),
+        ("bldg_class", "TEXT"), ("num_bldgs", "INTEGER"),
+        ("landmark", "TEXT"), ("historic_district", "TEXT"), ("source", "TEXT"),
     ],
     # issue #34 (P4): sample-level facts (scripts/embed/facts.py) + two rollups build_site_db.py
     # computes from them. Schema-first like everything else here: a build with no

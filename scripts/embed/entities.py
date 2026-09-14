@@ -247,14 +247,18 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
 
 def migrate_canonical_columns(con: sqlite3.Connection) -> None:
     """Add mentions.canonical_key/canonical_label/canonical_confidence/canonical_bbl/canonical_bin/
-    canonical_method if missing. Safe to re-run (checks PRAGMA table_info first; SQLite has no ADD
-    COLUMN IF NOT EXISTS). canonical_method IN ('exact','roll','fuzzy','llm') — see canonical.py's
-    canonicalize_addresses()/canonicalize_orgs() docstrings for 'exact'/'roll'/'fuzzy', and
-    canonical_llm.py for the 'llm' last-resort pass (issue #19 follow-up, Henry 2026-09-14)."""
+    canonical_method/canonical_borough/canonical_address_role if missing. Safe to re-run (checks
+    PRAGMA table_info first; SQLite has no ADD COLUMN IF NOT EXISTS). canonical_method IN
+    ('exact','roll','fuzzy','llm') — see canonical.py's canonicalize_addresses()/
+    canonicalize_orgs() docstrings for 'exact'/'roll'/'fuzzy', and canonical_llm.py for the 'llm'
+    last-resort pass (issue #19 follow-up, Henry 2026-09-14). canonical_borough/
+    canonical_address_role (address label only) are set by `classify_addresses()` below (issue #19
+    follow-up, Henry 2026-09-14: "59-17 Junction Blvd -> Queens; it's a testing center")."""
     cols = {r[1] for r in con.execute("PRAGMA table_info(mentions)")}
     for name, decl in (("canonical_key", "TEXT"), ("canonical_label", "TEXT"),
                         ("canonical_confidence", "REAL"), ("canonical_bbl", "TEXT"),
-                        ("canonical_bin", "TEXT"), ("canonical_method", "TEXT")):
+                        ("canonical_bin", "TEXT"), ("canonical_method", "TEXT"),
+                        ("canonical_borough", "TEXT"), ("canonical_address_role", "TEXT")):
         if name not in cols:
             con.execute(f"ALTER TABLE mentions ADD COLUMN {name} {decl}")
     con.execute("CREATE INDEX IF NOT EXISTS mentions_canonical ON mentions(canonical_key)")
@@ -313,6 +317,76 @@ def canonicalise(con: sqlite3.Connection) -> tuple[dict, dict]:
     return stats, mappings
 
 
+def classify_addresses(con: sqlite3.Connection) -> dict:
+    """Borough + address_role for every canonicalised address entity (issue #19 follow-up, Henry
+    2026-09-14: "59-17 Junction Blvd -> this is in Queens; it's a testing center" — lab/contractor
+    mailing addresses outside Manhattan were being treated as sampling-site buildings). Run AFTER
+    canonicalise() (and, if used, canonical_llm.py's merges) so every address mention already has
+    its FINAL canonical_key.
+
+    borough: canonical.infer_borough() — 'Manhattan' | 'Outside Manhattan' | 'Queens', see that
+    function's docstring for the (deliberately conservative, machine-derived) signals.
+
+    address_role: 'organisation' | 'site'. An address is 'organisation' when the MAJORITY of its
+    mention occurrences share a (doc, page) with a lab or contractor mention — the letterhead/
+    signature-block signal Henry named ("appears only in lab/contractor letterheads, signature
+    blocks or 'Laboratory:'/'Analyzed by' contexts"). This is a page-level proxy, not a character-
+    distance one: a lab/contractor name and its own address are essentially always on the same
+    page when either appears at all, and page-level keeps this a single pass over `mentions`
+    rather than a second full-text scan.
+
+    Stores canonical_borough/canonical_address_role on EVERY mentions row sharing a canonical_key
+    (not just WHERE NULL — a full re-classify is correct here, unlike canonicalise()'s incremental
+    fill, since a repeat run should reflect the CURRENT final canonical_key assignment, including
+    any the LLM pass merged since a prior classify run)."""
+    migrate_canonical_columns(con)
+    gazetteer = canonical.load_gazetteer(GAZETTEER_CSV) if GAZETTEER_CSV.exists() else None
+    manhattan_streets = canonical.gazetteer_street_names(gazetteer) if gazetteer else None
+
+    org_pages = {(d, p) for d, p in con.execute(
+        "SELECT DISTINCT doc, page FROM mentions WHERE label IN ('lab','contractor')")}
+
+    by_key: dict[str, dict] = {}
+    for doc, page, norm, ckey, clabel, cbbl in con.execute(
+            "SELECT doc, page, norm, canonical_key, canonical_label, canonical_bbl "
+            "FROM mentions WHERE label='address' AND canonical_key IS NOT NULL"):
+        g = by_key.setdefault(ckey, {"label": clabel, "bbl": cbbl, "pages": [], "n": 0, "org_n": 0})
+        if cbbl and not g["bbl"]:
+            g["bbl"] = cbbl
+        g["pages"].append((doc, page))
+        g["n"] += 1
+        if (doc, page) in org_pages:
+            g["org_n"] += 1
+
+    rows = []
+    borough_counts: dict[str, int] = collections.Counter()
+    role_counts: dict[str, int] = collections.Counter()
+    reclassified = 0  # borough != 'Manhattan' or role == 'organisation' — the count the report wants
+    for ckey, g in by_key.items():
+        house, street = canonical.split_house_street(g["label"] or "")
+        stype = canonical.street_type_of(street) or ""
+        sname = canonical.street_name_of(street)
+        borough = (canonical.infer_borough(house, sname, stype, g["bbl"], manhattan_streets)
+                   if house is not None else "Outside Manhattan")
+        role = "organisation" if g["org_n"] / g["n"] >= 0.5 else "site"
+        borough_counts[borough] += 1
+        role_counts[role] += 1
+        if borough != "Manhattan" or role == "organisation":
+            reclassified += 1
+        rows.append((borough, role, ckey))
+
+    con.executemany(
+        "UPDATE mentions SET canonical_borough=?, canonical_address_role=? "
+        "WHERE label='address' AND canonical_key=?", rows)
+    con.commit()
+    return {
+        "address_entities_classified": len(by_key),
+        "by_borough": dict(borough_counts),
+        "by_address_role": dict(role_counts),
+        "reclassified_non_manhattan_or_org": reclassified,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gliner", action="store_true")
@@ -344,6 +418,9 @@ def main() -> int:
                 n = canonical_llm.apply_updates(con, label, updates)
                 llm_summary[label] = {**usage, "rows_updated": n}
             print(json.dumps({"canonicalise_llm": llm_summary}, indent=1))
+        # Runs after any --llm merges, so borough/address_role reflect the FINAL canonical_key.
+        classify_stats = classify_addresses(con)
+        print(json.dumps({"classify_addresses": classify_stats}, indent=1))
         return 0
 
     state = {(d, p): (s, r, g) for d, p, s, r, g in con.execute("SELECT doc,page,text_sha1,regex_done,gliner_done FROM pages")}

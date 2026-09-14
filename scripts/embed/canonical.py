@@ -238,6 +238,61 @@ def load_gazetteer(path: str | Path) -> Dict[str, List[GazEntry]]:
     return by_house
 
 
+def gazetteer_street_names(gazetteer: Dict[str, List[GazEntry]]) -> set:
+    """Every distinct normalized street (name + type) the Manhattan roll holds, at ANY house
+    number — used by `infer_borough()` as a data-driven "is this street even in Manhattan" check,
+    e.g. "JUNCTION BOULEVARD" (Queens, never in the roll) vs "LAFAYETTE STREET" (is)."""
+    names: set = set()
+    for entries in gazetteer.values():
+        for ge in entries:
+            names.add(ge.street_norm)
+    return names
+
+
+# --------------------------------------------------------- borough / address-role (issue #19) ---
+# Henry, 2026-09-14, looking at a building page: "59-17 JUNCTION BLVD -> this is in Queens; it's a
+# testing center." Lab/contractor mailing addresses outside Manhattan were being treated as
+# sampling-site buildings. Two signals, neither of them a real borough/ZIP lookup (there is none in
+# this corpus's extraction — every address mention here is a house number + street only, no city or
+# ZIP captured), so this is deliberately conservative and machine-derived, not ground truth
+# (docs/PLAN.md rule #8):
+#   1. The roll (`bbl` set) is Manhattan by construction (export_prospect_gazetteer.py filters
+#      `properties.boro = 1`) — a roll match is definitive.
+#   2. Absent a roll match, does the STREET NAME appear ANYWHERE in the Manhattan roll, at any
+#      house number? If not, the street simply isn't in Manhattan at all — this is the strong,
+#      data-driven signal ("Junction Boulevard" never appears in `gazetteer_street_names()`).
+#   3. A HYPHENATED house number ("59-17") is New York's Queens/Staten-Island block-numbering
+#      convention and essentially never appears on Manhattan's own roll — used only as a
+#      confirming signal alongside #2, and reported as "Queens" (the dominant hyphenated-numbering
+#      borough, and Henry's own example) rather than guessing a specific one of the four with no
+#      real evidence for that specific borough.
+RE_HYPHENATED_HOUSE = re.compile(r"^\d+-\d+$")
+
+
+def is_hyphenated_house_number(house: str) -> bool:
+    return bool(RE_HYPHENATED_HOUSE.match(house.strip()))
+
+
+def infer_borough(house: str, street_name: str, street_type: str, bbl: str | None,
+                   manhattan_streets: set | None) -> str:
+    """Best-effort borough for one canonical address entity. 'Manhattan' when roll-matched;
+    'Outside Manhattan' when the street doesn't exist anywhere on the roll; 'Queens' when it
+    doesn't AND the house number is hyphenated (the concrete case this was built for); 'Manhattan'
+    as the conservative default otherwise (most of this corpus genuinely is Lower Manhattan, and a
+    street that IS somewhere on the roll but didn't match at this specific house number is more
+    likely an OCR/roll-coverage gap than a different borough). `manhattan_streets` is
+    `gazetteer_street_names()`'s output; None (no gazetteer loaded) skips signal #2 entirely."""
+    if bbl:
+        return "Manhattan"
+    street_key = f"{street_name} {street_type}".strip()
+    not_on_roll = manhattan_streets is not None and street_key not in manhattan_streets
+    if not_on_roll and is_hyphenated_house_number(house):
+        return "Queens"
+    if not_on_roll:
+        return "Outside Manhattan"
+    return "Manhattan"
+
+
 # (tier, distance) for a name matched against a candidate, or None if outside every threshold.
 # tier 0 = exact, 1 = confidence 0.9, 2 = confidence 0.75 — same ladder for the roll and the
 # frequency-seed fallback, so a roll match and a frequency match are scored on equal footing.

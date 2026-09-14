@@ -138,7 +138,8 @@ documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pd
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
-entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin, method)
+entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin, method,
+         borough, address_role)
 entity_pages(entity_id, doc, page, role, confidence, raw)
 signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
 signatory_pages(id, doc, page, action, confidence)
@@ -161,24 +162,29 @@ facts(id PK, doc, page, bates, building_key, substance, sample_type, value, unit
 building_substances(building_key, substance, n_pages, n_readings, first_date, last_date, max_value,
                      unit, any_above_limit)
 lab_rollups(lab PK, n_pages, buildings, substances)
+                bldg_class, num_bldgs, landmark, historic_district, source)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
 
-`building_facts` is a one-time export of Prospect's property roll for lower Manhattan (issue #19
-follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (address, zip, year
-built, floor count, residential/total unit counts, floor area, building class, building count on
-the lot) — **never** owner names, unit-level rows, sales figures, or anything about a person. The
-building page shows it labelled "Building details · data provided by prospect.nyc". `address` is
-Title Case "<housenum> <street>" straight off the roll and is the building page's preferred title
-(issue #20 follow-up, Henry 2026-09-14: a place with no OCR-matched address was titling itself
-"BIN nnnnnnn" — see `lib/map/data.ts` label resolution order below). `entities.bbl`/`bin`
-(address entities only, when the roll matched) let the building page and `places.py` resolve a
-building straight from an address entity. Provenance: `scripts/embed/export_prospect_gazetteer.py`
-is a **one-time, operator-run** script that reads Prospect's central Postgres (`prospect_ro`,
-read-only) and writes `data/embed/gazetteer-prospect.csv`; **nothing under `scripts/` or `web/` connects
-to the Prospect database at run time** — the pipeline (`entities.py --canonicalise`,
-`build_site_db.py`) only ever reads that CSV. `lot_area` and `land_use` were requested but are not
-in Prospect's schema (`pluto_lots` has no `lotarea`/`landuse` column) and are not exported or shown.
+`building_facts` is a one-time export of Prospect's property roll, widened to **all of Manhattan**
+2026-09-14 (issue #19 follow-up, Henry: "add in details from prospect.nyc", after the original
+nine-ZIP scope left most places without building facts — 507/1,120): PRESENT-DAY PLUTO-derived
+building facts only (address, zip, year built, floor count, residential/total unit counts, floor
+area, building class, building count on the lot, landmark designation, historic district name) —
+**never** owner names, unit-level rows, sales figures, or anything about a person. The building page
+shows it labelled "Building details · data provided by prospect.nyc". `address` is Title Case
+"<housenum> <street>" straight off the roll and is the building page's preferred title (issue #20
+follow-up, Henry 2026-09-14: a place with no OCR-matched address was titling itself "BIN nnnnnnn" —
+see `lib/map/data.ts` label resolution order below). `entities.bbl`/`bin` (address entities only,
+when the roll matched) let the building page and `places.py` resolve a building straight from an
+address entity. Provenance: `scripts/embed/export_prospect_gazetteer.py` is a **one-time,
+operator-run** script that reads Prospect's central Postgres (`prospect_ro`, read-only, filtered to
+`properties.boro = 1`) and writes `data/embed/gazetteer-prospect.csv`; **nothing under `scripts/` or
+`web/` connects to the Prospect database at run time** — the pipeline (`entities.py --canonicalise`,
+`build_site_db.py`) only ever reads that CSV. `lot_area`, `land_use`, zoning district, lot
+frontage/depth and a building-class-code description were all requested but none exist in
+Prospect's schema (checked `pluto_lots` and grepped its whole schema for the relevant column
+patterns) and are not exported or shown; `landmark`/`historic_district` come from `bldg_historic`.
 
 `facts` + `building_substances` + `lab_rollups` (issue #34, P4, Henry 2026-09-14: "addresses impacted
 by asbestos" needs a table, not a document list) are sample-level environmental test readings, one
@@ -225,8 +231,9 @@ matched exactly, street name fuzzy-matched) collapse into one entity keyed by
 first), and `entity_pages.raw` is the exact raw spelling found on that page. For addresses, the
 Prospect property-roll gazetteer (`data/embed/gazetteer-prospect.csv`, see `building_facts` below) is
 tried first and wins when it matches — that match carries the roll's bbl/bin onto the entity;
-addresses the roll doesn't cover (most of them: the export is nine lower-Manhattan ZIPs, and many
-mentioned addresses — labs, contractor offices — sit well outside that footprint) fall back to
+addresses the roll doesn't cover (the export is all of Manhattan as of 2026-09-14, but a number of
+mentioned addresses — labs, contractor offices — are in the other boroughs, entirely outside NYC, or
+simply not on the roll under that spelling) fall back to
 the mention-frequency seed method alone, with no bbl/bin.
 
 **LLM last resort** (issue #19 follow-up, Henry 2026-09-14): after the rule-based tiers, any
@@ -246,6 +253,35 @@ stored at canonical_confidence 0.6 (below every rule-based tier) with canonical_
 method among the entity's mentions, same priority order, since an entity's identity is always
 founded by its best-evidence member — an 'llm'-merged variant never demotes an otherwise
 'exact'/'roll' entity) record which tier established each canonicalisation.
+
+**Borough and address role** (issue #19 follow-up, Henry 2026-09-14: "59-17 Junction Blvd -> this
+is in Queens; it's a testing center" — a lab's own Queens mailing address was showing up as a
+sampling-site building). `entities.py --canonicalise`'s `classify_addresses()` sets
+`mentions.canonical_borough`/`canonical_address_role` (address label only, run after any `--llm`
+merges so it sees the FINAL canonical_key), which `entities.borough`/`address_role` carry through.
+Both are deliberately conservative, machine-derived signals (docs rule #8), never a real
+borough/ZIP lookup — this corpus's address extraction captures no city/ZIP, only house number +
+street:
+- `borough`: 'Manhattan' when the Prospect roll matched (the export is Manhattan-only by
+  construction); 'Outside Manhattan' when the street name doesn't appear ANYWHERE on the roll, at
+  any house number (a strong, data-driven signal — "Junction Boulevard" is simply never in a
+  Manhattan property roll); 'Queens' instead of 'Outside Manhattan' when that's also true AND the
+  house number is hyphenated ("59-17"), New York's Queens/Staten-Island block-numbering convention;
+  'Manhattan' as the conservative default when the street exists somewhere on the roll but this
+  specific house number didn't match (more likely an OCR/coverage gap than a different borough).
+- `address_role`: 'organisation' when the MAJORITY of an address's mention occurrences share a
+  (doc, page) with a lab or contractor mention (letterhead/signature-block proxy — a lab/contractor
+  name and its own address are essentially always on the same page when either appears); 'site'
+  otherwise. A documented limitation, not silently claimed as precise: this only catches an
+  organisation whose name ALSO matched entities.py's own lab/contractor regex on the SAME page as
+  the address, so some real organisation addresses stay 'site' when their company name doesn't
+  match those patterns nearby, or appears on a different page of the same document.
+
+`places.py` excludes `address_role='organisation'` and `borough NOT IN ('Manhattan')` address
+entities from `site.places`/`place_pages` entirely (via `mentions.canonical_borough`/
+`canonical_address_role`) — they stay as ordinary entities (reachable from `/entity/address/<slug>`
+and, once a workstream builds that link, from the owning lab/contractor's page), but never appear
+as a building on the map or in an Ask `buildings_by_substance` list (both read `site.places`).
 
 Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
 one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.
