@@ -52,6 +52,7 @@ export default async function ReadingPage() {
                   <Link className={styles.title} href={`/doc/${encodeURIComponent(item.doc)}`}>
                     {item.title}
                   </Link>
+                  {item.summary && <p className={`small ${styles.summary}`}>{item.summary}</p>}
                   <p className={`small muted ${styles.why}`} title={item.why}>
                     {item.why}
                     {item.box ? ` · Box ${item.box}` : ''}
