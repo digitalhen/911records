@@ -5,11 +5,20 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.7.0';
+export const APP_VERSION = '0.7.1';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.7.1',
+    date: '2026-09-14',
+    notes: [
+      'Folder cover sheets (one-page separators with an address, block, lot and BIN) are labelled as such, with links to the folder, the next record in it and the building.',
+      'Documents show a type where it can be read from the page — memo or letter, form, lab report, invoice, permit application, chain of custody, sign-in sheet — marked as machine-extracted.',
+      'Cover sheets rank below content in search and are not used to write answers.',
+    ],
+  },
   {
     version: '0.7.0',
     date: '2026-09-14',
