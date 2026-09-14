@@ -16,6 +16,11 @@ export const RELEASES: Release[] = [
     notes: ['Suggested questions on the home page and map now consistently return an answer instead of occasionally hitting a dead end; follow-up questions are only offered when the records can answer them.'],
   },
   {
+    version: '0.7.2',
+    date: '2026-09-14',
+    notes: ['Suggested questions on the home page and map now consistently return an answer instead of occasionally hitting a dead end; follow-up questions are only offered when the records can answer them.'],
+  },
+  {
     version: '0.7.1',
     date: '2026-09-14',
     notes: [
