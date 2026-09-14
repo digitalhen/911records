@@ -1,0 +1,32 @@
+/* Follow-up / action chips (B25, "UI polish batch 2" addendum): natural-
+   width, left-aligned inline chips instead of the global `.question-link`'s
+   full-row `justify-content:space-between` treatment, which stretched a
+   single short link across the whole line with its arrow pushed to the far
+   right. Used for "Continue from the evidence" follow-ups and the plain
+   action links below them on the answer page (shared.tsx, ListAnswer.tsx). */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+  border: var(--border-width, 1px) solid var(--line);
+  padding: 7px 12px;
+  background: var(--paper, #fff);
+}
+.chip:hover {
+  background: var(--soft);
+  text-decoration: none;
+}
+.chip span {
+  color: var(--blue);
+}

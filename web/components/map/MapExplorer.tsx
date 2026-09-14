@@ -57,7 +57,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
         {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question} <AiMark /></a>}
         {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion} <AiMark /></a>}
       </div>
-      {(suggestions.place || suggestions.substanceSource) && <p className={styles.suggestionNote}>Machine-extracted suggestions{suggestions.place && <> · <a href={pageUrl(suggestions.place)}>building source</a></>}{suggestions.substanceSource && <> · <a href={pageUrl(suggestions.substanceSource)}>substance source</a></>}</p>}
+      {(suggestions.place || suggestions.substanceSource) && <p className={styles.suggestionNote}>Suggestions are machine-extracted — see the source pages: {suggestions.place && <a href={pageUrl(suggestions.place)}>building ↗</a>}{suggestions.place && suggestions.substanceSource && ' · '}{suggestions.substanceSource && <a href={pageUrl(suggestions.substanceSource)}>substance ↗</a>}</p>}
     </section>
     <aside className={`${styles.panel} ${expanded?styles.expanded:''}`} aria-label="Building records">
       <button className={styles.sheetHandle} onClick={()=>setExpanded(v=>!v)} aria-expanded={expanded}>{expanded?'Collapse':'Expand'} records panel</button>

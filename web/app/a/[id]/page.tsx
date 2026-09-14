@@ -8,7 +8,7 @@ import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { AnswerBody, PriorTurn, searchFallbackUrl } from '@/components/ask/shared';
 import { ListAnswer } from '@/components/ask/ListAnswer';
-import { AiMark, Callout } from '@/components/ui';
+import { AiMark, ButtonLink, Callout } from '@/components/ui';
 import { getAnswer, getAnswerChain } from '@/lib/ask/store';
 import { socialMeta } from '@/lib/seo/social';
 
@@ -79,21 +79,21 @@ export default async function AnswerPage({ params }: { params: Params }) {
         )}
         <SearchBox q={row.q} compact />
         <SearchTabs active="answer" answerHref={`/a/${row.id}`} documentsHref={searchFallbackUrl(row.q)} />
-        <p className="small muted mb-4">
-          Permanent answer · frozen citations ·{' '}
-          {new Date(row.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-        </p>
+        <div className="mb-4" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+          <p className="small muted" style={{ margin: 0 }}>
+            Permanent answer · frozen citations ·{' '}
+            {new Date(row.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+          {!row.superseded_by && (
+            <ButtonLink variant="quiet" size="small" href={`/ask?refresh=${row.id}`}>
+              Refresh this answer <AiMark />
+            </ButtonLink>
+          )}
+        </div>
         {olderRow && (
           <p className="small muted mb-4">
             Refreshed from an earlier answer ({answerDate(olderRow.created_at)}) →{' '}
             <Link href={`/a/${olderRow.id}`}>earlier version</Link>
-          </p>
-        )}
-        {!row.superseded_by && (
-          <p className="small muted mb-4">
-            <Link href={`/ask?refresh=${row.id}`} className="question-link">
-              Refresh this answer <AiMark /> <span>→</span>
-            </Link>
           </p>
         )}
         {priorTurns.length > 0 && (
