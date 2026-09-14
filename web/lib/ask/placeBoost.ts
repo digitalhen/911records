@@ -6,7 +6,7 @@ import type { PageRef } from './retrieve';
 
 /** At most this many building pages are pushed into the retrieved set, leaving the other
  *  slots (MAX_RETRIEVED_PAGES = 12) for the text search's own hits. */
-const MAX_PLACE_PAGES = 6;
+const MAX_PLACE_PAGES = 8;
 
 /**
  * Pages the pipeline attributed to the building a question names (site.place_pages —
@@ -51,15 +51,34 @@ export async function placePagesForQuestion(filters: AskFilters, q = '', terms: 
   const newTerms = allTerms.filter((t) => !prior.has(norm(t)));
   if (docRows.length && allTerms.length) {
     const docs = docRows.map((r) => r.doc);
-    const queries = newTerms.length && newTerms.length < allTerms.length ? [newTerms, allTerms] : [allTerms];
+    // The question's own wording goes second: the planner's terms differ from run to run, and the
+    // semantic arm on the plain question ("environmental testing … July 2002") is what reliably
+    // lands on the lab reports rather than their fax covers (2026-09-14).
+    const queries: string[] = [];
+    if (newTerms.length && newTerms.length < allTerms.length) queries.push(newTerms.join(' '));
+    if (q.trim()) queries.push(q.trim());
+    queries.push(allTerms.join(' '));
     const refs: PageRef[] = [];
     const seen = new Set<string>();
-    for (const qt of queries) {
-      const scoped = await search({ q: qt.join(' '), filters: { docs }, page: 1, pageSize: MAX_PLACE_PAGES, allowSemanticOnly: true });
-      for (const h of scoped.hits) {
-        if (seen.has(h.batesPage) || refs.length >= MAX_PLACE_PAGES) continue;
-        seen.add(h.batesPage);
-        refs.push({ doc: h.doc, page: h.page, batesPage: h.batesPage, agency: h.agency, box: h.box, folder: h.folder, volume: h.volume });
+    const push = (r: PageRef) => { if (!seen.has(r.batesPage) && refs.length < MAX_PLACE_PAGES) { seen.add(r.batesPage); refs.push(r); } };
+    for (const qt of [...new Set(queries)]) {
+      const scoped = await search({ q: qt, filters: { docs }, page: 1, pageSize: MAX_PLACE_PAGES, allowSemanticOnly: true });
+      for (const h of scoped.hits) push({ doc: h.doc, page: h.page, batesPage: h.batesPage, agency: h.agency, box: h.box, folder: h.folder, volume: h.volume });
+      if (refs.length >= MAX_PLACE_PAGES) break;
+    }
+    // A hit on an inner page is often a fax cover or a results table; the document's first page
+    // is where a lab report says what was analysed and for whom — bring it along.
+    const inner = refs.filter((r) => r.page !== 1).map((r) => r.doc);
+    if (inner.length) {
+      const firsts = await queryReadSafe<{ doc: string; bates: string }>(
+        `SELECT pg.doc, pg.bates FROM site.pages pg WHERE pg.doc = ANY($1) AND pg.page = 1 AND coalesce(pg.chars, 0) > 200`,
+        [[...new Set(inner)]],
+      );
+      const byDoc = new Map(refs.map((r) => [r.doc, r]));
+      for (const f of firsts) {
+        const sibling = byDoc.get(f.doc)!;
+        if (refs.length >= MAX_PLACE_PAGES + 4) break;
+        if (!seen.has(f.bates)) { seen.add(f.bates); refs.splice(refs.indexOf(sibling), 0, { ...sibling, page: 1, batesPage: f.bates }); }
       }
     }
     if (refs.length) return { label, refs };
