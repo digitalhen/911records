@@ -6,7 +6,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { MachineNote, SourceRail, searchFallbackUrl } from '@/components/ask/shared';
-import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { SUGGESTED_QUESTIONS } from '@/lib/suggestedQuestions';
 import { AiMark } from '@/components/ui';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
@@ -15,7 +15,7 @@ import { findExactBates } from '@/lib/opensearch';
 import { routeAsk } from '@/lib/ask/router';
 import { askConfigured, planAsk, type AskPlan } from '@/lib/ask/plan';
 import { retrieveForQuestion, type RetrievedPage } from '@/lib/ask/retrieve';
-import { answerQuestion, validateAnswer, type AskAnswer } from '@/lib/ask/answer';
+import { answerQuestion, validateAnswer, validateFollowUps, type AskAnswer } from '@/lib/ask/answer';
 import { underDailyCap, recordSpend, estimateCostUsd } from '@/lib/ask/spend';
 import { allowAskRequest, clientIp } from '@/lib/ask/rateLimit';
 import { saveAnswer } from '@/lib/ask/store';
@@ -255,7 +255,13 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   }
 
   const retrievedBatesPages = new Set(pages.map((p) => p.batesPage));
-  const validated = validateAnswer(answer, retrievedBatesPages);
+  const citeValidated = validateAnswer(answer, retrievedBatesPages);
+  // B15: a follow-up the model wrote from the excerpts isn't guaranteed to
+  // match the corpus's own wording — check each against a cheap lexical
+  // search before it's ever rendered or stored, so a follow-up link never
+  // leads to an empty results page (see validateFollowUps's header).
+  const followUps = await validateFollowUps(citeValidated.followUps);
+  const validated = { ...citeValidated, followUps };
 
   if (validated.sentences.length === 0) {
     return (

@@ -8,6 +8,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { ASK_MODEL } from './plan';
 import type { RetrievedPage } from './retrieve';
+import { search } from '../opensearch';
 
 const MAX_TOKENS = 2048;
 
@@ -94,4 +95,32 @@ export function validateAnswer(answer: AskAnswer, retrievedBatesPages: Set<strin
     (s) => s.cites.length > 0 && s.cites.every((c) => retrievedBatesPages.has(c)),
   );
   return { ...answer, sentences };
+}
+
+const MAX_FOLLOW_UPS = 3;
+
+/**
+ * B15 ("every suggested question/search must return results"): the model's
+ * own "followUps" are written from the retrieved excerpts, not checked
+ * against the index — a paraphrase the model chose can miss the corpus's
+ * actual wording ("insufficient evidence" all over again, just one click
+ * later). Runs a cheap lexical-only check (the same gate a bare /search box
+ * query passes through — see opensearch.ts's `hasLexicalHit`) per candidate,
+ * in parallel, and drops any with zero hits — never rendered, never stored.
+ * Keeps at most MAX_FOLLOW_UPS, in the model's own order.
+ */
+export async function validateFollowUps(followUps: string[]): Promise<string[]> {
+  const candidates = followUps.filter(Boolean).slice(0, MAX_FOLLOW_UPS * 2); // cap the fan-out
+  const checked = await Promise.all(
+    candidates.map(async (f) => {
+      try {
+        const r = await search({ q: f, pageSize: 1 });
+        const hasResults = !r.error && !r.noSearchableTerms && !r.noLexicalMatch && r.total > 0;
+        return hasResults ? f : null;
+      } catch {
+        return null; // fail closed: an unreachable index drops the follow-up, never shows a dead-end link
+      }
+    }),
+  );
+  return checked.filter((f): f is string => f !== null).slice(0, MAX_FOLLOW_UPS);
 }

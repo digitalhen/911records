@@ -27,6 +27,11 @@ export function buildingUrl(p: Pick<Place, 'kind' | 'key' | 'id'>) {
   return `/building/${encodeURIComponent(p.kind === 'bin' ? p.key : p.id)}`;
 }
 export function pageUrl(p: { doc: string; page: number }) { return `/doc/${encodeURIComponent(p.doc)}/p/${p.page}`; }
+// Shared with web/scripts/check-suggestions.ts (B15) so the map panel's
+// data-driven "question" chip and its results-check stay byte-identical —
+// see MapExplorer.tsx's comment for why this doesn't name a fixed date.
+export function placeQuestion(label: string) { return `What test records exist for ${label}?`; }
+export function substanceQuestion(substance: string) { return `Which buildings have ${substance} test records?`; }
 export function month(index: number) { return new Date(Date.UTC(2001, 8 + index, 1)).toISOString().slice(0, 7); }
 export function recordKind(p: Place): RecordKind { return p.n_test_pages > 0 ? 'test' : p.n_inspection_pages > 0 ? 'inspection' : 'mention'; }
 // A route param may arrive still percent-encoded (observed: Next.js app router does not always

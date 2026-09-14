@@ -9,7 +9,7 @@ import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
-import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { SUGGESTED_QUESTIONS } from '@/lib/suggestedQuestions';
 import { docTypeLabel } from '@/lib/docTypes';
 
 export const dynamic = 'force-dynamic';

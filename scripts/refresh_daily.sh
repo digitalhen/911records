@@ -17,6 +17,10 @@
 #                           HA across two hosts, so site.sqlite alone isn't enough for it to read —
 #                           schema-level build-then-swap, into `site_new` then swapped for `site`)
 #   7. opensearch.py setup + index
+#   8. suggestions:check    (B15) every suggested question/search the app can show still returns
+#                           results against the just-refreshed index/db — NON-FATAL: logged, never
+#                           stops the run (data growth changing what a suggestion returns is a
+#                           product bug to notice, not a reason to fail the whole day's refresh)
 #
 # Flags:
 #   --index-only    skip 1-4; just rebuild site.sqlite, load Postgres and (re)index OpenSearch —
@@ -34,6 +38,15 @@
 # Homebrew Postgres at 127.0.0.1:5433, database sept11, user sept11; the password always comes
 # from ~/.pgpass via libpq, never from an env var or a file in this repo). OLLAMA_URL-equivalent
 # is hardcoded to localhost in pages.py/opensearch.py today.
+#
+# Stage 8's env is resolved differently, because it runs the web app's own lib/ code (web/lib/db.ts,
+# web/lib/opensearch.ts), which speaks a single DATABASE_URL/DATABASE_READ_URL connection string,
+# not the pipeline's PGHOST/PGPORT/PGUSER/PGDATABASE — this script builds that URL from the same
+# PG* vars/defaults used above, with NO password in it, so node-postgres falls through to the same
+# ~/.pgpass lookup libpq uses (matched by host:port:database:user — see client.js's pgpass call);
+# nothing here reads or writes a password. OPENSEARCH_* pass through unchanged (same var names on
+# both sides). ANTHROPIC_API_KEY is whatever's already exported below for topics.py (from
+# .claudekey, if present) — suggestions:check simply skips its model-path checks when unset.
 #
 # Usage: scripts/refresh_daily.sh [--index-only] [--no-download]
 #        (launchd plist: docs/launchd/nyc.911records.refresh.plist, installed per docs/RUNBOOK.md)
@@ -134,5 +147,18 @@ run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --relate
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
 run_stage opensearch_setup .venv/bin/python scripts/search/opensearch.py setup
 run_stage opensearch_index .venv/bin/python scripts/search/opensearch.py index
+
+# Stage 8 (B15) — non-fatal by design: see the header comment above `run_stage`'s definition and
+# the env-resolution note near the top of this file. Never uses run_stage, which would exit the
+# whole script on failure; a suggestion going stale after today's data growth is worth noticing in
+# the log, not worth failing the day's refresh over.
+log "== suggestions_check: npm run suggestions:check =="
+db_url="postgres://${PGUSER:-sept11}@${PGHOST:-127.0.0.1}:${PGPORT:-5433}/${PGDATABASE:-sept11}"
+if (cd web && DATABASE_URL="$db_url" DATABASE_READ_URL="$db_url" npm run suggestions:check) >> "$LOG" 2>&1; then
+  log "-- suggestions_check ok --"
+else
+  rc=$?
+  log "-- suggestions_check FAILED (exit $rc) -- non-fatal, continuing (see the table above in this log)"
+fi
 
 log "done"
