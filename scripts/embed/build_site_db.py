@@ -470,6 +470,82 @@ def load_places():
     return places, place_pages
 
 
+# --------------------------------------------------------- p4-facts.sqlite --
+# scripts/embed/facts.py's output (issue #34, "addresses impacted by asbestos" needs a table, not a
+# document list). Optional — a corpus this hasn't been run against yet leaves `facts`,
+# `building_substances` and `lab_rollups` all present but empty (schema-first, same convention as
+# `building_facts` above: absence of the source file is tolerated, never required). Behind a
+# presence check, not a flag, so this build is unchanged for anyone who hasn't run facts.py yet;
+# Henry switches production over by pointing the pipeline at a real data/embed/p4-facts.sqlite.
+FACTS_SQLITE = EMB / "p4-facts.sqlite"
+FACTS_COLS = ("doc", "page", "bates", "building_key", "substance", "sample_type", "value", "unit",
+              "date", "lab", "method", "limit_value", "limit_source", "result", "sample_id",
+              "location", "confidence", "extractor")
+FACTS_IDX = {name: i for i, name in enumerate(FACTS_COLS)}
+
+
+def load_facts() -> list[tuple]:
+    if not FACTS_SQLITE.exists():
+        return []
+    con = sqlite3.connect(f"file:{FACTS_SQLITE}?mode=ro", uri=True)
+    rows = con.execute(f"SELECT {', '.join(FACTS_COLS)} FROM facts").fetchall()
+    con.close()
+    return rows
+
+
+def build_building_substances(facts_rows: list[tuple]) -> list[tuple]:
+    """(building_key, substance, n_pages, n_readings, first_date, last_date, max_value, unit,
+    any_above_limit) grouped by (building_key, substance) — the table a query like "addresses
+    impacted by asbestos" reads directly. A fact with no building_key or no substance contributes to
+    no row (facts.py already only resolves a building_key from a page's own regex mentions, so
+    "no building" is a real, common case, not a bug). `max_value`/`unit` are taken together from
+    whichever unit is most common in the group's own readings, so the number shown and the unit
+    labelling it always agree even when a substance was read in more than one unit for one building
+    (e.g. bulk % vs air f/cc) — readings in the other unit(s) still count toward `n_readings`."""
+    groups: dict[tuple, dict] = collections.defaultdict(lambda: {
+        "pages": set(), "n": 0, "dates": [], "unit_values": collections.defaultdict(list), "above": False})
+    for r in facts_rows:
+        bkey, substance = r[FACTS_IDX["building_key"]], r[FACTS_IDX["substance"]]
+        if not bkey or not substance:
+            continue
+        g = groups[(bkey, substance)]
+        g["pages"].add((r[FACTS_IDX["doc"]], r[FACTS_IDX["page"]]))
+        g["n"] += 1
+        if r[FACTS_IDX["date"]]:
+            g["dates"].append(r[FACTS_IDX["date"]])
+        if r[FACTS_IDX["value"]] is not None and r[FACTS_IDX["unit"]]:
+            g["unit_values"][r[FACTS_IDX["unit"]]].append(r[FACTS_IDX["value"]])
+        if r[FACTS_IDX["result"]] == "above":
+            g["above"] = True
+    out = []
+    for (bkey, substance), g in groups.items():
+        unit = max(g["unit_values"], key=lambda u: len(g["unit_values"][u])) if g["unit_values"] else None
+        max_value = max(g["unit_values"][unit]) if unit else None
+        d = sorted(g["dates"])
+        out.append((bkey, substance, len(g["pages"]), g["n"], d[0] if d else None, d[-1] if d else None,
+                     max_value, unit, 1 if g["above"] else 0))
+    return out
+
+
+def build_lab_rollups(facts_rows: list[tuple]) -> list[tuple]:
+    """(lab, n_pages, buildings, substances) — `buildings`/`substances` are JSON arrays of distinct
+    values (the same convention `topics.boxes`/`topics.agencies` already use), not counts, so the
+    app can list them without a second query."""
+    groups: dict[str, dict] = collections.defaultdict(lambda: {"pages": set(), "buildings": set(), "substances": set()})
+    for r in facts_rows:
+        lab = r[FACTS_IDX["lab"]]
+        if not lab:
+            continue
+        g = groups[lab]
+        g["pages"].add((r[FACTS_IDX["doc"]], r[FACTS_IDX["page"]]))
+        if r[FACTS_IDX["building_key"]]:
+            g["buildings"].add(r[FACTS_IDX["building_key"]])
+        if r[FACTS_IDX["substance"]]:
+            g["substances"].add(r[FACTS_IDX["substance"]])
+    return [(lab, len(g["pages"]), json.dumps(sorted(g["buildings"])), json.dumps(sorted(g["substances"])))
+            for lab, g in groups.items()]
+
+
 # ----------------------------------------------------------- building_facts -
 
 def _int_or_none(v: str | None) -> int | None:
@@ -587,6 +663,16 @@ CREATE TABLE building_facts(
   bbl TEXT PRIMARY KEY, bin TEXT, address TEXT, zip TEXT, year_built INT, num_floors REAL,
   units_res INT, units_total INT, bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
 );
+CREATE TABLE facts(
+  id INTEGER PRIMARY KEY, doc TEXT, page INT, bates TEXT, building_key TEXT, substance TEXT,
+  sample_type TEXT, value REAL, unit TEXT, date TEXT, lab TEXT, method TEXT, limit_value REAL,
+  limit_source TEXT, result TEXT, sample_id TEXT, location TEXT, confidence REAL, extractor TEXT
+);
+CREATE TABLE building_substances(
+  building_key TEXT, substance TEXT, n_pages INT, n_readings INT, first_date TEXT, last_date TEXT,
+  max_value REAL, unit TEXT, any_above_limit INT
+);
+CREATE TABLE lab_rollups(lab TEXT PRIMARY KEY, n_pages INT, buildings TEXT, substances TEXT);
 """
 
 INDEXES = """
@@ -616,6 +702,11 @@ CREATE INDEX place_pages_doc ON place_pages(doc);
 CREATE INDEX building_facts_bin ON building_facts(bin);
 CREATE INDEX entities_bbl ON entities(bbl);
 CREATE INDEX entities_bin ON entities(bin);
+CREATE INDEX facts_building ON facts(building_key);
+CREATE INDEX facts_substance ON facts(substance);
+CREATE INDEX facts_doc ON facts(doc, page);
+CREATE UNIQUE INDEX building_substances_unique ON building_substances(building_key, substance);
+CREATE INDEX building_substances_substance ON building_substances(substance);
 """
 
 
@@ -653,6 +744,9 @@ def main() -> int:
     related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related(Path(args.related))
     places_rows, place_pages_rows = load_places()
     building_facts_rows = load_building_facts()
+    facts_rows = load_facts()
+    building_substances_rows = build_building_substances(facts_rows)
+    lab_rollups_rows = build_lab_rollups(facts_rows)
     doc_types = load_doc_types()
     snapshots_rows = load_snapshots()
     changes_rows = load_changes(manifest_by_doc)
@@ -708,6 +802,10 @@ def main() -> int:
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
     con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
     con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
+    con.executemany(f"INSERT INTO facts (id,{','.join(FACTS_COLS)}) VALUES (NULL,{','.join('?' * len(FACTS_COLS))})",
+                     facts_rows)
+    con.executemany("INSERT INTO building_substances VALUES (?,?,?,?,?,?,?,?,?)", building_substances_rows)
+    con.executemany("INSERT INTO lab_rollups VALUES (?,?,?,?)", lab_rollups_rows)
 
     counts = {
         "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),
@@ -715,7 +813,8 @@ def main() -> int:
         "signatories": len(signatories_rows), "signatory_pages": len(signatory_pages_rows),
         "related": len(related_rows), "near_dupes": len(near_dupes_rows), "topics": len(topics_rows),
         "doc_topics": len(doc_topics_rows), "places": len(places_rows), "place_pages": len(place_pages_rows),
-        "building_facts": len(building_facts_rows),
+        "building_facts": len(building_facts_rows), "facts": len(facts_rows),
+        "building_substances": len(building_substances_rows), "lab_rollups": len(lab_rollups_rows),
     }
     latest_snapshot = snapshots_rows[-1]["date"] if snapshots_rows else None
     meta_rows = [

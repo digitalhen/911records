@@ -147,6 +147,11 @@ place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, con
 page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
 building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total, bldg_area,
                 bldg_class, num_bldgs, source)
+facts(id PK, doc, page, bates, building_key, substance, sample_type, value, unit, date, lab, method,
+      limit_value, limit_source, result, sample_id, location, confidence, extractor)
+building_substances(building_key, substance, n_pages, n_readings, first_date, last_date, max_value,
+                     unit, any_above_limit)
+lab_rollups(lab PK, n_pages, buildings, substances)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
 
@@ -165,6 +170,43 @@ read-only) and writes `data/embed/gazetteer-prospect.csv`; **nothing under `scri
 to the Prospect database at run time** — the pipeline (`entities.py --canonicalise`,
 `build_site_db.py`) only ever reads that CSV. `lot_area` and `land_use` were requested but are not
 in Prospect's schema (`pluto_lots` has no `lotarea`/`landuse` column) and are not exported or shown.
+
+`facts` + `building_substances` + `lab_rollups` (issue #34, P4, Henry 2026-09-14: "addresses impacted
+by asbestos" needs a table, not a document list) are sample-level environmental test readings, one
+row per reading. Source: `scripts/embed/facts.py`, which walks every page of a `lab_report`/
+`chain_of_custody`/`form` document (`doctypes.py`'s classification) plus any other page where
+`entities.py` already found a contaminant AND a measurement, and extracts substance, sample type
+(air/bulk/wipe/dust/water/soil, when stated or unambiguous from the unit), value + unit (normalised:
+f/cc, s/mm², ppm, ppb, ppt, µg/m³, mg/m³, ng/m³, mg/kg, µg/g, %, plus µg/L/mg/L/ng/L for water — the
+three water units this module adds beyond `entities.py`'s own UNITS regex, which never needed one),
+date, lab, method (PCM/TEM/PLM/GC-MS/ICP-MS/AA/XRF, when stated), a stated limit + comparison
+(`limit_value`/`limit_source`/`result` — populated **only** when the page itself states a limit and a
+numeric comparison is possible; `result` is never a health verdict, only what the page says), and the
+exact page + Bates. `building_key` is resolved once per page, strongest signal first — BIN > block/
+lot > canonicalised address bbl > canonicalised address key (same priority `places.py` uses for its
+own place resolution, and the same `kind:key` shape as `places.place_id` for bin/bbl) — via
+`canonical.py`'s canonicalisation already stored on `mentions` by `entities.py --canonicalise`; `null`
+when the page carries none of those. `extractor` is `'rules'` (three tiers, highest confidence first:
+a recurring DEP columnar asbestos-bulk-% report shape; a generic lab-report column table keyed off a
+header naming a Results/Units-ish column; a page-level pairing fallback when a page's own contaminant
+and measurement mentions pair up unambiguously) or `'llm'` (claude-haiku-4-5-20251001, only for a
+lab_report/chain_of_custody page the rule tiers found nothing on and that still looks like a result
+table, strict JSON schema, cached by page-text hash in `data/embed/p4-facts-cache.json`, hard-capped
+by `--budget-usd`). Substance is normalised against `entities.py`'s own CONTAMINANTS gazetteer for
+every rule-tier fact (so it matches an existing `substance` entity 1:1); the LLM tier is allowed to
+name a substance outside that gazetteer (e.g. an ICP-MS metals printout column entities.py's own
+extraction doesn't track). `building_substances` (building_key, substance) rolls up `facts` for the
+map/building page: `n_pages`/`n_readings`, `first_date`/`last_date`, and `max_value`/`unit` together
+from whichever unit is most common within the group (so the number and the unit labelling it always
+agree even when one substance was read in more than one unit for one building), and `any_above_limit`
+(only ever true from a page-stated comparison, never inferred). `lab_rollups` (lab) carries `n_pages`
+and `buildings`/`substances` as JSON arrays of distinct values (the `topics.boxes`/`topics.agencies`
+convention). Both `facts` and its rollups load into Postgres schema `site` behind a presence check
+(`scripts/embed/build_site_db.py`/`load_site_pg.py`): a build with no `data/embed/p4-facts.sqlite` yet
+gets these tables empty, not missing — production is unchanged until the pipeline is pointed at a
+real `facts.py` run. `scripts/embed/p4_check.py` samples facts against the page they cite and writes
+`data/embed/p4-report.md` (counts by tier, an automated corroboration-proxy precision estimate per
+extractor, and substance/building coverage) — never a health verdict of its own either.
 
 Address/lab/contractor entities are canonicalised (issue #19, `scripts/embed/canonical.py` +
 `entities.py --canonicalise`): OCR misreads of one address or org (house number and street type
