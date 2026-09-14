@@ -5,7 +5,11 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata() {
-  return mapMetadata();
+  // QA 2026-09-14: "/" rendered a bare "Building map" title while every other page carries the
+  // site name — an explicit absolute title for the home page only.
+  const base = mapMetadata();
+  const title = "9/11 City Records — New York City's released 9/11 records, mapped and searchable";
+  return { ...base, title: { absolute: title }, openGraph: { ...base.openGraph, title }, twitter: { ...base.twitter, title } };
 }
 
 // Dataset JSON-LD on the root (docs/PLAN.md SEO section). HomeMap itself

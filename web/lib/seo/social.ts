@@ -8,7 +8,9 @@ import type { Metadata } from 'next';
  *  into a route's returned Metadata. */
 export function socialMeta(title: string, description: string | undefined, path: string): Pick<Metadata, 'openGraph' | 'twitter'> {
   return {
-    openGraph: { title, description, url: path, type: 'website' },
-    twitter: { card: 'summary_large_image', title, description },
+    // The site card (app/opengraph-image.tsx) on every page — QA 2026-09-14 found only the home
+    // page carried an og:image while every page declared summary_large_image.
+    openGraph: { title, description, url: path, type: 'website', images: [{ url: '/opengraph-image', width: 1200, height: 630 }] },
+    twitter: { card: 'summary_large_image', title, description, images: ['/opengraph-image'] },
   };
 }

@@ -7,7 +7,17 @@ import { MonthHistogram } from '@/components/ui';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic='force-dynamic';
 type Params=Promise<{slug:string}>;
-export async function generateMetadata({params}:{params:Params}) { const {slug}=await params; return metadata('Official role on records','Official capacity, actions and links to the source signature pages.',entityHref('signatory',slug)); }
+export async function generateMetadata({params}:{params:Params}) {
+  const {slug}=await params;
+  // Distinct per official (QA 2026-09-14: 464 pages shared one title) but deliberately without the
+  // person's name — names stay on the page itself, never in titles or social cards.
+  const row=await getSignatory(slug).catch(()=>null);
+  const role=row?.title||'Official signatory';
+  const org=row?.org?` · ${row.org}`:'';
+  const yr=(d:string|Date|null|undefined)=>d?String(new Date(d).getUTCFullYear()):'';
+  const years=yr(row?.first_date)?` · ${yr(row?.first_date)}${yr(row?.last_date)&&yr(row?.last_date)!==yr(row?.first_date)?`–${yr(row?.last_date)}`:''}`:'';
+  return metadata(`${role}${org}${years} · role on records`,`What this ${role.toLowerCase()} signed or acted on in the released records, with links to the source signature pages.`,entityHref('signatory',slug));
+}
 export default async function Signatory({params}:{params:Params}) {
   const {slug}=await params;const row=await getSignatory(slug);if(!row)notFound();const rows=await getOccurrences(row.id,true);if(!rows.length)notFound();
   const related=await relatedEntities(rows);

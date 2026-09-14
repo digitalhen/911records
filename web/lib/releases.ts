@@ -5,11 +5,20 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.12';
+export const APP_VERSION = '0.14.13';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.13',
+    date: '2026-09-14',
+    notes: [
+      'Sharing any page (not just the home page) now shows the site card image in Slack, iMessage, X and LinkedIn previews.',
+      'Each official’s page has its own browser-tab title (role, organisation and years) instead of one shared title; names still never appear in titles.',
+      'The home page’s tab title names the site.',
+    ],
+  },
   {
     version: '0.14.11',
     date: '2026-09-14',
