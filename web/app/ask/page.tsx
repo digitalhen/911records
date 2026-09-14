@@ -513,6 +513,10 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   try {
     const result = await planAsk(q);
     plan = result.plan;
+    // mode=question (AI-marked chips, "Ask this as a question"): the visitor asked for a cited
+    // answer, so a planner that comes back 'search' is overridden to 'question' — refuse/offtopic
+    // still stand. (2026-09-14: a map chip bounced to an empty document search instead.)
+    if (forceQuestion && plan.kind === 'search') plan = { ...plan, kind: 'question' };
     planUsage = result.usage as unknown as Record<string, unknown>;
     void recordSpend(estimateCostUsd(result.usage));
   } catch (err) {

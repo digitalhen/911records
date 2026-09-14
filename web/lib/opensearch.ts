@@ -173,18 +173,37 @@ function withCoverSheetHandling(query: Record<string, unknown>, includeCoverShee
   return withCoverSheetPenalty(query);
 }
 
+// Facet values are exact keyword strings as indexed (addresses are UPPERCASE, labs/agencies as
+// extracted), but planner- and link-generated filters arrive in free-text case ("125 Cedar
+// Street"). An exact `term` silently zeroed every result (2026-09-14, a suggested search). Match
+// the exact value OR the same value ignoring case OR a case-insensitive prefix.
+function looseTerm(field: string, value: string) {
+  const v = value.trim();
+  const esc = v.replace(/([*?\\])/g, '\\$1');
+  return {
+    bool: {
+      minimum_should_match: 1,
+      should: [
+        { term: { [field]: v } },
+        { term: { [field]: v.toUpperCase() } },
+        { wildcard: { [field]: { value: `${esc}*`, case_insensitive: true } } },
+      ],
+    },
+  };
+}
+
 const FACET_FIELDS = ['agency', 'source', 'box', 'volume', 'folder', 'contaminants', 'labs', 'addresses'] as const;
 
 function buildFilterClauses(filters: SearchFilters): Record<string, unknown>[] {
   const clauses: Record<string, unknown>[] = [];
-  if (filters.agency) clauses.push({ term: { agency: filters.agency } });
+  if (filters.agency) clauses.push(looseTerm('agency', filters.agency));
   if (filters.source) clauses.push({ term: { source: filters.source } });
   if (filters.box) clauses.push({ term: { box: filters.box } });
   if (filters.folder) clauses.push({ term: { folder: filters.folder } });
   if (filters.volume) clauses.push({ term: { volume: filters.volume } });
   if (filters.contaminant) clauses.push({ term: { contaminants: filters.contaminant } });
-  if (filters.lab) clauses.push({ term: { labs: filters.lab } });
-  if (filters.address) clauses.push({ term: { addresses: filters.address } });
+  if (filters.lab) clauses.push(looseTerm('labs', filters.lab));
+  if (filters.address) clauses.push(looseTerm('addresses', filters.address));
   if (filters.year) {
     clauses.push({
       range: { dates: { gte: `${filters.year}-01-01`, lte: `${filters.year}-12-31` } },

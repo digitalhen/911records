@@ -54,8 +54,8 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <div className={styles.chips}>
         {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}
-        {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question} <AiMark /></a>}
-        {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion} <AiMark /></a>}
+        {question && <a href={`/ask?q=${encodeURIComponent(question)}&mode=question`}>{question} <AiMark /></a>}
+        {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}&mode=question`}>{relatedQuestion} <AiMark /></a>}
       </div>
       {(suggestions.place || suggestions.substanceSource) && <p className={styles.suggestionNote}>Suggestions are machine-extracted from the records.</p>}
     </section>
