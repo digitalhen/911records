@@ -47,5 +47,6 @@ Rules:
   new `site.*` column must tolerate its absence for one release (query `information_schema` once,
   or `SELECT` with a fallback), and the coordinator loads the data before pushing the code.
 - **Versioning (Prospect convention).** `web/lib/releases.ts` holds `APP_VERSION` and `RELEASES`.
-  The coordinator bumps the version and prepends release notes when a user-visible change merges
-  (patch for fixes, minor for features); agents put their proposed note text in their report.
+  Every merge that changes what a visitor can see or do bumps the version and prepends notes that
+  describe USER-FACING changes only, in plain language (see CLAUDE.md); agents put their proposed
+  note text in their report and the coordinator writes it at merge.

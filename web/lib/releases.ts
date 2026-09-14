@@ -1,7 +1,8 @@
 /**
  * Version and release history for /releases — plain typed constants, no database, client-safe.
- * Same convention as prospect.nyc's lib/releases.ts: when a user-visible change merges to main,
- * prepend an entry to RELEASES and bump APP_VERSION (patch for fixes, minor for features).
+ * Rule (CLAUDE.md): every merge to main that changes what a visitor can see or do bumps APP_VERSION
+ * and prepends a RELEASES entry. Notes are user-facing only — features, behaviour, visible fixes —
+ * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
 export const APP_VERSION = '0.5.0';
