@@ -1,6 +1,5 @@
 import type { NextConfig } from 'next';
 
-const FILES_URL = process.env.FILES_URL || 'http://127.0.0.1:8911';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -8,19 +7,9 @@ const nextConfig: NextConfig = {
   // that webpack/turbopack shouldn't try to bundle — same reasoning as
   // prospect's serverExternalPackages: ['pg'].
   serverExternalPackages: ['pg'],
-  async rewrites() {
-    return [
-      {
-        // PDFs, page images and word-box files are served by the `files`
-        // service — docker-compose.host.yml's nginx on StudioMac in
-        // production, scripts/files-dev-server.mjs in dev. This app is
-        // deployed HA with no bind mount to data/, so every one of these is
-        // a proxied URL, never a local file read.
-        source: '/files/:path*',
-        destination: `${FILES_URL}/:path*`,
-      },
-    ];
-  },
+  // /files/* is a runtime route handler (app/files/[...path]/route.ts), NOT a
+  // rewrite: rewrites are fixed at build time and Dokploy builds with no
+  // FILES_URL, which baked 127.0.0.1 into production (every image 500'd).
 };
 
 export default nextConfig;
