@@ -39,12 +39,24 @@
 .railLabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .railCount { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
-@media (max-width: 700px) {
+/* Stacked fallback below 900px — a squarified treemap needs real area per box to stay readable;
+   under that it becomes readable rows instead (issue #32 follow-up, seen in production at
+   ~570px: rows rendered as an unreadable 24px strip). `.stage` keeps `container-type: size` from
+   the base rule above (desktop's per-box @container rules truncate a box's own label once *that
+   box* gets small); left on with no explicit height once `.stage` becomes an auto-height flex
+   column here, size containment pins the container to a zero used height (min-height:0,
+   aspect-ratio:auto — no size fed in from anywhere else) and every row's content height collapses
+   with it. `container-type: normal` below turns that off for the stacked layout, where rows size
+   by content, not by container queries. */
+@media (max-width: 899px) {
   .wrap { grid-template-columns: 1fr; }
   .rail { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 14px; }
-  .stage { aspect-ratio: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; background: none; border: 0; }
+  .stage {
+    container-type: normal; aspect-ratio: auto; min-height: 0; display: flex; flex-direction: column;
+    gap: 2px; background: none; border: 0;
+  }
   .box {
-    position: static !important; width: 100% !important; height: auto !important;
+    position: static !important; width: 100% !important; height: auto !important; min-height: 44px;
     border: 1px solid var(--line-strong); padding: 10px 12px 12px;
   }
   .box strong { -webkit-line-clamp: 2 !important; font-size: 13px !important; }
