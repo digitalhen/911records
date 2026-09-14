@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.12.1';
+export const APP_VERSION = '0.13.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.13.0',
+    date: '2026-09-14',
+    notes: ['Documents show a plain-language title and a short summary wherever they are listed — search, topics, browse, related records, buildings and the case folder — so you can tell what a record is without opening it. Rolling out across the collection.'],
+  },
   {
     version: '0.12.1',
     date: '2026-09-14',

@@ -145,6 +145,7 @@ run_stage related_py .venv/bin/python scripts/embed/related.py
 run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
 run_stage places_py .venv/bin/python scripts/embed/places.py
 run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
+run_stage summaries_py .venv/bin/python scripts/embed/summaries.py
 run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --related data/embed/related-topics.sqlite
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
 run_stage opensearch_setup .venv/bin/python scripts/search/opensearch.py setup
