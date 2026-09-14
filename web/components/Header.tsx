@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CaseCountBadge } from '@/components/case/CaseCountBadge';
 
 const NAV = [
   { href: '/ask', label: 'Ask & search' },
@@ -27,6 +28,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
         {NAV.map((item) => (
           <Link key={item.href} href={item.href} aria-current={active === item.href ? 'page' : undefined} className={active === item.href ? 'active' : ''}>
             {item.label}
+            {item.href === '/case' && <CaseCountBadge />}
           </Link>
         ))}
       </nav>

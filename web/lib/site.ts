@@ -10,7 +10,7 @@
 // A2's pipeline is still filling in tables this app doesn't need for day one
 // (entities, signatories, topics, places are read by later workstreams).
 import { queryRead, queryReadOne, queryReadSafe } from './db';
-import type { DatabaseDate } from './dates';
+import { formatDate, type DatabaseDate } from './dates';
 
 export interface DocumentRow {
   doc: string;
@@ -142,6 +142,18 @@ export async function getDocIdsPage(offset: number, limit: number): Promise<stri
     [limit, offset],
   );
   return rows.map((r) => r.doc);
+}
+
+/** Same paging as getDocIdsPage, plus a <lastmod> candidate (docs/PLAN.md
+ *  SEO section: "lastmod on entries where data has dates") — the most
+ *  recent of when the doc last changed or was first captured. */
+export async function getDocIdsWithDatesPage(offset: number, limit: number): Promise<{ doc: string; lastmod: string | null }[]> {
+  const rows = await queryReadSafe<{ doc: string; lastmod: DatabaseDate | null }>(
+    `SELECT doc, GREATEST(changed_at, first_seen) AS lastmod FROM site.documents
+     WHERE status IS DISTINCT FROM 'removed' ORDER BY doc LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  );
+  return rows.map((r) => ({ doc: r.doc, lastmod: r.lastmod ? formatDate(r.lastmod).slice(0, 10) : null }));
 }
 
 export async function getDocumentCount(): Promise<number> {

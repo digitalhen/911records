@@ -4,9 +4,12 @@ import { getMapPlaces, getSubstances, getSuggestions } from '@/lib/map/data';
 import { HomePanel } from '@/components/home/HomePanel';
 import { AdUnit } from '@/components/ads/AdUnit';
 import MapExplorer from './MapExplorer';
+import { socialMeta } from '@/lib/seo/social';
 import styles from './map.module.css';
 export function mapMetadata(): Metadata {
-  return {title:'Building map',description:"Explore lower Manhattan buildings in New York City's released 9/11 records. Find test candidates, inspection pages and source documents.",alternates:{canonical:'/'}};
+  const title='Building map';
+  const description="Explore lower Manhattan buildings in New York City's released 9/11 records. Find test candidates, inspection pages and source documents.";
+  return {title,description,alternates:{canonical:'/'},...socialMeta(title,description,'/')};
 }
 export default async function HomeMap() {
   const results = await Promise.allSettled([getMapPlaces(),getSubstances(),getSuggestions()]);

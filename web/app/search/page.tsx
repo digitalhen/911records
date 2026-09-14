@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
+import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
+import { socialMeta } from '@/lib/seo/social';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +19,11 @@ export async function generateMetadata({
   const sp = await searchParams;
   const q = getStr(sp, 'q');
   const title = q ? `“${q}” — document results` : 'Search the records';
-  return { title, alternates: { canonical: q ? `/search?q=${encodeURIComponent(q)}` : '/search' }, robots: { index: false } };
+  const description = q
+    ? `Document results for “${q}” in New York City's released 9/11 records.`
+    : "Search New York City's released 9/11 records by keyword, address or Bates number.";
+  const path = q ? `/search?q=${encodeURIComponent(q)}` : '/search';
+  return { title, description, alternates: { canonical: path }, robots: { index: false }, ...socialMeta(title, description, path) };
 }
 
 const PAGE_SIZE = 20;
@@ -112,6 +118,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <Header active="/ask" />
       <main id="main">
         <SearchBox q={q} compact />
+        <CopyLinkButton />
         <p className="small muted" style={{ marginBottom: 14 }}>
           {result.error
             ? 'Search is temporarily unavailable.'

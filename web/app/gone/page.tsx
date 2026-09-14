@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { getDocument } from '@/lib/site';
 import { formatDate } from '@/lib/dates';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
+import { socialMeta } from '@/lib/seo/social';
 
 // Rendered by middleware.ts's rewrite of /doc/<removed>* and
 // /files/*/<removed>/* (real HTTP 410, not a redirect — the browser URL bar
@@ -22,9 +23,14 @@ function batesRange(doc: string, batesEnd: string | null): string {
 export async function generateMetadata({ searchParams }: { searchParams: Query }): Promise<Metadata> {
   const sp = await searchParams;
   const doc = getStr(sp, 'doc');
+  const title = doc ? `Removed record · ${doc}` : 'Record removed';
+  const description = 'This record was removed by the City and is not republished as current.';
   return {
-    title: doc ? `Removed record · ${doc} · 9/11 City Records` : 'Record removed · 9/11 City Records',
+    // Root layout's title template already appends " · 9/11 City Records".
+    title,
+    description,
     robots: { index: false, follow: false },
+    ...socialMeta(title, description, '/gone'),
   };
 }
 

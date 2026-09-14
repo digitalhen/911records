@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { AnswerBody } from '@/components/ask/shared';
 import { getAnswer } from '@/lib/ask/store';
+import { socialMeta } from '@/lib/seo/social';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,13 +14,16 @@ type Params = Promise<{ id: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { id } = await params;
   const row = await getAnswer(id).catch(() => null);
+  const title = row ? `${row.q} — answer from records` : 'Answer from records';
+  const description = row ? `A cited, machine-written answer from New York City's released 9/11 records: “${row.q}”.` : undefined;
   return {
-    title: row ? `${row.q} — answer from records` : 'Answer from records',
-    description: row ? `A cited, machine-written answer from New York City's released 9/11 records: “${row.q}”.` : undefined,
+    title,
+    description,
     alternates: { canonical: `/a/${id}` },
     // docs/PLAN.md SEO section: robots.txt already disallows /a/ — this is
     // belt-and-suspenders metadata, matching /search and /ask.
     robots: { index: false },
+    ...socialMeta(title, description, `/a/${id}`),
   };
 }
 

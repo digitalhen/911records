@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { CiteButton } from '@/components/CiteButton';
+import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
+import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { getDocument, getPage as getSitePage, getPageText } from '@/lib/site';
 import { getIndexedPage } from '@/lib/opensearch';
 import { getPageBoxes } from '@/lib/boxes';
@@ -64,9 +66,17 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
 
   const citation = `NYC Law Department, ${bates}. Mirrored by 911records.nyc (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
 
+  const jsonLdBreadcrumb = breadcrumbJsonLd([
+    { name: 'Home', path: '/' },
+    { name: 'Document results', path: '/search' },
+    { name: docRow.box || 'Unboxed' },
+    { name: docRow.folder || doc, path: `/doc/${doc}` },
+  ]);
+
   return (
     <>
       <Header active="/ask" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdBreadcrumb) }} />
       <main id="main">
         <div className="bread">
           <Link href="/search">← Document results</Link>
@@ -98,6 +108,11 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             <span className="bates">{batesRange(doc, docRow.bates_end)}</span>
           </div>
           <div className="actions">
+            {!removed && (
+              <SaveToCaseButton
+                item={{ doc, page, batesPage: bates, label: docRow.folder || doc, box: docRow.box, agency: docRow.agency, volume: docRow.volume }}
+              />
+            )}
             <CiteButton citation={citation} />
           </div>
         </div>
