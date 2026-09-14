@@ -102,6 +102,11 @@ export default function MapCanvas({ places, threeD, onSelect, onFallback, onTogg
             m.on('mouseleave',layer,()=>{m.getCanvas().style.cursor=''});
           }
           setReady(true);
+          // 2026-09-14: on production the first frame stayed water-blue until the visitor
+          // touched the map (zoom/drag), although every layer was in place — a resize plus an
+          // explicit repaint after the container has settled makes the first paint happen.
+          requestAnimationFrame(()=>{if(!cancelled){m.resize();m.triggerRepaint();}});
+          setTimeout(()=>{if(!cancelled){m.resize();m.triggerRepaint();}},400);
         });
         m.on('webglcontextlost',fallback);
         m.on('error',ev=>{console.error('maplibre error',ev?.error?.message||ev);if(!m.loaded())fallback()});
@@ -113,6 +118,7 @@ export default function MapCanvas({ places, threeD, onSelect, onFallback, onTogg
     const m=map.current;if(!m || !ready || !painted)return;
     (m.getSource('buildings') as GeoJSONSource).setData(painted);
     (m.getSource('places') as GeoJSONSource).setData({type:'FeatureCollection',features:places.filter(p=>p.lon!==null&&p.lat!==null).map(p=>({type:'Feature',properties:{place_id:p.id,kind:recordKind(p)},geometry:{type:'Point',coordinates:[p.lon!,p.lat!]}}))});
+    m.triggerRepaint();
   },[painted,places,ready]);
   useEffect(()=>{const m=map.current;if(!m||!ready)return;m.setLayoutProperty('mass','visibility',threeD?'visible':'none');m.setLayoutProperty('flat','visibility',threeD?'none':'visible');
     // Skip the very first ready-transition: the constructor's fitBoundsOptions already

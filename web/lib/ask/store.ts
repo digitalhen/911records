@@ -93,6 +93,23 @@ export async function saveAnswer(args: {
   return id;
 }
 
+/** The newest stored root answer for the same question text (case/whitespace-insensitive), not
+ *  superseded, written in the last 30 days — so a suggested question that has already been
+ *  answered opens instantly instead of re-planning, re-retrieving and re-writing (2026-09-14,
+ *  founder: "shouldn't this suggested question be coming from a cached page"). A follow-up
+ *  (parent_id set) is never reused as a root answer. "Refresh this answer" bypasses this. */
+export async function findRecentAnswer(q: string): Promise<string | null> {
+  const row = await queryOne<{ id: string }>(
+    `SELECT id FROM app.answers
+      WHERE lower(regexp_replace(q, '\\s+', ' ', 'g')) = lower(regexp_replace($1, '\\s+', ' ', 'g'))
+        AND parent_id IS NULL AND superseded_by IS NULL
+        AND created_at > now() - interval '30 days'
+      ORDER BY created_at DESC LIMIT 1`,
+    [q.trim()],
+  );
+  return row?.id ?? null;
+}
+
 export async function getAnswer(id: string): Promise<AnswerRow | null> {
   return queryOne<AnswerRow>('SELECT * FROM app.answers WHERE id = $1', [id]);
 }

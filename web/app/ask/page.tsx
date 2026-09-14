@@ -22,7 +22,7 @@ import { runList } from '@/lib/ask/listExec';
 import { underDailyCap, recordSpend, estimateCostUsd } from '@/lib/ask/spend';
 import { allowAskRequest, clientIp } from '@/lib/ask/rateLimit';
 import { FollowUpForm } from '@/components/ask/FollowUpForm';
-import { saveAnswer, getAnswer, markSuperseded, citedBatesPages, EMPTY_ASK_ANSWER } from '@/lib/ask/store';
+import { saveAnswer, getAnswer, findRecentAnswer, markSuperseded, citedBatesPages, EMPTY_ASK_ANSWER } from '@/lib/ask/store';
 import { Callout } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -502,6 +502,13 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   // explicitly asked for the model instead. It never forces plan.kind
   // itself; the planner can still come back 'search'/'refuse'/'offtopic'.
   const forceQuestion = getStr(sp, 'mode') === 'question';
+
+  // Already answered recently (a suggested question, a shared link typed again): open the stored
+  // permalink at once — no planner, no retrieval, no model call. Its "Refresh this answer"
+  // control is the way to a fresh one.
+  const recent = await findRecentAnswer(q).catch(() => null);
+  if (recent) redirect(`/a/${recent}`);
+
   const route = routeAsk(q);
 
   if (!forceQuestion && route.kind === 'bates') {
