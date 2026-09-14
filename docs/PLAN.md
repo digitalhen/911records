@@ -123,6 +123,9 @@ Page images: `data/pages/<agency>/<volume>/<bates>/<n>.webp` (about 110 dpi) and
 | C | Deploy: Dokploy app on `ubuntu-production` replacing the holding page, env, bind mount, OpenSearch credentials, first full index, DNS check, `/api/health` green | main session | A2, B1 |
 | D | QA: design fidelity against `design/astra/`, privacy rules (no private names in entity pages or suggestions), citation check on Ask, mobile | Sonnet, one pass | all |
 
+Every agent after B1 works in its own git worktree (`../sept11-wt/<id>`, branch `<id>`) and
+never commits; the coordinator reviews, merges to `main` and pushes, which deploys.
+
 Sequencing: A1, A2 and B1 start together. B2–B5 start when B1's scaffold is merged, each on its
 own branch and its own routes, never editing shared files (layout, nav, `lib/*`) without saying
 so in the report. B6 and D last. C runs as soon as A2 and B1 exist, with whatever data has been
