@@ -156,6 +156,25 @@ INDEX_STATEMENTS = [
     'CREATE INDEX building_facts_bin ON site_new.building_facts(bin)',
     'CREATE INDEX entities_bbl ON site_new.entities(bbl)',
     'CREATE INDEX entities_bin ON site_new.entities(bin)',
+    # --- issue #13 (search/perf): added and verified with EXPLAIN ANALYZE against a scratch copy
+    # of the live tables (never against the live `site` schema — see web/PERF.md for the before/
+    # after plans). ---
+    # /browse and getNextInFolder (web/lib/info/catalog.ts, web/lib/site.ts) filter site.documents
+    # by any prefix of agency/volume/box/folder, now as `col = $n` / `col IS NULL` rather than
+    # `IS NOT DISTINCT FROM` (that form never used a btree index at all — Postgres's planner leaves
+    # it as a post-scan Filter). One composite index serves every prefix length: a bare Seq Scan
+    # (cost ~1516, ~24k rows examined) became an Index Scan (cost ~3) in testing.
+    'CREATE INDEX documents_browse ON site_new.documents(agency, volume, box, folder, doc)',
+    # doc_type facet/filter (search UI's cover-sheet exclusion, catalog counts) — was a Seq Scan.
+    'CREATE INDEX documents_doc_type ON site_new.documents(doc_type)',
+    # topicDocuments (web/lib/discovery/data.ts): filters by topic then orders by prob DESC — the
+    # composite lets Postgres read doc_topics pre-sorted (Incremental Sort) instead of sorting the
+    # whole per-topic set after fetching it.
+    'CREATE INDEX doc_topics_topic_prob ON site_new.doc_topics(topic, prob DESC NULLS LAST)',
+    # getMapPlaces substance filter (web/lib/map/data.ts: `pp.contaminants ? $1`) — a GIN index so
+    # the jsonb `?` containment test is an index lookup instead of a full Seq Scan; matters most as
+    # place_pages grows with the corpus (currently ~3.7k rows, target ~10x that).
+    'CREATE INDEX place_pages_contaminants_gin ON site_new.place_pages USING GIN (contaminants)',
 ]
 
 

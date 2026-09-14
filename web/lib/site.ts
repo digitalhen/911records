@@ -9,6 +9,7 @@
 // result (rather than a 500) when a table doesn't exist yet — relevant while
 // A2's pipeline is still filling in tables this app doesn't need for day one
 // (entities, signatories, topics, places are read by later workstreams).
+import { unstable_cache } from 'next/cache';
 import { queryRead, queryReadOne, queryReadSafe } from './db';
 import { formatDate, type DatabaseDate } from './dates';
 
@@ -88,6 +89,10 @@ export interface MetaMap {
   [key: string]: unknown;
 }
 
+/** Always live — used by /api/health and the deploy-verification step (docs/PLAN.md's "verify
+ *  buildId inside each container" skew rule), which must never read a cached built_at. Everything
+ *  that just wants a cheap, eventually-consistent read of it should go through buildVersion()
+ *  below instead. */
 export async function getMeta(): Promise<MetaMap | null> {
   const rows = await queryReadSafe<{ key: string; value: string }>('SELECT key, value FROM site.meta');
   if (!rows.length) return null;
@@ -107,6 +112,21 @@ export async function getMeta(): Promise<MetaMap | null> {
     meta[r.key] = /^-?\d+(\.\d+)?$/.test(r.value) ? Number(r.value) : r.value;
   }
   return meta;
+}
+
+// Perf (issue #13): app-level caching for stable, expensive reads, invalidated by a schema swap
+// rather than a fixed clock. `cachedMetaRead` puts a 60s TTL under a SEPARATE read of site.meta
+// (getMeta() itself stays live, for /api/health) — cheap on its own, but every unstable_cache-
+// wrapped read below takes buildVersion()'s return value as part of its cache key, so a refresh
+// swap's new site.meta.built_at mints a fresh cache entry right away instead of waiting out a long
+// TTL. Net effect: a swap is visible everywhere within this 60s window, and nothing ever serves a
+// value computed from a built_at older than the one it would report right now.
+const cachedMetaRead = unstable_cache(async () => getMeta(), ['site-meta'], { revalidate: 60 });
+/** built_at (or 'unknown' before the pipeline has written meta) — the cache key for every other
+ *  cached read in this module and in lib/discovery/data.ts, lib/map/data.ts. */
+export async function buildVersion(): Promise<string> {
+  const meta = await cachedMetaRead();
+  return typeof meta?.built_at === 'string' && meta.built_at ? meta.built_at : 'unknown';
 }
 
 export async function getDocument(doc: string): Promise<DocumentRow | null> {
@@ -132,28 +152,64 @@ export async function getPageByBates(bates: string): Promise<{ doc: string; page
 
 /**
  * The next document (Bates order) filed in the same agency/volume/box/folder as `doc` — issue #28's
- * cover-sheet banner uses this to point at "the folder's records follow". `IS NOT DISTINCT FROM`
- * (not `=`) so an untagged folder (NULL agency/volume/box/folder) still groups with its siblings,
- * matching web/lib/info/catalog.ts's `filters()` grouping for /browse. Removed documents are
- * skipped. Only reads columns that have existed since B1 — no schema-first concern here.
+ * cover-sheet banner uses this to point at "the folder's records follow". Groups an untagged folder
+ * (NULL agency/volume/box/folder) with its siblings, matching web/lib/info/catalog.ts's `filters()`
+ * grouping for /browse. Removed documents are skipped. Only reads columns that have existed since
+ * B1 — no schema-first concern here.
+ *
+ * Perf (issue #13): built as `col = $n` / `col IS NULL` per field, not `col IS NOT DISTINCT FROM
+ * $n` — Postgres's planner never turns IS NOT DISTINCT FROM into a btree index condition (verified
+ * with EXPLAIN: it stayed a post-scan Filter doing a full Seq Scan even with a matching index), so
+ * the old form always missed the documents_browse (agency,volume,box,folder,doc) index below.
  */
 export async function getNextInFolder(doc: DocumentRow): Promise<{ doc: string } | null> {
+  const fields: [string, string | null][] = [
+    ['agency', doc.agency], ['volume', doc.volume], ['box', doc.box], ['folder', doc.folder],
+  ];
+  const params: unknown[] = [];
+  const clauses = fields.map(([col, value]) => {
+    if (value === null) return `${col} IS NULL`;
+    params.push(value);
+    return `${col} = $${params.length}`;
+  });
+  params.push(doc.doc);
+  clauses.push(`doc > $${params.length}`);
   return queryReadOne<{ doc: string }>(
-    `SELECT doc FROM site.documents
-     WHERE agency IS NOT DISTINCT FROM $1 AND volume IS NOT DISTINCT FROM $2
-       AND box IS NOT DISTINCT FROM $3 AND folder IS NOT DISTINCT FROM $4
-       AND doc > $5 AND status IS DISTINCT FROM 'removed'
+    `SELECT doc FROM site.documents WHERE ${clauses.join(' AND ')} AND status IS DISTINCT FROM 'removed'
      ORDER BY doc LIMIT 1`,
-    [doc.agency, doc.volume, doc.box, doc.folder, doc.doc],
+    params,
   );
 }
 
+// Perf (issue #13): cached, keyed by buildVersion() (see above) — the home panel's "collection"
+// stat block is identical for every visitor between refreshes. Snapshot rows carry a pg DATE
+// (`date`), which unstable_cache round-trips through JSON — a raw Date would come back as a full
+// ISO timestamp string on a cache hit (breaking formatDate's `instanceof Date` branch and changing
+// the rendered text between a cold and warm cache). Pre-formatted to the same 'YYYY-MM-DD' string
+// formatDate(Date) already produces, so callers — all of which only ever call formatDate(s.date) —
+// see byte-identical output either way.
+const cachedLatestSnapshot = unstable_cache(
+  async (_v: string) => {
+    const row = await queryReadOne<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT 1');
+    return row ? { ...row, date: formatDate(row.date) } : null;
+  },
+  ['site-latest-snapshot'],
+  { revalidate: 60 },
+);
 export async function getLatestSnapshot(): Promise<SnapshotRow | null> {
-  return queryReadOne<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT 1');
+  return cachedLatestSnapshot(await buildVersion());
 }
 
+const cachedSnapshots = unstable_cache(
+  async (_v: string, limit: number) => {
+    const rows = await queryReadSafe<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT $1', [limit]);
+    return rows.map((r) => ({ ...r, date: formatDate(r.date) }));
+  },
+  ['site-snapshots'],
+  { revalidate: 60 },
+);
 export async function getSnapshots(limit = 12): Promise<SnapshotRow[]> {
-  return queryReadSafe<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT $1', [limit]);
+  return cachedSnapshots(await buildVersion(), limit);
 }
 
 export async function getChanges(date?: string, limit = 200): Promise<ChangeRow[]> {
@@ -182,9 +238,16 @@ export async function getDocIdsWithDatesPage(offset: number, limit: number): Pro
   return rows.map((r) => ({ doc: r.doc, lastmod: r.lastmod ? formatDate(r.lastmod).slice(0, 10) : null }));
 }
 
+const cachedDocumentCount = unstable_cache(
+  async (_v: string) => {
+    const row = await queryReadOne<{ n: string }>('SELECT COUNT(*) AS n FROM site.documents');
+    return row ? Number(row.n) : 0;
+  },
+  ['site-document-count'],
+  { revalidate: 60 },
+);
 export async function getDocumentCount(): Promise<number> {
-  const row = await queryReadOne<{ n: string }>('SELECT COUNT(*) AS n FROM site.documents');
-  return row ? Number(row.n) : 0;
+  return cachedDocumentCount(await buildVersion());
 }
 
 /** True once the pipeline has written at least the documents table — used to distinguish "no data yet" from "query failed". */

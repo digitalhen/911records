@@ -1,5 +1,7 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { queryReadSafe } from '@/lib/db';
+import { buildVersion } from '@/lib/site';
 
 export const ENTITY_TYPES = ['lab', 'agency', 'contractor', 'substance', 'address'] as const;
 export const TYPE_LABELS: Record<string, string> = { lab: 'Labs', agency: 'Agencies & offices', contractor: 'Contractors', substance: 'Substances', address: 'Addresses & buildings', signatory: 'Officials acting on records' };
@@ -49,10 +51,21 @@ async function panelSignatories(limit = 8): Promise<{ rows: PanelRow[]; total: n
     WHERE c.n_pages>0 ORDER BY c.n_pages DESC,s.id LIMIT $1`, [limit]);
   return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
 }
+// Perf (issue #13): /entities' panel grid runs 6 entity-type queries (each with its own
+// per-entity LATERAL count) on every visit — cached, keyed by lib/site.ts's buildVersion() so a
+// refresh swap is picked up within ~60s. Rows are already plain JSON (withDates formats dates to
+// strings), so this round-trips through unstable_cache unchanged.
+const cachedPanelGrid = unstable_cache(
+  async (_v: string, limit: number) => {
+    const entries = await Promise.all(PANEL_TYPES.map(async type => [type, await panelEntities(type, limit)] as const));
+    return Object.fromEntries(entries);
+  },
+  ['discovery-panel-grid'],
+  { revalidate: 60 },
+);
 /** All panels for the /entities grid, fetched together. */
 export async function panelGrid(limit = 8): Promise<Record<string, { rows: PanelRow[]; total: number }>> {
-  const entries = await Promise.all(PANEL_TYPES.map(async type => [type, await panelEntities(type, limit)] as const));
-  return Object.fromEntries(entries);
+  return cachedPanelGrid(await buildVersion(), limit);
 }
 /** Paginated, A–Z-filterable listing for /entities/[type] (also used for the signatory listing). */
 export async function listEntities(type: string, opts: { letter?: string; offset?: number; limit?: number } = {}): Promise<{ rows: PanelRow[]; total: number } | null> {
@@ -145,10 +158,19 @@ export async function relatedEntities(pages: Pick<Source,'doc'|'page'>[], exclud
       AND EXISTS (SELECT 1 FROM unnest($1::text[],$2::int[]) AS src(doc,page) WHERE src.doc=ep.doc AND src.page=ep.page)
     GROUP BY e.id,e.type,e.slug,e.label,e.bin ORDER BY shared_pages DESC,e.id LIMIT $4`, [docs, pageNos, excludeId, limit]);
 }
-export const getTopics = cache(async () => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
+// Perf (issue #13): the topic tree is identical for every visitor between refreshes — cross-
+// request cached (keyed by buildVersion()), wrapped in React's per-request cache() too so the two
+// calls on /topics/[id] (generateMetadata + the page body) never even reach the Next data cache
+// lookup twice in the same request.
+const cachedTopics = unstable_cache(
+  async (_v: string) => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
   JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN site.pages p USING(doc) WHERE dt.topic=t.id AND d.status IS DISTINCT FROM 'removed'
-    ORDER BY dt.prob DESC NULLS LAST,dt.doc,p.page LIMIT 1) s ON true ORDER BY t.size_pages DESC,t.id`));
+    ORDER BY dt.prob DESC NULLS LAST,dt.doc,p.page LIMIT 1) s ON true ORDER BY t.size_pages DESC,t.id`),
+  ['discovery-topics'],
+  { revalidate: 60 },
+);
+export const getTopics = cache(async () => cachedTopics(await buildVersion()));
 export async function topicDocuments(id: number, offset = 0) {
   return queryReadSafe<Source & { prob: number; agency: string | null; box: string | null; total: number }>(`SELECT dt.doc,dt.prob,d.agency,d.box,p.page,COUNT(*) OVER() AS total
     FROM site.doc_topics dt JOIN site.documents d USING(doc)
