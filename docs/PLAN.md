@@ -93,7 +93,14 @@ scripts/refresh_daily.sh (launchd 03:30): enumerate →
 ```
 documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
           first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
-          pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url)
+          pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url,
+          doc_type, doc_type_confidence)
+          -- doc_type/doc_type_confidence (P3, issue #28, 2026-09-14): a rule-based "what is this
+          -- document" label — cover_sheet, lab_report, chain_of_custody, memo_letter,
+          -- sign_in_sheet, invoice, permit_application, form, photo_log, other — plus a 0..1
+          -- confidence, read from scripts/embed/doctypes.py's data/embed/p3-doctypes.jsonl output
+          -- when present, else NULL/NULL (schema-first: absence is tolerated, never required).
+          -- Machine-derived; shown labelled "machine-extracted" per the privacy rules.
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
@@ -302,6 +309,12 @@ standards).
    - Built with a local model or batched Claude calls over the first pages.
    - Labelled machine-derived.
    - Measure accuracy on a hand-checked sample of 200.
+   - P3 (issue #28, 2026-09-14) shipped the rule-based first pass: `scripts/embed/doctypes.py`
+     classifies every extracted document into `documents.doc_type` (cover_sheet, lab_report,
+     chain_of_custody, memo_letter, sign_in_sheet, invoice, permit_application, form, photo_log,
+     other) with a confidence, from real-corpus patterns documented in that script's docstring.
+     The one-line description and the "batched model calls" upgrade are not done — this is regex
+     rules only, not yet hand-checked against 200 documents.
 6. **GLiNER test** on 500 pages versus regex. Keep it only if precision on labs, contractors and
    roles improves.
 

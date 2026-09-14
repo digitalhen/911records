@@ -12,6 +12,10 @@ One OpenSearch document per PAGE (id "<bates_start>_p<page>"):
   doc, page, bates_page, bates_start, bates_end, agency, source, box, folder, volume, page_count,
   pdf_size, ocr_status (ok|empty|junk|ocr), ocr_source (pdftotext|ours), image_ready (bool)
   doc_status (present|removed), first_seen (date)
+  doc_type (cover_sheet|lab_report|chain_of_custody|memo_letter|sign_in_sheet|invoice|
+            permit_application|form|photo_log|other), doc_type_confidence (P3, issue #28,
+            scripts/embed/doctypes.py's data/embed/p3-doctypes.jsonl; absent when that file hasn't
+            classified the document yet)
   contaminants[], labs[], contractors[], agencies_mentioned[], dates[] (date), bins[], bbls[],
   addresses[], measurement_units[]
   official_roles[]  "role | title | org" for people acting in an official capacity (official=1)
@@ -114,6 +118,7 @@ MAPPING = {
             "measurement_units": {"type": "keyword"},
             "official_roles": {"type": "keyword"}, "official_people": {"type": "keyword"},
             "topic": {"type": "integer"}, "related_filed_elsewhere": {"type": "integer"},
+            "doc_type": {"type": "keyword"}, "doc_type_confidence": {"type": "float"},
             "content_hash": {"type": "keyword"},
         },
     },
@@ -210,6 +215,15 @@ def index(limit: int = 0) -> None:
         topic = dict(rcon.execute("SELECT doc, topic FROM doc_topics"))
         for doc, n in rcon.execute("SELECT doc, sum(cross) FROM related GROUP BY doc"):
             elsewhere[doc] = int(n or 0)
+    doc_types: dict[str, tuple[str, float | None]] = {}
+    doctypes_path = EMB / "p3-doctypes.jsonl"
+    if doctypes_path.exists():
+        for line in doctypes_path.open():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("doc") and row.get("doc_type") is not None:
+                doc_types[row["doc"]] = (row["doc_type"], row.get("confidence"))
 
     existing = {}
     body = {"size": 10000, "_source": ["content_hash"], "query": {"match_all": {}}}
@@ -259,6 +273,9 @@ def index(limit: int = 0) -> None:
                 **{k: sorted(v) for k, v in e.items()},
                 "topic": topic.get(doc), "related_filed_elsewhere": elsewhere.get(doc, 0),
             }
+            doc_type_row = doc_types.get(doc)
+            if doc_type_row:
+                src["doc_type"], src["doc_type_confidence"] = doc_type_row
             v = vecs.get((doc, page))
             if v is not None:
                 src["vector"] = [round(float(x), 6) for x in v]
@@ -324,7 +341,7 @@ def stats() -> None:
     c = call("GET", f"/{INDEX}/_count")["count"]
     cov = {}
     for fld in ("vector", "contaminants", "labs", "dates", "bins", "official_roles", "topic",
-                "image_ready", "ocr_source", "doc_status", "first_seen"):
+                "image_ready", "ocr_source", "doc_status", "first_seen", "doc_type"):
         cov[fld] = call("POST", f"/{INDEX}/_count", {"query": {"exists": {"field": fld}}})["count"]
     print(json.dumps({"docs": c, "field_coverage": cov}))
 

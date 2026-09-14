@@ -35,6 +35,14 @@ export interface DocumentRow {
   topic: number | null;
   n_related_cross: number | null;
   official_url: string | null;
+  /** Rule-based "what is this document" label (issue #28, scripts/embed/doctypes.py) — 'cover_sheet',
+   *  'lab_report', 'chain_of_custody', 'memo_letter', 'sign_in_sheet', 'invoice',
+   *  'permit_application', 'form', 'photo_log', 'other', or null before the pipeline has
+   *  classified this document (or before the column has been loaded at all — getDocument's
+   *  `SELECT *` tolerates the column's absence, per docs/briefs/COMMON-web.md's schema-first rule).
+   *  Machine-derived; always show it labelled "machine-extracted", never as City metadata. */
+  doc_type: string | null;
+  doc_type_confidence: number | null;
 }
 
 export interface PageRow {
@@ -120,6 +128,24 @@ export async function getPageText(doc: string, page: number): Promise<PageTextRo
 /** Looks up which document+page a Bates-stamped page belongs to (the /page/<bates> redirect). */
 export async function getPageByBates(bates: string): Promise<{ doc: string; page: number } | null> {
   return queryReadOne<{ doc: string; page: number }>('SELECT doc, page FROM site.pages WHERE bates = $1 LIMIT 1', [bates]);
+}
+
+/**
+ * The next document (Bates order) filed in the same agency/volume/box/folder as `doc` — issue #28's
+ * cover-sheet banner uses this to point at "the folder's records follow". `IS NOT DISTINCT FROM`
+ * (not `=`) so an untagged folder (NULL agency/volume/box/folder) still groups with its siblings,
+ * matching web/lib/info/catalog.ts's `filters()` grouping for /browse. Removed documents are
+ * skipped. Only reads columns that have existed since B1 — no schema-first concern here.
+ */
+export async function getNextInFolder(doc: DocumentRow): Promise<{ doc: string } | null> {
+  return queryReadOne<{ doc: string }>(
+    `SELECT doc FROM site.documents
+     WHERE agency IS NOT DISTINCT FROM $1 AND volume IS NOT DISTINCT FROM $2
+       AND box IS NOT DISTINCT FROM $3 AND folder IS NOT DISTINCT FROM $4
+       AND doc > $5 AND status IS DISTINCT FROM 'removed'
+     ORDER BY doc LIMIT 1`,
+    [doc.agency, doc.volume, doc.box, doc.folder, doc.doc],
+  );
 }
 
 export async function getLatestSnapshot(): Promise<SnapshotRow | null> {

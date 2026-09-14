@@ -8,7 +8,8 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
 
   documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
             first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
-            pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url)
+            pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url,
+            doc_type, doc_type_confidence)
   pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
   snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
   changes(date, doc, kind, fields)                       kind IN added|removed|changed|reappeared
@@ -45,6 +46,11 @@ Sources:
                              export_prospect_gazetteer.py, operator-run) -> entities.bbl/bin for
                              roll-matched addresses (via mentions.canonical_bbl/bin) and the whole
                              of `building_facts`. Optional: build runs fine without it.
+  data/embed/p3-doctypes.jsonl  scripts/embed/doctypes.py's rule-based classifier output
+                             ({doc, doc_type, confidence}, one line per document) -> documents.doc_type
+                             / doc_type_confidence (issue #28). Optional: a document missing from
+                             the file, or the file itself missing, gets NULL/NULL — schema-first,
+                             same as every other optional source below.
   data/pages/**/pages.json   {pages:n, w:[...], h:[...], dpi, rendered_at} -> image_ready per page
                              (written by A1's render_pages.mjs; may not exist yet — treated as optional)
 
@@ -92,6 +98,7 @@ OUT_PATH = SITE_DIR / "site.sqlite"
 # on merge to main): rename off the p1- prefix if this stays the permanent path — same note as
 # entities.py's GAZETTEER_CSV, which must point at the same file.
 GAZETTEER_CSV = EMB / "gazetteer-prospect.csv"
+DOCTYPES_JSONL = EMB / "p3-doctypes.jsonl"
 
 RE_BATES_NUM = re.compile(r"(\d+)$")
 RE_LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
@@ -485,6 +492,30 @@ def load_building_facts() -> list[tuple]:
     return out
 
 
+# --------------------------------------------------------- p3-doctypes.jsonl -
+
+def load_doc_types() -> dict[str, tuple[str, float]]:
+    """doc -> (doc_type, confidence) from scripts/embed/doctypes.py's output (issue #28). Optional:
+    the file may not have been built yet, and any document missing from it gets NULL/NULL —
+    documents.doc_type is schema-first (docs/briefs/COMMON-web.md), never required by the app."""
+    out: dict[str, tuple[str, float]] = {}
+    if not DOCTYPES_JSONL.exists():
+        return out
+    with DOCTYPES_JSONL.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            doc = row.get("doc")
+            if doc and row.get("doc_type") is not None:
+                out[doc] = (row["doc_type"], row.get("confidence"))
+    return out
+
+
 # --------------------------------------------------------------- build ------
 
 SCHEMA = """
@@ -492,7 +523,7 @@ CREATE TABLE documents(
   doc TEXT PRIMARY KEY, bates_end TEXT, agency TEXT, source TEXT, volume TEXT, box TEXT, folder TEXT,
   page_count INT, pdf_size INT, status TEXT, first_seen TEXT, removed_at TEXT, reappeared_at TEXT,
   changed_at TEXT, changed_fields TEXT, held_locally INT, pages_ok INT, pages_empty INT, pages_ocr INT,
-  topic INT, n_related_cross INT, official_url TEXT
+  topic INT, n_related_cross INT, official_url TEXT, doc_type TEXT, doc_type_confidence REAL
 );
 CREATE TABLE pages(
   doc TEXT, page INT, bates TEXT, chars INT, ocr_status TEXT, ocr_source TEXT, image_ready INT,
@@ -596,6 +627,7 @@ def main() -> int:
     related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related(Path(args.related))
     places_rows, place_pages_rows = load_places()
     building_facts_rows = load_building_facts()
+    doc_types = load_doc_types()
     snapshots_rows = load_snapshots()
     changes_rows = load_changes(manifest_by_doc)
 
@@ -609,6 +641,7 @@ def main() -> int:
         doc = r["bates_start"]
         held = (REPO / r["local_pdf"]).exists() if r.get("local_pdf") else False
         counts = status_counts.get(doc, {})
+        doc_type, doc_type_confidence = doc_types.get(doc, (None, None))
         doc_rows.append((
             doc, r.get("bates_end"), r.get("agency"), r.get("source"), r.get("production_volume"),
             r.get("box_name"), r.get("folder_name"), r.get("page_count"), r.get("pdf_size"), r.get("status"),
@@ -617,6 +650,7 @@ def main() -> int:
             1 if held else 0,
             counts.get("ok", 0), counts.get("empty", 0), counts.get("ocr", 0),
             topic_of_doc.get(doc), cross_of_doc.get(doc, 0), r.get("download_url"),
+            doc_type, doc_type_confidence,
         ))
         n_rendered = image_ready_counts.get(doc, 0)
         start_n = bates_num(doc)
@@ -631,7 +665,7 @@ def main() -> int:
             pages_rows.append((doc, p, bates, st["chars"] if st else None, ocr_status, ocr_source,
                                 1 if p <= n_rendered else 0))
 
-    con.executemany("INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", doc_rows)
+    con.executemany("INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", doc_rows)
     con.executemany("INSERT INTO pages VALUES (?,?,?,?,?,?,?)", pages_rows)
     con.executemany("INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?)",
                      [(s["date"], s["documents"], s["pages"], s["bytes"], s["added"], s["removed"], s["changed"],

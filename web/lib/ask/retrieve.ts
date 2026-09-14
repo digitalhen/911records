@@ -86,8 +86,16 @@ export async function retrieveForQuestion(terms: string[], filters: AskFilters):
   });
   if (result.error || !result.hits.length) return [];
 
+  // Cover sheets (issue #28: the City portal's one-page property-lookup separators — address,
+  // Block/Lot, BIN, no substantive content) are never cited by Ask — there is nothing on the page
+  // to answer a question from. Filtering here (rather than relying on lib/opensearch.ts's ranking
+  // penalty alone) keeps a cover sheet out entirely even if it would otherwise have out-scored
+  // every content page. `hit.docType` is null for anything the pipeline hasn't classified yet, so
+  // this never drops a page for lack of data.
+  const contentHits = result.hits.filter((hit) => hit.docType !== 'cover_sheet');
+
   const pages = await Promise.all(
-    result.hits.map(async (hit: SearchHit): Promise<RetrievedPage | null> => {
+    contentHits.map(async (hit: SearchHit): Promise<RetrievedPage | null> => {
       const row = await getPageText(hit.doc, hit.page);
       const text = row?.text?.trim();
       if (!text) return null; // no OCR text yet — nothing to cite or write an excerpt from
