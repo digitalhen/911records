@@ -105,6 +105,10 @@ export interface SearchHit {
   score: number;
   /** HTML-safe fragment with <mark> already applied — see renderSnippet below. */
   snippetHtml: string | null;
+  /** Rule-based document type (issue #28, scripts/embed/doctypes.py), when the index has classified
+   *  this page's document — null before that pipeline has run over it, or before the field exists
+   *  in the mapping at all. */
+  docType: string | null;
 }
 
 export interface SearchResult {
@@ -123,6 +127,24 @@ export interface SearchResult {
 }
 
 const MULTI_MATCH_FIELDS = ['text', 'text.exact^0.5', 'folder.text^0.3'];
+
+/**
+ * Cover sheets (issue #28: the City portal's one-page property-lookup separators — address,
+ * Block/Lot, BIN, no content of their own) rank below content pages: a 0.5x score multiplier
+ * whenever `doc_type` = 'cover_sheet'. A `term` filter on a field OpenSearch doesn't know about
+ * yet — before scripts/search/opensearch.py's mapping update has landed, or before
+ * scripts/embed/doctypes.py has classified anything — matches nothing and never errors, so this
+ * degrades to a no-op rather than a broken search (schema-first, docs/briefs/COMMON-web.md).
+ */
+function withCoverSheetPenalty(query: Record<string, unknown>): Record<string, unknown> {
+  return {
+    function_score: {
+      query,
+      functions: [{ filter: { term: { doc_type: 'cover_sheet' } }, weight: 0.5 }],
+      boost_mode: 'multiply',
+    },
+  };
+}
 
 const FACET_FIELDS = ['agency', 'source', 'box', 'volume', 'folder', 'contaminants', 'labs', 'addresses'] as const;
 
@@ -245,16 +267,16 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     if (!embed.reachable) semanticError = embed.error || 'Ollama unreachable';
   }
 
-  const textQuery = strippedQuery
-    ? { multi_match: { query: strippedQuery, fields: MULTI_MATCH_FIELDS } }
-    : { match_all: {} };
+  const textQuery = withCoverSheetPenalty(
+    strippedQuery ? { multi_match: { query: strippedQuery, fields: MULTI_MATCH_FIELDS } } : { match_all: {} },
+  );
 
   let queryBody: Record<string, unknown>;
   let searchPath = `/${INDEX}/_search`;
   if (strippedQuery && vector) {
     queryBody = {
       hybrid: {
-        queries: [textQuery, { knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } }],
+        queries: [textQuery, withCoverSheetPenalty({ knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } })],
         // Required by OpenSearch whenever `from` > 0 for a hybrid query —
         // how many hits per shard the normalization pipeline keeps around to
         // support pagination. The index is single-shard (scripts/search/
@@ -277,7 +299,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   const body: Record<string, unknown> = {
     from,
     size: pageSize,
-    _source: ['doc', 'page', 'bates_page', 'agency', 'source', 'box', 'folder', 'volume', 'ocr_status', 'contaminants'],
+    _source: ['doc', 'page', 'bates_page', 'agency', 'source', 'box', 'folder', 'volume', 'ocr_status', 'contaminants', 'doc_type'],
     query: queryBody,
     post_filter: filterClauses.length ? { bool: { filter: filterClauses } } : undefined,
     aggs: Object.fromEntries(FACET_FIELDS.map((f) => [f, { terms: { field: f, size: 15 } }])),
@@ -307,6 +329,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       contaminants: h._source.contaminants ?? [],
       score: h._score ?? 0,
       snippetHtml: h.highlight?.text?.[0] ? renderSnippet(h.highlight.text[0]) : null,
+      docType: h._source.doc_type ?? null,
     }));
     const facets: Record<string, FacetBucket[]> = {};
     for (const f of FACET_FIELDS) {
@@ -340,6 +363,7 @@ interface OsHit {
     volume?: string;
     ocr_status?: string;
     contaminants?: string[];
+    doc_type?: string;
   };
   highlight?: { text?: string[] };
 }
@@ -398,7 +422,7 @@ export async function moreLikePage(doc: string, page: number, size = 4): Promise
   try {
     const res = (await call('POST', `/${INDEX}/_search`, {
       size,
-      _source: ['doc', 'page', 'bates_page', 'agency', 'box', 'folder', 'volume'],
+      _source: ['doc', 'page', 'bates_page', 'agency', 'box', 'folder', 'volume', 'doc_type'],
       query: {
         more_like_this: {
           fields: ['text'],
@@ -423,6 +447,7 @@ export async function moreLikePage(doc: string, page: number, size = 4): Promise
         contaminants: [],
         score: h._score ?? 0,
         snippetHtml: null,
+        docType: h._source.doc_type ?? null,
       }));
   } catch {
     return [];

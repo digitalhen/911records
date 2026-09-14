@@ -63,7 +63,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("reappeared_at", "DATE"), ("changed_at", "DATE"), ("changed_fields", "JSONB"),
         ("held_locally", "BOOLEAN"), ("pages_ok", "INTEGER"), ("pages_empty", "INTEGER"),
         ("pages_ocr", "INTEGER"), ("topic", "INTEGER"), ("n_related_cross", "INTEGER"),
-        ("official_url", "TEXT"),
+        ("official_url", "TEXT"), ("doc_type", "TEXT"), ("doc_type_confidence", "DOUBLE PRECISION"),
     ],
     "pages": [
         ("doc", "TEXT"), ("page", "INTEGER"), ("bates", "TEXT"), ("chars", "INTEGER"),

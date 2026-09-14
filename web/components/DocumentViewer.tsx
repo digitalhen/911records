@@ -6,7 +6,7 @@ import { Footer } from '@/components/Footer';
 import { CiteButton } from '@/components/CiteButton';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
-import { getDocument, getPage as getSitePage, getPageText } from '@/lib/site';
+import { getDocument, getPage as getSitePage, getPageText, getNextInFolder } from '@/lib/site';
 import { getIndexedPage } from '@/lib/opensearch';
 import { getPageBoxes } from '@/lib/boxes';
 import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
@@ -14,6 +14,38 @@ import { RelatedRecords } from '@/components/discovery/RelatedRecords';
 import { MoreLikePage } from '@/components/discovery/MoreLikePage';
 import BuildingsForDoc from '@/components/map/BuildingsForDoc';
 import { Button, ButtonLink } from '@/components/ui';
+import { browseUrl } from '@/lib/info/catalog';
+import { buildingsForDoc, resolveBuildingRedirect } from '@/lib/map/data';
+import { buildingUrl } from '@/lib/map/types';
+import { docTypeLabel } from '@/lib/docTypes';
+
+interface CoverSheetLinks {
+  folderHref: string;
+  nextHref: string | null;
+  buildingHref: string | null;
+}
+
+/** Cover-sheet-only lookups (issue #28): the folder listing, the next Bates-ordered document filed
+ *  in the same folder, and the building page when a BIN resolves for this document's page. Never
+ *  called for a non-cover-sheet document, so the extra queries only happen where they're used. */
+async function coverSheetLinks(docRow: NonNullable<Awaited<ReturnType<typeof getDocument>>>, doc: string): Promise<CoverSheetLinks> {
+  const [nextDoc, places] = await Promise.all([getNextInFolder(docRow), buildingsForDoc(doc)]);
+  let buildingHref: string | null = null;
+  const place = places[0];
+  if (place) {
+    if (place.kind === 'bin') {
+      buildingHref = buildingUrl(place);
+    } else {
+      const bin = await resolveBuildingRedirect(place);
+      buildingHref = bin ? `/building/${encodeURIComponent(bin)}` : buildingUrl(place);
+    }
+  }
+  return {
+    folderHref: browseUrl([docRow.agency, docRow.volume, docRow.box, docRow.folder], docRow.source ?? ''),
+    nextHref: nextDoc ? `/doc/${encodeURIComponent(nextDoc.doc)}` : null,
+    buildingHref,
+  };
+}
 
 function fmtBytes(n: number | null): string {
   if (!n) return '—';
@@ -52,11 +84,13 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
   const volume = docRow.volume || '';
   const removed = docRow.status === 'removed';
 
-  const [pageText, boxes, indexedFacts, sitePage] = await Promise.all([
+  const isCoverSheet = !removed && docRow.doc_type === 'cover_sheet';
+  const [pageText, boxes, indexedFacts, sitePage, coverSheet] = await Promise.all([
     getPageText(doc, page),
     getPageBoxes(agency, volume, doc, page),
     getIndexedPage(doc, page),
     getSitePage(doc, page),
+    isCoverSheet ? coverSheetLinks(docRow, doc) : Promise.resolve(null),
   ]);
 
   // The files service has no listing endpoint, so "does this page have a
@@ -95,6 +129,34 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
               {docRow.removed_at ? ` as of ${formatDate(docRow.removed_at)}` : ''}. We keep the mirrored copy and metadata for the
               record; it is not republished as current. See{' '}
               <Link href="/changes">the release and change log</Link>.
+            </p>
+          </div>
+        )}
+
+        {coverSheet && (
+          <div className="note">
+            <h3>Folder cover sheet — the folder&apos;s records follow</h3>
+            <p>
+              This single page is a City-portal property lookup sheet (address, Block/Lot, BIN), not the folder&apos;s
+              substantive records.{' '}
+              <span className="derived-label">
+                Machine-extracted document type · confidence {Math.round((docRow.doc_type_confidence ?? 0) * 100)}%
+              </span>
+            </p>
+            <p className="small">
+              <Link href={coverSheet.folderHref}>See the whole folder in Browse →</Link>
+              {coverSheet.nextHref && (
+                <>
+                  {' · '}
+                  <Link href={coverSheet.nextHref}>Next document in this folder →</Link>
+                </>
+              )}
+              {coverSheet.buildingHref && (
+                <>
+                  {' · '}
+                  <Link href={coverSheet.buildingHref}>Building page →</Link>
+                </>
+              )}
             </p>
           </div>
         )}
@@ -245,6 +307,14 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             <section className="extract">
               <h2>Extracted from this page</h2>
               <p>Machine-derived from OCR. Check the scan; these are not City metadata fields.</p>
+              {docRow.doc_type && docRow.doc_type !== 'cover_sheet' && (
+                <p className="small">
+                  <strong>{docTypeLabel(docRow.doc_type)}</strong>
+                  <span className="derived-label">
+                    Machine-extracted document type · confidence {Math.round((docRow.doc_type_confidence ?? 0) * 100)}%
+                  </span>
+                </p>
+              )}
               {indexedFacts ? (
                 <dl>
                   {indexedFacts.dates.length > 0 && (

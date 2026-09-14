@@ -10,6 +10,7 @@ import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/s
 import { socialMeta } from '@/lib/seo/social';
 import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
 import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { docTypeLabel } from '@/lib/docTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -226,6 +227,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       </h2>
                       <span className="range mono">{hit.batesPage}</span>
                     </div>
+                    {hit.docType && (
+                      <span className="derived-label" title="Machine-extracted document type">
+                        {docTypeLabel(hit.docType)}
+                      </span>
+                    )}
                   </div>
                   <div className="result-context">
                     {[hit.source, hit.box, hit.folder].filter(Boolean).join(' / ')}
