@@ -38,13 +38,31 @@
 
 ## Routes
 
+- **One entry point** (B11, "combine search and ask into one, like Prospect"): `components/SearchBox.tsx`
+  (used on `/ask`, `/search`, `/a/[id]`) and the home map's own search form
+  (`components/map/MapExplorer.tsx`) are a single input with a single "Ask →" submit, both posting
+  to `/ask` — there is no separate "Search →" button anywhere anymore. `router.ts` alone decides
+  where a typed string goes (Bates → the document, a keyword string → `/search` with facets, a
+  question → a cited answer, off-topic → the plain note); the box never chooses a destination
+  itself. Nav's "Ask & search" still points at `/ask` (unchanged).
 - `/ask?q=` — server-rendered (no streaming, per the brief). Routes via `router.ts`; for the model
-  path: refuse → renders inline; search → redirects to `/search?...` with filters as query params;
-  question → retrieves, answers, validates, and either redirects to `/a/<id>` (success) or renders
-  the insufficient-evidence view inline (no permalink for a non-answer). No key / rate-limited /
-  over daily cap / a failed model call all degrade to `/search?q=...&note=...`.
+  path: refuse → renders inline; offtopic → renders a plain "City records only" note with 3
+  suggested questions, no retrieval/permalink (B11); search → redirects to `/search?...` with
+  filters as query params; question → retrieves, answers, validates, and either redirects to
+  `/a/<id>` (success) or renders the insufficient-evidence view inline (no permalink for a
+  non-answer). No key / rate-limited / over daily cap / a failed model call all degrade to
+  `/search?q=...&note=...`. `/ask?q=...&mode=question` (B11) forces the planner even for a string
+  `router.ts` would otherwise short-circuit to a Bates lookup or a keyword search — this is what
+  `/search`'s "Ask this as a question →" link uses; it never forces the *plan's* kind, only that
+  the model gets asked at all.
+- `/search?q=` — keyword/browse results with facets; unrelated to Ask beyond sharing the one input
+  box. Also strips english-analyzer-and-then-some noise words from the query text and highlighting
+  (B11 — see `lib/opensearch.ts`), and links back to `/ask?q=...&mode=question` ("Ask this as a
+  question →") for when the results alone don't answer it.
 - `/a/[id]` — frozen permalink, renders exactly what was stored; never re-runs retrieval or the
-  model.
+  model. Its `SourceRail`/`AnswerBody` (`components/ask/shared.tsx`) keep the existing "View
+  document results →" / "See every document result instead →" links back to `/search?q=...` — the
+  other direction of the two-way switch, unchanged by B11.
 
 ## The 5 test outcomes (dev server, port 3104, real `ANTHROPIC_API_KEY` sourced from
 `~/Code/prospect/.env.local` into the shell only — never written to a file)

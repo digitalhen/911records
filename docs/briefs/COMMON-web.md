@@ -42,3 +42,15 @@ Rules:
 - Anything read at build time (next.config rewrites, `NEXT_PUBLIC_*`) is baked into the image by
   Dokploy with no runtime env present. Runtime configuration belongs in route handlers and
   `process.env` reads at request time.
+- **Schema first, code second.** A page that reads a new column/table crashed in production for the
+  minutes between the code deploy and the data load (topics.title, 2026-09-14). Code that reads a
+  new `site.*` column must tolerate its absence for one release (query `information_schema` once,
+  or `SELECT` with a fallback), and the coordinator loads the data before pushing the code.
+- **Versioning (Prospect convention).** `web/lib/releases.ts` holds `APP_VERSION` and `RELEASES`.
+  Every merge that changes what a visitor can see or do bumps the version and prepends notes that
+  describe USER-FACING changes only, in plain language (see CLAUDE.md); agents put their proposed
+  note text in their report and the coordinator writes it at merge.
+- **AI mark (Henry, 09-14).** Controls that invoke the model or lead to a model-written answer carry
+  the `AiMark` sparkle (Ask button, ask-as-question links, suggested questions, follow-ups). Plain
+  search/browse/document links and "machine-extracted" markers never do. This overrides the design
+  brief's blanket ban on sparkle icons for those controls only.

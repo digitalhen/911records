@@ -8,7 +8,8 @@ import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
-import { Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
+import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
+import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,18 +124,56 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         <p className="small muted mb-4">
           {result.error
             ? 'Search is temporarily unavailable.'
-            : q.trim()
-              ? `Searching the mirrored records for “${q}”.`
-              : 'Browsing all mirrored pages. Enter a keyword, address or Bates number to narrow this.'}
-          {!result.error && !result.semantic && q.trim() && (
+            : result.noSearchableTerms
+              ? `“${q}” has no searchable terms.`
+              : result.noLexicalMatch
+                ? `No documents contain “${q}”.`
+                : q.trim()
+                  ? `Searching the mirrored records for “${q}”.`
+                  : 'Browsing all mirrored pages. Enter a keyword, address or Bates number to narrow this.'}
+          {!result.error && !result.noSearchableTerms && !result.noLexicalMatch && !result.semantic && q.trim() && (
             <> Semantic ranking is unavailable ({result.semanticError || 'Ollama unreachable'}); showing keyword-only results.</>
           )}
         </p>
+        {!result.error && !result.noSearchableTerms && !result.noLexicalMatch && q.trim() && (
+          <p className="small mb-4">
+            <Link href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
+              Ask this as a question <AiMark /> →
+            </Link>
+          </p>
+        )}
         {result.error && (
           <Callout tone="error" role="status">
             {result.error}
           </Callout>
         )}
+        {result.noSearchableTerms ? (
+          <Callout id="no-searchable-terms" title="No searchable terms in that query">
+            <p>
+              “{q}” is made up entirely of common words this index does not search on. Try a specific keyword, an
+              address, a substance or a Bates number — or ask one of these questions instead:
+            </p>
+            <div className="followup">
+              {SUGGESTED_QUESTIONS.slice(0, 3).map((s, i) => (
+                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
+                  {s} <AiMark /> <span>→</span>
+                </Link>
+              ))}
+            </div>
+          </Callout>
+        ) : result.noLexicalMatch ? (
+          <Callout id="no-lexical-match" title={`No documents contain “${q}”`}>
+            <p>
+              None of the mirrored pages contain that word or phrase. Try a different spelling or a broader term, or
+              ask it as a question — a cited answer can draw on related wording a literal search would miss.
+            </p>
+            <div className="followup">
+              <Link className="question-link" href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
+                Ask this as a question <AiMark /> <span>→</span>
+              </Link>
+            </div>
+          </Callout>
+        ) : (
         <div className="results-layout">
           <aside className="facets" aria-label="Filter documents">
             <div className="facet-head">
@@ -234,6 +273,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             </div>
           </section>
         </div>
+        )}
       </main>
       <Footer />
     </>

@@ -2,7 +2,9 @@ import { cache } from 'react';
 import { queryReadSafe } from '@/lib/db';
 
 export const ENTITY_TYPES = ['lab', 'agency', 'contractor', 'substance', 'address'] as const;
-export const TYPE_LABELS: Record<string, string> = { lab: 'Labs', agency: 'Agencies / offices', contractor: 'Contractors', substance: 'Substances', address: 'Addresses', signatory: 'Signatories by role' };
+export const TYPE_LABELS: Record<string, string> = { lab: 'Labs', agency: 'Agencies & offices', contractor: 'Contractors', substance: 'Substances', address: 'Addresses & buildings', signatory: 'Officials acting on records' };
+// Panel order on /entities.
+export const PANEL_TYPES = ['lab', 'agency', 'contractor', 'substance', 'address', 'signatory'] as const;
 export const pageHref = (doc: string, page = 1) => `/doc/${encodeURIComponent(doc)}/p/${page}`;
 export const entityHref = (type: string, slug: string) => type === 'signatory' ? `/signatory/${encodeURIComponent(slug)}` : `/entity/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`;
 export interface Source { doc: string; page: number; confidence: number | null }
@@ -14,6 +16,72 @@ export interface Topic extends Source { id: number; parent: number | null; label
  * term-list label, falling back further to a generic "Topic N". Never renders raw terms as a title. */
 export function topicTitle(t: Topic): string {
   return t.title || t.label || `Topic ${t.id}`;
+}
+export interface PanelRow { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; bin: string | null; bbl: string | null }
+/** A building link takes priority over the entity page when an address resolved to a BIN/BBL. */
+export function entityLinkHref(row: Pick<PanelRow,'type'|'slug'|'bin'>): string {
+  return row.type === 'address' && row.bin ? `/building/${encodeURIComponent(row.bin)}` : entityHref(row.type, row.slug);
+}
+
+/** Top N entities of one type by page count, plus the total count of all indexed entities of that type. Used by the /entities panel grid and its "See all" link. */
+export async function panelEntities(type: string, limit = 8): Promise<{ rows: PanelRow[]; total: number }> {
+  if (type === 'signatory') return panelSignatories(limit);
+  if (!(ENTITY_TYPES as readonly string[]).includes(type)) return { rows: [], total: 0 };
+  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,e.bin,e.bbl,
+    c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
+    JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
+      FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
+      WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed') c ON true
+    WHERE e.type=$1 AND c.n_pages>0 ORDER BY c.n_pages DESC,e.id LIMIT $2`, [type, limit]);
+  return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
+}
+async function panelSignatories(limit = 8): Promise<{ rows: PanelRow[]; total: number }> {
+  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT s.id,s.slug,'signatory' AS type,
+    COALESCE(NULLIF(s.title,''),'Official signatory') AS label,s.first_date,s.last_date,NULL::text AS bin,NULL::text AS bbl,
+    c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.signatories s
+    JOIN LATERAL (SELECT COUNT(DISTINCT sp.doc) AS n_docs,COUNT(DISTINCT (sp.doc,sp.page)) AS n_pages
+      FROM site.signatory_pages sp JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
+      WHERE sp.id=s.id AND d.status IS DISTINCT FROM 'removed') c ON true
+    WHERE c.n_pages>0 ORDER BY c.n_pages DESC,s.id LIMIT $1`, [limit]);
+  return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
+}
+/** All panels for the /entities grid, fetched together. */
+export async function panelGrid(limit = 8): Promise<Record<string, { rows: PanelRow[]; total: number }>> {
+  const entries = await Promise.all(PANEL_TYPES.map(async type => [type, await panelEntities(type, limit)] as const));
+  return Object.fromEntries(entries);
+}
+/** Paginated, A–Z-filterable listing for /entities/[type] (also used for the signatory listing). */
+export async function listEntities(type: string, opts: { letter?: string; offset?: number; limit?: number } = {}): Promise<{ rows: PanelRow[]; total: number } | null> {
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 60));
+  const offset = Math.max(0, opts.offset ?? 0);
+  const letter = opts.letter && /^[A-Za-z0-9]$/.test(opts.letter) ? opts.letter.toUpperCase() : null;
+  if (type === 'signatory') {
+    const params: unknown[] = [limit, offset];
+    if (letter) params.push(`${letter}%`);
+    const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT s.id,s.slug,'signatory' AS type,
+      COALESCE(NULLIF(s.title,''),'Official signatory') AS label,s.first_date,s.last_date,NULL::text AS bin,NULL::text AS bbl,
+      c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.signatories s
+      JOIN LATERAL (SELECT COUNT(DISTINCT sp.doc) AS n_docs,COUNT(DISTINCT (sp.doc,sp.page)) AS n_pages
+        FROM site.signatory_pages sp JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
+        WHERE sp.id=s.id AND d.status IS DISTINCT FROM 'removed') c ON true
+      WHERE c.n_pages>0 ${letter ? "AND COALESCE(NULLIF(s.title,''),'Official signatory') ILIKE $3" : ''}
+      ORDER BY label ASC,s.id LIMIT $1 OFFSET $2`, params);
+    return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
+  }
+  if (!(ENTITY_TYPES as readonly string[]).includes(type)) return null;
+  const params: unknown[] = [type, limit, offset];
+  if (letter) params.push(`${letter}%`);
+  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,e.bin,e.bbl,
+    c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
+    JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
+      FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
+      WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed') c ON true
+    WHERE e.type=$1 AND c.n_pages>0 ${letter ? 'AND e.label ILIKE $4' : ''}
+    ORDER BY e.label ASC,e.id LIMIT $2 OFFSET $3`, params);
+  return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
+}
+function withDates<T extends { first_date: unknown; last_date: unknown }>(row: T): T {
+  return { ...row, first_date: formatDate(row.first_date), last_date: formatDate(row.last_date) };
 }
 
 // Only non-person entity types may enter HTML, suggestions, metadata or sitemaps.

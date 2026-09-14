@@ -16,16 +16,38 @@ const columns = `p.id,p.kind,p.key,p.label,p.lat,p.lon,
  min(dt.first_date) first_date,max(dt.last_date) last_date,
  (array_agg(pp.doc ORDER BY pp.confidence DESC NULLS LAST,pp.doc,pp.page))[1] doc,
  (array_agg(pp.page ORDER BY pp.confidence DESC NULLS LAST,pp.doc,pp.page))[1] page,
- max(pp.confidence) confidence`;
+ max(pp.confidence) confidence,
+ max(bf.address) roll_address, max(ea.label) entity_address`;
+// Title resolution (#20 follow-up, Henry 2026-09-14): a BIN/BBL place titled itself "BIN 1000836"
+// whenever no source page happened to carry a regex-shaped address string. `ea` is the most-cited
+// roll-matched address entity for this place's BIN/BBL (or, for an address-kind place, the entity
+// matching its own raw text); `bf` is the roll's own address for that BIN/BBL, preferred when present.
 const joins = `FROM site.places p JOIN site.place_pages pp ON pp.place_id=p.id
  JOIN site.documents d ON d.doc=pp.doc JOIN site.pages pg ON pg.doc=pp.doc AND pg.page=pp.page
  LEFT JOIN site.page_text t ON t.doc=pp.doc AND t.page=pp.page
  LEFT JOIN LATERAL (SELECT min(value) first_date,max(value) last_date
- FROM jsonb_array_elements_text(coalesce(pp.dates,'[]'::jsonb)) WHERE value ~ '^\\d{4}-\\d{2}-\\d{2}$') dt ON true`;
+ FROM jsonb_array_elements_text(coalesce(pp.dates,'[]'::jsonb)) WHERE value ~ '^\\d{4}-\\d{2}-\\d{2}$') dt ON true
+ LEFT JOIN LATERAL (SELECT e.label,e.bbl,e.bin FROM site.entities e WHERE e.type='address' AND (
+   (p.kind='address' AND upper(e.label)=upper(p.key)) OR
+   (p.kind='bin' AND e.bin=p.key) OR (p.kind='bbl' AND e.bbl=p.key)
+ ) ORDER BY e.n_pages DESC,e.id LIMIT 1) ea ON true
+ LEFT JOIN LATERAL (SELECT bfx.address FROM site.building_facts bfx WHERE
+   (p.kind='bbl' AND bfx.bbl=p.key) OR (p.kind='bin' AND bfx.bin=p.key) OR
+   (p.kind='address' AND ea.bin IS NOT NULL AND bfx.bin=ea.bin) OR
+   (p.kind='address' AND ea.bbl IS NOT NULL AND bfx.bbl=ea.bbl)
+ LIMIT 1) bf ON true`;
 // Addresses only: reject free-form building labels and strip any unit/household suffix.
-function safePlace(p: Place): Place {
-  const address = /^\d{1,5}(?:-\d{1,5})?\s+(?:(?:[A-Z0-9'-]+\s+){1,4}(?:STREET|ST\.?|AVENUE|AVE\.?|PLACE|PL\.?|PLAZA|LANE|SLIP|ROAD|BOULEVARD|BLVD\.?|DRIVE|WAY|TERRACE|SQUARE)|BROADWAY|BOWERY)\b/i.exec(p.label || '');
-  return { ...p, label: address?.[0] || (p.kind === 'bin' ? `BIN ${p.key}` : p.kind === 'bbl' ? `Block ${p.key.slice(1,6).replace(/^0+/, '')} · Lot ${p.key.slice(6).replace(/^0+/, '')}` : 'Building address in the source record') };
+// Label preference, most to least trustworthy: (1) the roll's own address for this BIN/BBL,
+// (2) the most-cited roll-matched address entity for it, (3) a regex-shaped address already on
+// this place's raw label, (4) a fallback that can never be mistaken for a real address.
+type PlaceRow = Place & { roll_address?: string | null; entity_address?: string | null };
+function safePlace(row: PlaceRow): Place {
+  const { roll_address, entity_address, ...p } = row;
+  const regexAddress = /^\d{1,5}(?:-\d{1,5})?\s+(?:(?:[A-Z0-9'-]+\s+){1,4}(?:STREET|ST\.?|AVENUE|AVE\.?|PLACE|PL\.?|PLAZA|LANE|SLIP|ROAD|BOULEVARD|BLVD\.?|DRIVE|WAY|TERRACE|SQUARE)|BROADWAY|BOWERY)\b/i.exec(p.label || '')?.[0];
+  const fallback = p.kind === 'bin' ? `Building BIN ${p.key} (address not in the roll)`
+    : p.kind === 'bbl' ? `Building Block ${p.key.slice(1,6).replace(/^0+/, '')} · Lot ${p.key.slice(6).replace(/^0+/, '')} (address not in the roll)`
+    : 'Building address not in the roll';
+  return { ...p, label: roll_address || entity_address || regexAddress || fallback };
 }
 export async function getMapPlaces(f: MapFilters = DEFAULT_FILTERS): Promise<Place[]> {
   const dateFilter = f.from !== 0 || f.to !== 27;

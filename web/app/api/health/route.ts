@@ -1,3 +1,4 @@
+import { APP_VERSION } from '@/lib/releases';
 import { NextResponse } from 'next/server';
 import { pingDb, pingReadPool, readPoolState } from '@/lib/db';
 import { getMeta, siteSchemaReady } from '@/lib/site';
@@ -33,6 +34,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    version: APP_VERSION,
     commit,
     replica,
     time: new Date().toISOString(),

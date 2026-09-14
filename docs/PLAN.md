@@ -97,7 +97,7 @@ documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pd
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
-entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin)
+entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin, method)
 entity_pages(entity_id, doc, page, role, confidence, raw)
 signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
 signatory_pages(id, doc, page, action, confidence)
@@ -113,16 +113,19 @@ topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies, titl
 places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
 place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
 page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
-building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
-                num_bldgs, source)
+building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total, bldg_area,
+                bldg_class, num_bldgs, source)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
 
 `building_facts` is a one-time export of Prospect's property roll for lower Manhattan (issue #19
-follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (year built, floor
-count, residential/total unit counts, floor area, building class, building count on the lot) —
-**never** owner names, unit-level rows, sales figures, or anything about a person. The building
-page shows it labelled "Building details · data provided by prospect.nyc". `entities.bbl`/`bin`
+follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (address, zip, year
+built, floor count, residential/total unit counts, floor area, building class, building count on
+the lot) — **never** owner names, unit-level rows, sales figures, or anything about a person. The
+building page shows it labelled "Building details · data provided by prospect.nyc". `address` is
+Title Case "<housenum> <street>" straight off the roll and is the building page's preferred title
+(issue #20 follow-up, Henry 2026-09-14: a place with no OCR-matched address was titling itself
+"BIN nnnnnnn" — see `lib/map/data.ts` label resolution order below). `entities.bbl`/`bin`
 (address entities only, when the roll matched) let the building page and `places.py` resolve a
 building straight from an address entity. Provenance: `scripts/embed/export_prospect_gazetteer.py`
 is a **one-time, operator-run** script that reads Prospect's central Postgres (`prospect_ro`,
@@ -142,6 +145,24 @@ tried first and wins when it matches — that match carries the roll's bbl/bin o
 addresses the roll doesn't cover (most of them: the export is nine lower-Manhattan ZIPs, and many
 mentioned addresses — labs, contractor offices — sit well outside that footprint) fall back to
 the mention-frequency seed method alone, with no bbl/bin.
+
+**LLM last resort** (issue #19 follow-up, Henry 2026-09-14): after the rule-based tiers, any
+address/lab/contractor spelling that still stands alone — no rule-based match, but sharing a house
+number+street type (or, for orgs, a first name token) with an ESTABLISHED canonical entity or roll
+entry — goes to `entities.py --canonicalise --llm`, which asks `claude-haiku-4-5-20251001` in
+batches (`scripts/embed/canonical_llm.py`, the only module in this repo that calls the Anthropic
+API; key from `.claudekey`, cached in `data/embed/canonical-llm-cache.json`) whether it's an OCR
+misread of one of up to 8 listed candidates. A merge requires model confidence >= 0.8 **and** a
+post-hoc distance-ratio sanity check (`MAX_LLM_NAME_RATIO`, canonical_llm.py) — added after the
+first live run confidently mis-merged distinct real streets ("Vesey"/"Wall", "Chambers"/"Broad")
+that happened to share a house number; candidates must also already be established (roll-backed or
+merging >=2 raw spellings) so two orphan spellings are never matched against each other. A merge is
+stored at canonical_confidence 0.6 (below every rule-based tier) with canonical_method='llm'.
+
+`mentions.canonical_method` ('exact'|'roll'|'fuzzy'|'llm') and `entities.method` (the STRONGEST
+method among the entity's mentions, same priority order, since an entity's identity is always
+founded by its best-evidence member — an 'llm'-merged variant never demotes an otherwise
+'exact'/'roll' entity) record which tier established each canonicalisation.
 
 Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
 one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.

@@ -12,7 +12,7 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
   pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
   snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
   changes(date, doc, kind, fields)                       kind IN added|removed|changed|reappeared
-  entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin)
+  entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin, method)
   entity_pages(entity_id, doc, page, role, confidence, raw)
   signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
   signatory_pages(id, doc, page, action, confidence)
@@ -21,8 +21,11 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
          name_confidence)   doc_topics(doc, topic, prob)
   places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
   place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
-  building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
-                  num_bldgs, source)   present-day PLUTO-derived facts ONLY, never owner/sales/people
+  building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total,
+                  bldg_area, bldg_class, num_bldgs, source)   present-day PLUTO-derived facts ONLY,
+                  never owner/sales/people. `address` is Title Case "<housenum> <street>" straight
+                  off the roll (never a machine-extracted/OCR address) — the building page's title
+                  falls back to it ahead of anything OCR-derived.
   meta(key PK, value)                                     built_at, snapshot_date, counts
 
 Sources:
@@ -291,7 +294,14 @@ def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str,
     raw spelling found on that page. `entities.bbl`/`bin` come from `canonical_bbl`/`canonical_bin`
     (set only for address mentions the Prospect property-roll gazetteer matched — entities.py
     --canonicalise, issue #19 follow-up) so `places.py`/the building page can resolve a building
-    straight from an address entity, no separate address-matching pass needed there."""
+    straight from an address entity, no separate address-matching pass needed there. `entities.method`
+    is the STRONGEST `canonical_method` present among the group's mentions, priority exact > roll >
+    fuzzy > llm > NULL (agency/substance, never canonicalised) — an entity's own identity is always
+    established by its strongest-evidence member; a weaker method elsewhere in the same group (e.g.
+    one 'llm'-matched variant merged into an otherwise 'exact'/'roll' entity) never demotes it, since
+    entities.py's canonical_llm.py only ever merges an isolated spelling INTO an existing entity, it
+    never founds one on its own."""
+    METHOD_RANK = {"exact": 0, "roll": 1, "fuzzy": 2, "llm": 3}
     entities: list[tuple] = []
     entity_pages: list[tuple] = []
     if entities_con is None:
@@ -303,9 +313,13 @@ def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str,
     rows_by_key: dict[tuple, list] = collections.defaultdict(list)
     bbl_by_key: dict[tuple, str] = {}
     bin_by_key: dict[tuple, str] = {}
-    q = ("SELECT doc, page, label, text, norm, canonical_key, canonical_label, canonical_bbl, canonical_bin "
+    method_by_key: dict[tuple, str] = {}
+    cols = {r[1] for r in entities_con.execute("PRAGMA table_info(mentions)")}
+    has_method = "canonical_method" in cols
+    method_sel = "canonical_method" if has_method else "NULL"
+    q = (f"SELECT doc, page, label, text, norm, canonical_key, canonical_label, canonical_bbl, canonical_bin, {method_sel} "
          "FROM mentions WHERE source='regex' AND label IN ({})").format(",".join("?" * len(ENTITY_TYPE)))
-    for doc, page, label, text, norm, ckey, clabel, cbbl, cbin in entities_con.execute(q, list(ENTITY_TYPE)):
+    for doc, page, label, text, norm, ckey, clabel, cbbl, cbin, cmethod in entities_con.execute(q, list(ENTITY_TYPE)):
         etype = ENTITY_TYPE[label]
         key = (etype, ckey or norm)
         display[key][text] += 1
@@ -315,6 +329,8 @@ def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str,
             bbl_by_key[key] = cbbl
         if cbin and key not in bin_by_key:
             bin_by_key[key] = cbin
+        if cmethod and (key not in method_by_key or METHOD_RANK.get(cmethod, 9) < METHOD_RANK.get(method_by_key[key], 9)):
+            method_by_key[key] = cmethod
         docs_seen[key].add(doc)
         pages_seen[key].add((doc, page))
         rows_by_key[key].append((doc, page, text))
@@ -333,7 +349,7 @@ def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str,
         last_date = max((d[1] for d in dr), default=None)
         variants_json = json.dumps(dict(variants.most_common(MAX_VARIANTS)))
         entities.append((eid, etype, slug, label, len(docs), len(pages), first_date, last_date, variants_json,
-                          bbl_by_key.get((etype, ckey)), bin_by_key.get((etype, ckey))))
+                          bbl_by_key.get((etype, ckey)), bin_by_key.get((etype, ckey)), method_by_key.get((etype, ckey))))
         # `role` has no extra information beyond the entity's own `type` for a regex mention (there
         # is no sense of e.g. "subject of the test" vs "mentioned in passing" yet) — it is set to
         # `etype` so the column is never NULL and stays meaningful if a future extractor adds a
@@ -457,6 +473,13 @@ def _float_or_none(v: str | None) -> float | None:
     return float(v) if v not in (None, "") else None
 
 
+def _roll_address(housenum: str | None, street: str | None) -> str | None:
+    """Title Case "<housenum> <street>" straight off the roll, e.g. "77 Pearl Street". Never an
+    OCR/machine-extracted address — those stay in `places.label`, not here."""
+    parts = [p for p in (housenum, street) if p]
+    return " ".join(parts).title() if parts else None
+
+
 def load_building_facts() -> list[tuple]:
     """building_facts rows straight from GAZETTEER_CSV (export_prospect_gazetteer.py's one-time
     dump of Prospect's property roll + pluto_lots). PRESENT-DAY BUILDING FACTS ONLY — year built,
@@ -476,7 +499,9 @@ def load_building_facts() -> list[tuple]:
                 continue
             seen.add(bbl)
             out.append((
-                bbl, row.get("bin") or None, _int_or_none(row.get("year_built")),
+                bbl, row.get("bin") or None,
+                _roll_address(row.get("housenum"), row.get("street_canonical")),
+                row.get("zip") or None, _int_or_none(row.get("year_built")),
                 _float_or_none(row.get("num_floors")), _int_or_none(row.get("units_res")),
                 _int_or_none(row.get("units_total")), _int_or_none(row.get("bldg_area")),
                 row.get("bldg_class") or None, _int_or_none(row.get("num_bldgs")),
@@ -504,7 +529,7 @@ CREATE TABLE snapshots(
 CREATE TABLE changes(date TEXT, doc TEXT, kind TEXT, fields TEXT);
 CREATE TABLE entities(
   id TEXT PRIMARY KEY, type TEXT, slug TEXT, label TEXT, n_docs INT, n_pages INT, first_date TEXT, last_date TEXT,
-  variants TEXT, bbl TEXT, bin TEXT
+  variants TEXT, bbl TEXT, bin TEXT, method TEXT
 );
 CREATE TABLE entity_pages(entity_id TEXT, doc TEXT, page INT, role TEXT, confidence REAL, raw TEXT);
 CREATE TABLE signatories(
@@ -528,8 +553,8 @@ CREATE TABLE place_pages(
 );
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE building_facts(
-  bbl TEXT PRIMARY KEY, bin TEXT, year_built INT, num_floors REAL, units_res INT, units_total INT,
-  bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
+  bbl TEXT PRIMARY KEY, bin TEXT, address TEXT, zip TEXT, year_built INT, num_floors REAL,
+  units_res INT, units_total INT, bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
 );
 """
 
@@ -559,6 +584,7 @@ CREATE INDEX place_pages_place ON place_pages(place_id);
 CREATE INDEX place_pages_doc ON place_pages(doc);
 CREATE INDEX building_facts_bin ON building_facts(bin);
 CREATE INDEX entities_bbl ON entities(bbl);
+CREATE INDEX entities_bin ON entities(bin);
 """
 
 
@@ -637,7 +663,7 @@ def main() -> int:
                      [(s["date"], s["documents"], s["pages"], s["bytes"], s["added"], s["removed"], s["changed"],
                        s["sha256"]) for s in snapshots_rows])
     con.executemany("INSERT INTO changes VALUES (?,?,?,?)", changes_rows)
-    con.executemany("INSERT INTO entities VALUES (?,?,?,?,?,?,?,?,?,?,?)", entities_rows)
+    con.executemany("INSERT INTO entities VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", entities_rows)
     con.executemany("INSERT INTO entity_pages VALUES (?,?,?,?,?,?)", entity_pages_rows)
     con.executemany("INSERT INTO signatories VALUES (?,?,?,?,?,?,?,?)", signatories_rows)
     con.executemany("INSERT INTO signatory_pages VALUES (?,?,?,?,?)", signatory_pages_rows)
@@ -647,7 +673,7 @@ def main() -> int:
     con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
     con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
-    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
+    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
 
     counts = {
         "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { APP_VERSION } from '@/lib/releases';
 import { CaseCountBadge } from '@/components/case/CaseCountBadge';
 
 const NAV = [
@@ -21,7 +22,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
         <div className="edition">
           <strong>{edition || 'NYC Law Department release'}</strong>
           <br />
-          <span className="edition-detail">Independent mirror · updated as the City releases more</span>
+          <span className="edition-detail">Independent mirror · updated as the City releases more · <Link href="/releases" title="Version history">v{APP_VERSION}</Link></span>
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">

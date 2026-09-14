@@ -13,3 +13,4 @@ export { Dialog } from './Dialog';
 export type { DialogAction } from './Dialog';
 export { Toast, useToast } from './Toast';
 export { EmptyState } from './EmptyState';
+export { AiMark } from './AiMark';

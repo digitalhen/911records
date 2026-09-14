@@ -30,7 +30,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
     return()=>{clearTimeout(timer);abort.abort()};
   },[filters,revision]);
   function change<K extends keyof MapFilters>(key:K,value:MapFilters[K]) {setFilters(f=>({...f,[key]:value}))}
-  const question=suggestions.place?`What was measured at ${suggestions.place.label} in October 2001?`:null;
+  // Only a real street address makes a sensible question; fallback labels ("BIN …", "Block …",
+  // "Building address in the source record") produced nonsense starter questions.
+  const placeLabel=suggestions.place && /^\d/.test(suggestions.place.label)?suggestions.place.label:null;
+  const question=placeLabel?`What was measured at ${placeLabel} in October 2001?`:null;
   const relatedQuestion=suggestions.substance?`Which buildings have ${suggestions.substance} test records?`:null;
   return <main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>{setFallback(true);setThreeD(false)}} />
@@ -38,10 +41,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
-        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="An address, substance, Bates number or question" autoComplete="off"/><button type="submit" formAction="/search">Search →</button><button type="submit" formAction="/ask">Ask →</button></div>
+        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask →</button></div>
       </form>
       <div className={styles.chips}>
-        {suggestions.place && <a href={buildingUrl(suggestions.place)}>{suggestions.place.label} · most test pages</a>}
+        {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}
         {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question}</a>}
         {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion}</a>}

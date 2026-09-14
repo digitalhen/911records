@@ -2911,6 +2911,17 @@ dialog .mono {
   padding-bottom: 9px;
 }
 
+/* AiMark — sparkle on controls that invoke the model. See web/DESIGN.md. */
+.ai-mark {
+  flex: none;
+  color: var(--blue);
+  vertical-align: -0.05em;
+  margin: 0 2px;
+}
+.button .ai-mark {
+  color: currentColor;
+}
+
 /* Toast (component-managed content; base look already in .toast above) */
 .toast[role="status"] {
   border: 1px solid #0000;

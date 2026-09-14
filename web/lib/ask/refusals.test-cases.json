@@ -18,5 +18,11 @@
   { "id": "a07", "q": "What agency issued the correspondence about Liberty Street?", "expect": "allow", "note": "agency, not a person" },
   { "id": "a08", "q": "Show me records for NYC-WTC_000058160.", "expect": "allow", "note": "Bates lookup — never reaches the model" },
   { "id": "a09", "q": "asbestos liberty street", "expect": "allow", "note": "short keyword string — never reaches the model" },
-  { "id": "a10", "q": "What was the FDNY response time reported in these records?", "expect": "allow", "note": "ordinary evidentiary question" }
+  { "id": "a10", "q": "What was the FDNY response time reported in these records?", "expect": "allow", "note": "ordinary evidentiary question" },
+  { "id": "o01", "q": "do you like jesus", "expect": "offtopic", "note": "chit-chat — router must not short-circuit this to keyword (B11)" },
+  { "id": "o02", "q": "tell me a joke", "expect": "offtopic", "note": "chit-chat" },
+  { "id": "o03", "q": "who are you", "expect": "offtopic", "note": "question about the assistant, not the records" },
+  { "id": "k01", "q": "asbestos liberty", "expect": "keyword", "note": "two-word keyword — router short-circuit, no model call" },
+  { "id": "k02", "q": "DEP memo 2002", "expect": "keyword", "note": "three-word keyword — router short-circuit, no model call" },
+  { "id": "q01", "q": "was asbestos found on liberty street?", "expect": "question", "note": "ordinary evidentiary question, must reach the model as kind 'question'" }
 ]

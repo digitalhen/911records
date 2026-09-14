@@ -12,15 +12,17 @@ export function Callout({
   children,
   role,
   className,
+  id,
 }: {
   tone?: CalloutTone;
   title?: ReactNode;
   children: ReactNode;
   role?: string;
   className?: string;
+  id?: string;
 }) {
   return (
-    <div className={['callout', `callout-${tone}`, className].filter(Boolean).join(' ')} role={role}>
+    <div id={id} className={['callout', `callout-${tone}`, className].filter(Boolean).join(' ')} role={role}>
       {title && <h3>{title}</h3>}
       {children}
     </div>

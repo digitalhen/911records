@@ -10,7 +10,7 @@ const color: ExpressionSpecification = ['match',['get','kind'],'test',COLORS.tes
 // Brooklyn Bridge's Manhattan end (~-73.9969,40.7061), river to river.
 // [[west,south],[east,north]] — same corner order as maxBounds below.
 // Tightened 09-14 (Henry: "a bit tighter in"): harbour strip, Battery, FiDi/WTC, Brooklyn Bridge end.
-const FIT_BOUNDS: [[number,number],[number,number]] = [[-74.0185,40.7005],[-73.9975,40.7135]];
+const FIT_BOUNDS: [[number,number],[number,number]] = [[-74.0168,40.7015],[-73.9992,40.7125]];
 const PITCH_3D = 45, BEARING = -22;
 // Screen-pixel padding for the initial fitBounds, so the fit excludes the
 // chrome that overlaps the map canvas (search box, the always-open "Explore
