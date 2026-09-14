@@ -142,7 +142,7 @@ async function queryPlaceFile(id: string): Promise<PlaceFile | null> {
   // lib/discovery/data.ts's topicDocuments()/getOccurrences() — see documentsHaveTitles()'s
   // comment in lib/site.ts.
   const titleCol = (await documentsHaveTitles()) ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
-  const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,${titleCol}
+  const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,d.doc_type,d.folder,d.page_count,${titleCol}
     pp.has_test,${inspection} inspection,pp.contaminants,pp.units,pp.dates,pp.labs,pp.confidence,t.text
     ${joins} WHERE ${active} AND p.id=$1 ORDER BY dt.first_date NULLS LAST,pp.doc,pp.page`,[place.id]);
   const rows = raw.map(({text, ...r}) => ({ ...r,

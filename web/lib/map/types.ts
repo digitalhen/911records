@@ -11,6 +11,8 @@ export interface Candidate {
   dates: string[]; labs: string[]; confidence: number | null; measurements: string[];
   /** Plain-language document title (issue #37, scripts/embed/summaries.py), or null. */
   title: string | null;
+  /** Rule-based document type (scripts/embed/doctypes.py), folder label and page count of the document. */
+  doc_type: string | null; folder: string | null; page_count: number | null;
   /** One-sentence summary (<=180 chars) paired with `title`, or null under the same conditions. */
   summary: string | null;
 }

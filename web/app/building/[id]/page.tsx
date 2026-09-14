@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { getPlaceFile, resolveBuildingRedirect } from '@/lib/map/data';
 import { buildingUrl, decodeBldgClass, decodeId, pageUrl } from '@/lib/map/types';
 import RecordTable from '@/components/map/RecordTable';
+import { docTypeLabel } from '@/lib/docTypes';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { socialMeta } from '@/lib/seo/social';
 import { ButtonLink, MonthHistogram } from '@/components/ui';
@@ -40,8 +41,18 @@ export default async function BuildingPage({params}:Props) {
   const monthPages=new Map<string,Set<string>>();
   for(const r of rows) for(const d of r.dates) {const m=d.slice(0,7);if(!monthPages.has(m))monthPages.set(m,new Set());monthPages.get(m)!.add(`${r.doc}:${r.page}`)}
   const activity=[...monthPages.entries()].map(([month,pages])=>({month,count:pages.size}));
-  const groups=new Map<string,Map<string,typeof rows[number]>>();
-  for(const row of rows) {const key=`${row.agency||'Agency not recorded'} · Volume ${row.volume||'—'} · Box ${row.box||'—'}`;if(!groups.has(key))groups.set(key,new Map());groups.get(key)!.set(row.doc,row)}
+  // One row per document, grouped by document type (Henry, 2026-09-14: "some of the docs are
+  // quality reports etc." — a per-page list hid what each document was). Cover sheets are the
+  // folder's separator pages, not records, so they are left out here.
+  type DocRow={doc:string;doc_type:string|null;title:string|null;summary:string|null;folder:string|null;box:string|null;agency:string|null;page_count:number|null;pages:number;firstPage:number;hasTest:boolean;dates:string[]};
+  const byDoc=new Map<string,DocRow>();
+  for(const r of rows){const d=byDoc.get(r.doc)||{doc:r.doc,doc_type:r.doc_type,title:r.title,summary:r.summary,folder:r.folder,box:r.box,agency:r.agency,page_count:r.page_count,pages:0,firstPage:r.page,hasTest:false,dates:[]};d.pages+=1;d.firstPage=Math.min(d.firstPage,r.page);d.hasTest=d.hasTest||r.has_test;d.dates.push(...r.dates);byDoc.set(r.doc,d)}
+  const TYPE_ORDER=['lab_report','chain_of_custody','memo_letter','permit_application','form','sign_in_sheet','invoice','photo_log','other'];
+  const typeGroups=new Map<string,DocRow[]>();
+  for(const d of byDoc.values()){if(d.doc_type==='cover_sheet')continue;const k=d.doc_type&&TYPE_ORDER.includes(d.doc_type)?d.doc_type:'other';if(!typeGroups.has(k))typeGroups.set(k,[]);typeGroups.get(k)!.push(d)}
+  const orderedTypes=TYPE_ORDER.filter(t=>typeGroups.has(t));
+  const coverSheets=[...byDoc.values()].filter(d=>d.doc_type==='cover_sheet').length;
+  const span=(ds:string[])=>{const s=[...ds].sort();return s.length?(s[0]===s[s.length-1]?s[0]:`${s[0]} – ${s[s.length-1]}`):null};
   const crumbs=breadcrumbJsonLd([{name:'Home',path:'/'},{name:'Building map',path:'/map'},{name:p.label,path:buildingUrl(p)}]);
   return <><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(crumbs)}}/><Header active="/map"/><main id="main" className={styles.building}>
     <div className="bread"><a href="/map">Building map</a><span>/ Building file</span></div>
@@ -63,11 +74,18 @@ export default async function BuildingPage({params}:Props) {
       <p className={styles.note}>Present-day data · provided by <a href="https://prospect.nyc">prospect.nyc</a>. These figures describe the lot today, not in 2001 — building facts only, never owner names, unit lists or sales.</p>
     </section>}
     <section id="building-records"><h2>Samples, readings and decisions over time</h2><RecordTable rows={rows.filter(r=>r.has_test)}/></section>
-    <section className={styles.section}><h2>Other pages / related memos</h2><p className={styles.note}>Pages mentioning this building without a test candidate. Memo and re-occupancy decisions are not classified in the index; read the page.</p>
-      {rows.filter(r=>!r.has_test).map(r=><p className={styles.source} key={`${r.doc}:${r.page}`}>{r.title&&<><strong>{r.title}</strong><br/></>}<a href={pageUrl(r)}>{r.doc} · page {r.page}</a> · {r.dates.join(', ')||'Date not extracted'}<small>Machine-extracted · {r.inspection?'inspection candidate · ':''}confidence {r.confidence?.toFixed(2)??'not available'}</small></p>)}
-      {!rows.some(r=>!r.has_test)&&<p>No other available source pages indexed.</p>}
+    <section className={styles.section} id="building-documents"><h2>Documents for this building</h2>
+      <p className={styles.note}>{byDoc.size-coverSheets} document{byDoc.size-coverSheets===1?'':'s'} across {new Set([...byDoc.values()].map(d=>`${d.agency}/${d.box}`)).size} box{new Set([...byDoc.values()].map(d=>`${d.agency}/${d.box}`)).size===1?'':'es'}, grouped by what each document is. Titles and summaries are machine-written; the page image is the authority.{coverSheets?` ${coverSheets} folder cover sheet${coverSheets===1?'':'s'} not listed.`:''}</p>
+      {orderedTypes.map(t=><div key={t} className={styles.docGroup}><h3>{docTypeLabel(t)} <span className="muted">· {typeGroups.get(t)!.length}</span></h3>
+        {typeGroups.get(t)!.sort((a,b)=>(span(a.dates)||'9999').localeCompare(span(b.dates)||'9999')||a.doc.localeCompare(b.doc)).map(d=><div className={styles.docRow} key={d.doc}>
+          <a className={styles.docTitle} href={`/doc/${encodeURIComponent(d.doc)}`}>{d.title||`${docTypeLabel(d.doc_type)||'Document'}${d.folder?` — ${d.folder}`:''}`}</a>
+          <span className="mono small muted">{d.doc}</span>
+          {d.summary&&<p className="small">{d.summary}</p>}
+          <small>{d.page_count??d.pages} page{(d.page_count??d.pages)===1?'':'s'} · {span(d.dates)||'no date extracted'} · {d.agency||'Agency not recorded'} · Box {d.box||'—'}{d.folder?` · ${d.folder}`:''}{d.hasTest?' · test candidate pages':''} · <a href={pageUrl({doc:d.doc,page:d.firstPage})}>matched page {d.firstPage}</a></small>
+        </div>)}
+      </div>)}
+      {!orderedTypes.length&&<p>No documents beyond folder cover sheets are indexed for this building yet.</p>}
     </section>
-    <section className={styles.section}><h2>Documents by agency and box</h2>{[...groups].map(([key,docs])=><div className={styles.source} key={key}><h3>{key}</h3><ul>{[...docs.values()].map(r=><li key={r.doc}><a href={`/doc/${encodeURIComponent(r.doc)}`}>{r.title||r.doc}</a>{r.title&&<> · <span className="mono small muted">{r.doc}</span></>} · <a href={pageUrl(r)}>machine-extracted building match, page {r.page}</a>{r.summary&&<p className="small muted">{r.summary}</p>}</li>)}</ul></div>)}</section>
     <section className={styles.section}><h2>Related buildings on the same block</h2><p className={styles.note}>Block-lot keys and present-day footprint joins; not a reconstruction of 2001 buildings.</p>{related.length?<ul>{related.map(r=><li key={r.id}><a href={buildingUrl(r)}>{r.label}</a> · {r.n_docs} records · machine-extracted · <a href={pageUrl(r)}>verify</a></li>)}</ul>:<p>No same-block matches established by this place’s block-lot key or present-day footprint join.</p>}</section>
   </main><Footer/></>;
 }

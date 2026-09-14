@@ -8,3 +8,4 @@
 .shell{display:flex;flex-direction:column;height:100dvh;overflow:hidden}.shell>header{flex-shrink:0}.shell>.explorer{flex:1;height:auto;min-height:0}
 /* Phones: the 100dvh flex shell (line above) would let the legend below the map steal the map's height, so the page scrolls instead. Declared last so it beats .shell>.explorer above. */
 @media(max-width:700px){.shell{display:block;height:auto;overflow:visible}.shell>.explorer{flex:none;height:calc(100dvh - 150px);min-height:560px}}
+.docGroup{margin-top:22px}.docGroup h3{font-size:15px;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}.docGroup h3 span{font-weight:400;font-size:12px}.docRow{padding:12px 0;border-bottom:1px solid var(--line)}.docTitle{font-size:15px;font-weight:600;display:block;margin-bottom:2px}.docRow p{margin:6px 0 4px;max-width:78ch}.docRow small{display:block;color:var(--muted);font-size:11px;line-height:1.5}
