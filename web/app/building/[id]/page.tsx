@@ -78,10 +78,10 @@ export default async function BuildingPage({params}:Props) {
       <p className={styles.note}>{byDoc.size-coverSheets} document{byDoc.size-coverSheets===1?'':'s'} across {new Set([...byDoc.values()].map(d=>`${d.agency}/${d.box}`)).size} box{new Set([...byDoc.values()].map(d=>`${d.agency}/${d.box}`)).size===1?'':'es'}, grouped by what each document is. Titles and summaries are machine-written; the page image is the authority.{coverSheets?` ${coverSheets} folder cover sheet${coverSheets===1?'':'s'} not listed.`:''}</p>
       {orderedTypes.map(t=><div key={t} className={styles.docGroup}><h3>{docTypeLabel(t)} <span className="muted">· {typeGroups.get(t)!.length}</span></h3>
         {typeGroups.get(t)!.sort((a,b)=>(span(a.dates)||'9999').localeCompare(span(b.dates)||'9999')||a.doc.localeCompare(b.doc)).map(d=><div className={styles.docRow} key={d.doc}>
-          <a className={styles.docTitle} href={`/doc/${encodeURIComponent(d.doc)}`}>{d.title||`${docTypeLabel(d.doc_type)||'Document'}${d.folder?` — ${d.folder}`:''}`}</a>
+          <a className={styles.docTitle} href={`/doc/${encodeURIComponent(d.doc)}`}>{d.title||(d.doc_type&&d.doc_type!=='other'?`Untitled ${(docTypeLabel(d.doc_type)||'document').toLowerCase()}`:'Unclassified document, no title yet')}</a>
           <span className="mono small muted">{d.doc}</span>
           {d.summary&&<p className="small">{d.summary}</p>}
-          <small>{d.page_count??d.pages} page{(d.page_count??d.pages)===1?'':'s'} · {span(d.dates)||'no date extracted'} · {d.agency||'Agency not recorded'} · Box {d.box||'—'}{d.folder?` · ${d.folder}`:''}{d.hasTest?' · test candidate pages':''} · <a href={pageUrl({doc:d.doc,page:d.firstPage})}>matched page {d.firstPage}</a></small>
+          <small>{d.page_count??d.pages} page{(d.page_count??d.pages)===1?'':'s'} · {span(d.dates)||'no date extracted'} · {d.agency||'Agency not recorded'} · Box {d.box||'—'}{d.folder?` · folder “${d.folder.length>70?d.folder.slice(0,70).trim()+'…':d.folder}”`:''}{d.hasTest?' · test candidate pages':''} · <a href={pageUrl({doc:d.doc,page:d.firstPage})}>matched page {d.firstPage}</a></small>
         </div>)}
       </div>)}
       {!orderedTypes.length&&<p>No documents beyond folder cover sheets are indexed for this building yet.</p>}
