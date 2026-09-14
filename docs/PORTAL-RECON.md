@@ -1,8 +1,8 @@
 # 9/11 Document Portal — reconnaissance
 
 Recon run 2026-09-13 (portal launched 2026-09-08) against
-`https://sept11documents.cityofnewyork.us/`. About 130 HTTP requests to the portal
-in total, all sequential at ≤2 req/s with UA
+`https://sept11documents.cityofnewyork.us/`. About 140 HTTP requests to the portal
+in total (plus two short browser sessions), all sequential at ≤2 req/s with UA
 `sept11-docs-research/0.1 (contact: digitalhen@gmail.com)`. Four PDFs were
 downloaded (three distinct documents). Raw responses are under `data/samples/`
 (gitignored). No personal names appear in this document; documents are
@@ -227,7 +227,10 @@ For `NYC-WTC_000058160.pdf` (DEP lab data sheets, 3 pages, 472 KB),
 `pdftotext -layout` gave 478 tokens: 181 purely alphabetic words, 232 tokens
 containing digits (tabular lab results) and 8 junk tokens (~1.7%), from 7,797
 characters. The text is usable for full-text search. Layout-heavy forms come
-through as whitespace-aligned columns, and handwriting will not be recognized.
+through as whitespace-aligned columns. The Disclaimers tab says the city also ran a
+handwriting-to-text pass. Whether that text is in the PDF layer or only in the
+index's markdown twin is **unverified**. Compare `pdftotext` with the search
+snippet on a handwritten page before relying on the PDF layer alone.
 The 1-page sample from volume 0007 gave 41 words. One sample is not a quality
 survey; score a stratified sample per volume before trusting it.
 
@@ -252,9 +255,35 @@ survey; score a stratified sample per volume before trusting it.
 - The same message says PII was redacted but that "an inadvertent disclosure
   may occur". The portal has a "Notify Us About Personal Information" tab for
   reporting it.
-- Disclaimers / FAQ tabs: see below.
+- **Disclaimers tab** (read in the browser; it renders from the app fragment
+  `main.Disclaimers`, which is not a standalone file). It contains only
+  accuracy caveats, paraphrased here:
+  - search relies on OCR, and on a separate handwriting-to-text conversion;
+  - neither process is fully accurate, handwriting especially;
+  - previewing downloads the whole PDF, and some PDFs are very large.
 
-<!-- DISCLAIMERS -->
+  It says **nothing** about copyright, reuse, redistribution, automated access
+  or scraping.
+
+- **FAQ tab** (the `main.FAQ` fragment, read in the browser; paraphrased).
+  - **Contents:** DEP paper records found in August 2025, City Hall records
+    held by DORIS, a WTC 7 set, and records collected from other agencies.
+    Most were held until recently by the World Trade Center Captive Insurance
+    Company.
+  - **Size and schedule:** more than 170,000 pages at launch, with further
+    documents posted on a rolling basis over the next year. Review of a large
+    additional set of agency records is ongoing.
+  - **Withheld:** only PII is named.
+  - **Reuse:** a keyword scan of the whole FAQ for copyright, reuse,
+    redistribution, permission, terms of use, bulk, automated, scraping,
+    public domain and licence found **0 matches**.
+- **Net:** there is no robots file, no terms of use, and no stated restriction
+  on reuse or automated retrieval. The city's only statement on access is the
+  free view-and-download line above. Politeness is still the right default: a
+  descriptive UA, 1 req/s, backoff, off-peak runs, and a courtesy note to the
+  Law Department before a full mirror. Redistributing the files ourselves
+  deserves a PII-takedown process, because the city itself expects missed
+  redactions.
 
 ## 9. `scripts/fetch_sample.mjs` (end-to-end proof)
 
