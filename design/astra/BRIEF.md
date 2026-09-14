@@ -48,7 +48,7 @@ Tone: respectful and plain. No sensationalism. Never cute.
 
 The primary search field becomes a single **"Ask anything"** input that accepts both a natural
 question ("Was asbestos found in buildings on Liberty Street in October 2001?") and plain keywords
-or a Bates number (`NYC-WTC_000058160`). Design both outcomes, and make the difference legible:
+or a Bates number (`NYC-WTC_900058160`). Design both outcomes, and make the difference legible:
 
 1. **AI answer** (for questions): a short answer written only from the records, where **every
    sentence carries citations to specific Bates pages** you can open; a visible list of the
@@ -85,8 +85,8 @@ earns trust. Keep screens consistent as one system (shared `style.css` is fine).
 ## The data — be faithful, do not invent fields
 
 - 24,436 PDF documents, 172,537 pages, released 2026-09-08 by the NYC Law Department; more monthly.
-- Identifiers: Bates numbers `NYC-WTC_000000001` style; each document is a Bates range, one number
-  per page. Official PDF URL: `https://sept11documents.cityofnewyork.us/apps/content/September11_MD/<Bates>.pdf`.
+- Identifiers: Bates numbers `NYC-WTC_900000001` style; each document is a Bates range, one number
+  per page. Official PDF URL: `[official URL omitted from this offline fixture]`.
 - Collections (source): "DEP Hard Copies (68 Boxes)" 21,392 docs · "WTC 7" 3,023 · "DORIS Giuliani" 21.
 - Agencies: Environmental Protection 21,392 · Citywide Administrative Services 2,915 · Fire
   Department 96 · Records and Information Services 21 · Design and Construction 9 · Buildings 3.

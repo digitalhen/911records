@@ -1,13 +1,13 @@
-# 9/11 City Records — direction
+# 9/11 City Records — round 2
 
-A records desk, organized around the work of finding a page and checking it. The masthead gives the project a clear identity without creating a landing-page hero. Rules, aligned columns and deliberate differences in density connect search, reading and case preparation.
+Round 2 keeps the records-desk direction: Arial/Helvetica prose, monospace Bates stamps, cool white surfaces, slate text and restrained blue actions. The persistent case binder connects search, source checking and exhibit preparation without changing the visual system.
 
-Arial/Helvetica keeps prose familiar and readable without an external font dependency. System monospace identifies Bates stamps, counts and production volumes. Large, plain numerals establish collection scale; smaller technical references remain subordinate to document content.
+Citation discipline is explicit: if a sentence has no page citation, it is not in the records. Uncited answer paragraphs are suppressed; hover, focus or tap opens a quoted line beside a clearly fictional source-image crop. OCR coverage and page-quality labels explain where scans are weak; the page remains the authority.
 
-The palette uses cool white, slate text, pale gray working surfaces and restrained blue for actions and links. Underlines and words distinguish added, removed and re-redacted records. Search highlights use a muted yellow-green. There are no decorative shadows, gradients or card grids.
+Roles sit beside names and extracted entities. People are searchable only in official or professional capacities, linked through their action to a record and signature block. Private individuals have no entity pages, suggestions or identity search. The personal-information policy explains exclusions, reporting, response times and refusal to identify redacted people; appearance in a record implies nothing about anyone.
 
-The answer earns trust by describing itself as machine-written, citing every substantive sentence to specific Bates pages, listing every page read and stating the limits of those pages. Source metadata and OCR-derived facts occupy separate sections. Uncertainty is expressed in words, not confidence scores. Private individuals are represented only by roles or redaction placeholders.
+Discovery adds related records filed elsewhere, page/passage similarity, topics, near-duplicates, building files and case-folder suggestions. Entity search combines typed tokens with free text; entity and signatory pages expose roles, extraction confidence and source links. These interactions use fixed, labeled fixtures.
 
-All record text, readings and change scenarios are labeled illustrative. Supplied collection totals remain distinct from sample search counts. Official PDF links follow the supplied URL convention; the fixtures are not verified against those files.
+The offline SVG map draws 4,764 supplied present-day footprints, with four illustrative BIN assignments. Substance, month, record-type and results-only filters update buildings and timelines. Readings link to highlighted fictional Bates pages; colors describe available record types, never health judgments. WTC and fixture sampling-zone outlines are approximate.
 
-Ten HTML screens cover the requested views plus reading and insufficient-evidence states. Shared CSS adapts the full screens to phones; the mobile overview also shows two 390-pixel frames. Inline scripts demonstrate local search routing, example filtering, page navigation, citation copying, saved pages, editable notes, ordering and CSV export. Nothing is sent to a server. Browser storage may be restricted when opening files directly.
+All example Bates numbers use the fictional NYC-WTC_9 series; real City PDF links are omitted. CSV exports and redaction reports open copyable dialogs, with download secondary. Record data, crops and scripts stay local; no search, reporting or network service is connected. Unused build scripts and duplicate GeoJSON were removed.

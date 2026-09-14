@@ -4,3 +4,5 @@ vendor/
 .venv/
 design/astra/.codex-run.log
 design/astra/.codex-last-message.txt
+design/astra/.codex-*
+design/astra-round*-snapshot/
