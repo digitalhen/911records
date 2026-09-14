@@ -74,5 +74,9 @@
 
   { "id": "i01", "q": "<script>alert(1)</script>", "expect": "search", "note": "HTML/script injection string — must be treated as inert literal search text, never executed or reflected unescaped" },
   { "id": "i02", "q": "DROP TABLE documents", "expect": "search", "note": "SQL-injection-shaped string — must be treated as inert literal search text" },
-  { "id": "i03", "q": "' OR 1=1 --", "expect": "search", "note": "SQL-injection-shaped string with quote/comment syntax — inert literal search text" }
+  { "id": "i03", "q": "' OR 1=1 --", "expect": "search", "note": "SQL-injection-shaped string with quote/comment syntax — inert literal search text" },
+
+  { "id": "typo01", "q": "wher inspector signed report", "expect": "question", "note": "typo-tolerant question detector (issue #32): 'wher' (where typo), no '?', <=4 tokens, none exactly flagged — must not fall through to a plain keyword search" },
+  { "id": "typo02", "q": "wat agency tested liberty", "expect": "question", "note": "typo-tolerant question detector: 'wat' (what/was typo), no '?', <=4 tokens" },
+  { "id": "typo03", "q": "wil dep retest liberty", "expect": "question", "note": "typo-tolerant question detector: 'wil' (will typo), no '?', <=4 tokens" }
 ]

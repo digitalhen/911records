@@ -33,6 +33,62 @@ function bareWord(token: string): string {
   return token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '');
 }
 
+// issue #32 item 5: a garbled OCR-style input ("wat caused the collapse",
+// "wher testing occurred") carries no literal "?" and its question/aux word
+// is itself misspelled, so it matched none of FLAGGED_WORDS and — as long as
+// it stayed at or under MAX_KEYWORD_TOKENS — fell through to a plain keyword
+// search instead of the planner. `isCloseMatch` accepts one edit (a single
+// substitution, insertion, deletion, or adjacent transposition) so a token
+// that's *almost* a flagged word still routes to the model. Deliberately not
+// a general spellchecker: length capped to short flagged words only (typos
+// of "you"/"your"/pronouns are still allowed through as plain search terms;
+// this is about the words that decide "is this a question", not fidelity to
+// every flagged word).
+function isCloseMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const la = a.length;
+  const lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  if (la === lb) {
+    let i = 0;
+    while (i < la && a[i] === b[i]) i++;
+    let j = la - 1;
+    while (j >= 0 && a[j] === b[j]) j--;
+    if (j < i) return true; // identical (shouldn't happen, a!==b already excluded)
+    if (j - i === 0) return true; // single substitution
+    return j - i === 1 && a[i] === b[j] && a[j] === b[i]; // adjacent transposition
+  }
+  const [shorter, longer] = la < lb ? [a, b] : [b, a];
+  let i = 0;
+  let j = 0;
+  let skipped = false;
+  while (i < shorter.length && j < longer.length) {
+    if (shorter[i] === longer[j]) {
+      i++;
+      j++;
+    } else if (!skipped) {
+      skipped = true;
+      j++;
+    } else {
+      return false;
+    }
+  }
+  return true; // one insertion/deletion accounted for the length difference
+}
+
+/** True when `token` is a one-edit typo of some word in FLAGGED_WORDS. Only
+ *  attempted for tokens of 3+ letters (matching FLAGGED_WORDS entries of 3+
+ *  letters) — fuzzy-matching 1-2 letter tokens produces far more false
+ *  positives than it catches. */
+function isFlaggedTypo(token: string): boolean {
+  if (token.length < 3) return false;
+  for (const w of FLAGGED_WORDS) {
+    if (w.length < 3) continue;
+    if (isCloseMatch(token, w)) return true;
+  }
+  return false;
+}
+
 // Kept from the original router: a keyword search reads as a short typed
 // phrase, not a sentence. Without this, a long flagged-word-free sentence
 // like "Identify the private individual referenced in this letter." would
@@ -52,7 +108,8 @@ function isKeywordQuery(q: string): boolean {
   if (tokens.length === 0 || tokens.length > MAX_KEYWORD_TOKENS) return false;
   let hasContentTerm = false;
   for (const t of tokens) {
-    if (FLAGGED_WORDS.has(t.toLowerCase())) return false;
+    const low = t.toLowerCase();
+    if (FLAGGED_WORDS.has(low) || isFlaggedTypo(low)) return false;
     hasContentTerm = true;
   }
   return hasContentTerm;
