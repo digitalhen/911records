@@ -114,7 +114,7 @@ OUT_PATH = EMB / "p3-doctypes.jsonl"
 # Bumped whenever a rule (any RE_* above or classify()'s logic) changes, so a cached row keyed only
 # on text_sha1 doesn't silently survive a rule fix forever — a document's text is unchanged but its
 # classification should not be. load_existing() only reuses a row whose rules_version also matches.
-RULES_VERSION = 2
+RULES_VERSION = 3
 
 WATERMARK_RE = re.compile(r"NYC\s*9[\/\s]*1+1?\s*Public\s*Portal\s*Document", re.I)
 
@@ -123,7 +123,8 @@ WATERMARK_RE = re.compile(r"NYC\s*9[\/\s]*1+1?\s*Public\s*Portal\s*Document", re
 # bullet-glyph misread of the colon (e.g. "Block:•38 Lot: 17", NYC-WTC_000120384) or drops the
 # colon entirely ("Block 16 Lot 7510", NYC-WTC_000105306) — a single optional separator char missed
 # both.
-RE_BLOCK_LOT = re.compile(r"\bBlock\W{0,4}\d+\W{1,4}Lot\W{0,4}\d+", re.I)
+# OCR variants: "Biock", "B1ock", "Loi:", "Lol:", "L0t" (NYC-WTC_000095207 read "Loi: 100").
+RE_BLOCK_LOT = re.compile(r"\bB[l1Ii]ock\W{0,4}\d+\W{1,4}L[oO0][tTlLiI1]\W{0,4}\d+", re.I)
 RE_BIN = re.compile(r"\bBIN\s*[:\-]?\s*\d{6,7}", re.I)
 
 # ---- chain_of_custody -------------------------------------------------------
