@@ -9,13 +9,16 @@ Design sources: `design/astra/home.html`, `browse.html`, `changes.html`,
 
 ## Routes
 
-1. `/` — replace the placeholder home with the design's home: the Ask anything field (a plain
-   form posting to `/ask?q=` — B3 builds `/ask`; for now it may 302 to `/search?q=` if `/ask` is
-   absent), what the collection is (live counts from `site.meta` and `site.snapshots`), suggested
-   questions for families and for lawyers (copy from the design), entry points into browse, map,
-   topics and entities, and "recent releases and changes" (last 5 rows of `site.changes` grouped
-   by date). Describe coverage plainly: how many pages are image-only scans and that we OCR them
-   (`documents.pages_empty`, `pages_ocr` sums).
+1. `components/home/HomePanel.tsx` (server component, no props) — NOT the `/` route: Henry decided
+   the home page is a full-viewport map with the search bar over it (brief B5 owns `/`). B5 mounts
+   your panel inside the map's side panel / mobile bottom sheet. Put in it, compactly, what the
+   design's home shows: what the collection is (live counts from `site.meta` and
+   `site.snapshots`), suggested questions for families and for lawyers (copy from the design,
+   each a link to `/ask?q=`), entry points into browse, topics and entities, "recent releases and
+   changes" (last 5 rows of `site.changes` grouped by date), and one plain line on coverage
+   (image-only pages OCR'd by us; sums of `documents.pages_empty` / `pages_ocr`). It must look
+   right at 360 px wide inside a panel. Also export a `HomePanelFallback` that renders when the
+   database is unreachable. Do not touch `web/app/page.tsx`.
 2. `/browse` and `/browse/[agency]/[volume]/[box]/[folder]` (each level optional, URL-encoded):
    the physical order, collection → agency → volume → box → folder → documents, with counts of
    documents and pages at every level, City-provided metadata only. Folder names are the City's

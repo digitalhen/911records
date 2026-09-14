@@ -23,6 +23,10 @@ Written 2026-09-14 (New York time, late on the 13th). Henry's decisions, given i
 - Operator: **Cleartext Labs** (footer, about, privacy, JSON-LD publisher). Independent; not affiliated with the City.
 - Ads: AdSense, one labelled unit per page below the content, never inside a document or an
   answer (publisher `ca-pub-9961054735948902`, unit `4391479569`). `ads.txt` and `/privacy` carry over.
+- **Home is the map** (Henry, 09-14): `/` opens on a full-viewport map of lower Manhattan, buildings lit
+  by what records exist, with the Ask/search bar over the top, like prospect.nyc — so people explore,
+  and for the wow factor. The collection summary, suggested questions and recent changes live in the
+  map's side panel, not above the fold.
 - Sub-agents on cheaper models; Codex (`codex exec`, gpt-6-astra) for the large porting jobs.
 
 ## Architecture
@@ -66,7 +70,7 @@ scripts/refresh_daily.sh (launchd 03:30): enumerate →
 
 | Path | What |
 |---|---|
-| `/` | Ask + search, collection summary, recent changes |
+| `/` | full-viewport building map with the Ask/search bar overlaid; side panel: collection summary, suggested questions, recent changes |
 | `/search?q=&agency=&box=&contaminant=…` | results with facets and snippets |
 | `/ask?q=` → `/a/<id>` | answer, permalinked with citations frozen |
 | `/doc/<bates_start>` and `/doc/<bates_start>/p/<n>` | document viewer; page image beside OCR text |
@@ -115,10 +119,10 @@ Page images: `data/pages/<agency>/<volume>/<bates>/<n>.webp` (about 110 dpi) and
 | A1 | Pipeline: `render_pages.mjs` (pdftoppm → webp + thumb, incremental), `-bbox-layout` word boxes in `extract_text.mjs`, `ocr_pages.py` (tesseract for `empty` pages, text + boxes), `loop.sh` runs them | Codex | — |
 | A2 | Pipeline: `build_site_db.py` (schema above, build-then-swap), `opensearch.py` gains `image_ready`, `ocr_source`, doc-level fields, basic-auth env, `--host`; `refresh_daily.sh` + launchd plist; `docs/RUNBOOK.md` | Sonnet | A1 file layout |
 | B1 | App foundation: `web/` Next.js 15 + TS, design system ported from `design/astra/style.css`, layout and nav, `lib/siteDb.ts`, `lib/opensearch.ts`, `lib/embed.ts`, search results with facets, document viewer with page image, OCR text, hit highlighting from boxes, Bates redirects, `/files` rewrites, `/api/health`, Dockerfile, `docker-compose.yml` (app, files, opensearch), `robots.txt`, sitemap index | Sonnet | schema above |
-| B2 | Home, browse, changes, personal-information, privacy, about, mobile frames | Codex | B1 |
+| B2 | Home side-panel content (`HomePanel`), browse, changes, personal-information, privacy, about, mobile frames | Codex | B1 |
 | B3 | Ask: router, Haiku plan, hybrid retrieval, cited answer, refusal, permalinks, spend cap | Sonnet | B1 |
 | B4 | Entities, signatory, topics, related panel on document, versions | Codex | B1, A2 |
-| B5 | Map (MapLibre + OpenFreeMap tiles + our footprints GeoJSON) and building pages | Codex | B1, A2 |
+| B5 | Home = map (MapLibre, no external tiles, Prospect's canvas approach, our footprints) with the search bar overlay, `/map` alias, building pages | Codex | B1, A2 |
 | B6 | Case folder (browser-local, export, suggestions), saved-search alerts (copy link, no email in v1), SEO pass (metadata, JSON-LD, canonical, OG, sitemaps for documents, entities, buildings, topics) | Sonnet | B1–B5 |
 | C | Deploy: Dokploy app on `ubuntu-production` replacing the holding page, env, bind mount, OpenSearch credentials, first full index, DNS check, `/api/health` green | main session | A2, B1 |
 | D | QA: design fidelity against `design/astra/`, privacy rules (no private names in entity pages or suggestions), citation check on Ask, mobile | Sonnet, one pass | all |
