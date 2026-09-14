@@ -214,7 +214,16 @@ def _slug(s: str) -> str:
 def title_case(s: str) -> str:
     """Title-case a normalized (all-caps) street/org name, keeping numerals and single-letter
     directionals ("W") capitalised as-is."""
-    return " ".join(w if (w.isdigit() or (len(w) <= 1)) else w.capitalize() for w in s.split())
+    def word(w: str) -> str:
+        if w.isdigit() or len(w) <= 1:
+            return w
+        # Initialisms written with apostrophes or periods ("A'B'C", "A.B.C.") keep every letter
+        # upper-case — capitalize() turned "A'B'C ASSOCIATES" into "A'b'c Associates" (QA 2026-09-14).
+        parts = re.split(r"['.]", w)
+        if len(parts) > 1 and all(len(p) <= 1 for p in parts):
+            return w.upper()
+        return w.capitalize()
+    return " ".join(word(w) for w in s.split())
 
 
 class GazEntry(NamedTuple):
