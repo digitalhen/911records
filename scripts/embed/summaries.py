@@ -420,7 +420,8 @@ def is_usage_limit_error(e: BaseException) -> bool:
     return "usage limit" in str(e).lower()
 
 
-BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK, .claudekey) or "cli" (claude -p)
+BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK, .claudekey), "cli" (claude -p) or "codex" (codex exec)
+CODEX_MODEL = os.environ.get("SUMMARIES_CODEX_MODEL", "gpt-5.3-codex-spark")
 
 
 def call_claude_cli(prompt: str) -> str:
@@ -447,8 +448,39 @@ def call_claude_cli(prompt: str) -> str:
     return str(data.get("result", ""))
 
 
+def call_codex_cli(prompt: str) -> str:
+    """2026-09-14 (Henry): the same prompt through the Codex CLI on a ChatGPT plan. gpt-5.3-codex-spark
+    returned a full 20-document batch in ~7 s in testing (claude -p: ~25 s). Runs read-only from the
+    repo (Codex only trusts configured directories); the system prompt is prepended because codex exec
+    has no system-prompt flag. A quota/usage error is raised as "usage limit" so the run stops cleanly
+    instead of writing empty rows — and Henry's banked resets are never touched by this script."""
+    import subprocess, tempfile
+    with tempfile.NamedTemporaryFile("w+", suffix=".txt", delete=False) as out:
+        out_path = out.name
+    proc = subprocess.run(
+        ["codex", "exec", "-C", str(REPO), "--sandbox", "read-only", "-m", CODEX_MODEL, "-o", out_path, "-"],
+        input=SYSTEM_PROMPT + "\n\n" + prompt, capture_output=True, text=True, timeout=300,
+    )
+    text = Path(out_path).read_text() if Path(out_path).exists() else ""
+    Path(out_path).unlink(missing_ok=True)
+    err = (proc.stderr + proc.stdout).lower()
+    if proc.returncode != 0 or not text.strip():
+        if "usage limit" in err or "quota" in err or "rate limit" in err or "too many requests" in err:
+            raise RuntimeError("usage limit: codex " + err[-200:])
+        raise RuntimeError(f"codex exec exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
+    return text
+
+
 def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
+    if BACKEND == "codex":
+        try:
+            text = call_codex_cli(prompt)
+        except RuntimeError as e:
+            if "usage limit" in str(e):
+                stop.set(str(e))
+            raise
+        return extract_json_array(text), 0.0  # plan-billed: no API spend to count
     if BACKEND == "cli":
         try:
             text = call_claude_cli(prompt)
@@ -668,7 +700,7 @@ def main() -> int:
     stopped_on_budget = False
     if to_process:
         client = None
-        if BACKEND != "cli":
+        if BACKEND not in ("cli", "codex"):
             import anthropic  # imported lazily: a run with nothing left to do needs no key/SDK at all
             client = anthropic.Anthropic(api_key=CLAUDE_KEY_FILE.read_text().strip())
 
