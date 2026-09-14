@@ -149,7 +149,11 @@ run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 for soft in "summaries_py .venv/bin/python scripts/embed/summaries.py" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
-  if "$@" >> "$LOG" 2>&1; then log "-- $name ok --"; else log "-- $name FAILED (exit $?) -- non-fatal, continuing"; fi
+  # Time-boxed (SOFT_STAGE_SECS, default 900 s): a capped API made summaries.py retry for ages.
+  "$@" >> "$LOG" 2>&1 & soft_pid=$!
+  ( sleep "${SOFT_STAGE_SECS:-900}"; kill "$soft_pid" 2>/dev/null ) & watchdog=$!
+  if wait "$soft_pid"; then log "-- $name ok --"; else log "-- $name FAILED or timed out (exit $?) -- non-fatal, continuing"; fi
+  kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
 done
 run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --related data/embed/related-topics.sqlite
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
