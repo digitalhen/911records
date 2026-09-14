@@ -8,7 +8,7 @@ export const PANEL_TYPES = ['lab', 'agency', 'contractor', 'substance', 'address
 export const pageHref = (doc: string, page = 1) => `/doc/${encodeURIComponent(doc)}/p/${page}`;
 export const entityHref = (type: string, slug: string) => type === 'signatory' ? `/signatory/${encodeURIComponent(slug)}` : `/entity/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`;
 export interface Source { doc: string; page: number; confidence: number | null }
-export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bbl?: string | null; bin?: string | null }
+export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bin?: string | null; bbl?: string | null; variants?: unknown }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
 export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; dates: unknown }
 export interface Topic extends Source { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null }
@@ -23,11 +23,15 @@ export function entityLinkHref(row: Pick<PanelRow,'type'|'slug'|'bin'>): string 
   return row.type === 'address' && row.bin ? `/building/${encodeURIComponent(row.bin)}` : entityHref(row.type, row.slug);
 }
 
+// entities.bin (from the Prospect property-roll gazetteer join) can name a BIN with no
+// site.places row of its own — place_pages is built from a separate extraction pass, so
+// /building/<bin> would 404. Only surface a bin here when a building page actually resolves.
+const LINKABLE_BIN = `(CASE WHEN e.bin IS NOT NULL AND EXISTS (SELECT 1 FROM site.places pl WHERE pl.kind='bin' AND pl.key=e.bin) THEN e.bin END) AS bin`;
 /** Top N entities of one type by page count, plus the total count of all indexed entities of that type. Used by the /entities panel grid and its "See all" link. */
 export async function panelEntities(type: string, limit = 8): Promise<{ rows: PanelRow[]; total: number }> {
   if (type === 'signatory') return panelSignatories(limit);
   if (!(ENTITY_TYPES as readonly string[]).includes(type)) return { rows: [], total: 0 };
-  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,e.bin,e.bbl,
+  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,${LINKABLE_BIN},e.bbl,
     c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
     JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
       FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
@@ -71,7 +75,7 @@ export async function listEntities(type: string, opts: { letter?: string; offset
   if (!(ENTITY_TYPES as readonly string[]).includes(type)) return null;
   const params: unknown[] = [type, limit, offset];
   if (letter) params.push(`${letter}%`);
-  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,e.bin,e.bbl,
+  const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,${LINKABLE_BIN},e.bbl,
     c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
     JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
       FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
@@ -127,6 +131,20 @@ export const getOccurrences = cache(async (id: string, signatory = false): Promi
     FROM site.${table} ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
     WHERE ep.${key}=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY ep.doc,ep.page,role`, [id]);
 });
+export interface RelatedEntity { id: string; type: string; slug: string; label: string; bin: string | null; shared_pages: number }
+/** Other non-person entities that co-occur on the same source pages as this entity/signatory —
+ *  labs, agencies, contractors, substances and addresses only (entity_pages never carries a
+ *  person), ranked by how many pages they share. Feeds the "Related entities" section. */
+export async function relatedEntities(pages: Pick<Source,'doc'|'page'>[], excludeId = '', limit = 10): Promise<RelatedEntity[]> {
+  const docs = [...new Set(pages.map(p => p.doc))];
+  const pageNos = [...new Set(pages.map(p => p.page))];
+  if (!docs.length) return [];
+  return queryReadSafe<RelatedEntity>(`SELECT e.id,e.type,e.slug,e.label,${LINKABLE_BIN},COUNT(DISTINCT (ep.doc,ep.page)) AS shared_pages
+    FROM site.entity_pages ep JOIN site.entities e ON e.id=ep.entity_id JOIN site.documents d USING(doc)
+    WHERE ep.doc=ANY($1::text[]) AND ep.page=ANY($2::int[]) AND ep.entity_id<>$3 AND d.status IS DISTINCT FROM 'removed'
+      AND EXISTS (SELECT 1 FROM unnest($1::text[],$2::int[]) AS src(doc,page) WHERE src.doc=ep.doc AND src.page=ep.page)
+    GROUP BY e.id,e.type,e.slug,e.label,e.bin ORDER BY shared_pages DESC,e.id LIMIT $4`, [docs, pageNos, excludeId, limit]);
+}
 export const getTopics = cache(async () => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
   JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN site.pages p USING(doc) WHERE dt.topic=t.id AND d.status IS DISTINCT FROM 'removed'
