@@ -5,11 +5,19 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.19';
+export const APP_VERSION = '0.14.20';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.20',
+    date: '2026-09-14',
+    notes: [
+      'Questions about a building now find records by meaning as well as by exact words (a question about “environmental testing” finds an asbestos fibre analysis by TEM whose date is written 7/1/02).',
+      'Answers quote the part of a page that best matches the question, not just the letterhead at the top, and quote more of it.',
+    ],
+  },
   {
     version: '0.14.19',
     date: '2026-09-14',

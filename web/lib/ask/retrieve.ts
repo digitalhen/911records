@@ -7,7 +7,7 @@ import { getPageText } from '../site';
 import type { AskFilters } from './plan';
 
 export const MAX_RETRIEVED_PAGES = 12;
-const EXCERPT_MAX_CHARS = 600;
+const EXCERPT_MAX_CHARS = 900;
 
 export interface RetrievedPage {
   doc: string;
@@ -70,19 +70,29 @@ function softFilterTerms(filters: AskFilters): string[] {
 
 /** The best-matching span of `text` for any of `terms`, padded to roughly EXCERPT_MAX_CHARS. */
 function bestExcerpt(text: string, terms: string[]): string {
+  // The window that covers the most distinct question terms wins (2026-09-14: the earliest
+  // single hit was usually a letterhead — "ATC Associates" at the top of a fax cover — and the
+  // substance of the page never reached the answer model). Ties go to the earliest window.
   const lower = text.toLowerCase();
-  let bestIdx = -1;
-  for (const term of terms) {
-    const t = term.trim().toLowerCase();
-    if (!t) continue;
-    const idx = lower.indexOf(t);
-    if (idx >= 0 && (bestIdx === -1 || idx < bestIdx)) bestIdx = idx;
+  const clean = terms.map((t) => t.trim().toLowerCase()).filter(Boolean);
+  const starts: number[] = [];
+  for (const t of clean) {
+    let idx = lower.indexOf(t);
+    while (idx >= 0 && starts.length < 200) {
+      starts.push(idx);
+      idx = lower.indexOf(t, idx + 1);
+    }
   }
-  if (bestIdx === -1) return text.slice(0, EXCERPT_MAX_CHARS);
+  if (!starts.length) return text.slice(0, EXCERPT_MAX_CHARS);
   const half = Math.floor(EXCERPT_MAX_CHARS / 2);
-  const start = Math.max(0, bestIdx - half);
-  const end = Math.min(text.length, start + EXCERPT_MAX_CHARS);
-  return text.slice(start, end);
+  let best = { start: 0, score: -1 };
+  for (const s of [...new Set(starts)].sort((a, b) => a - b)) {
+    const start = Math.max(0, s - half);
+    const window = lower.slice(start, start + EXCERPT_MAX_CHARS);
+    const score = clean.filter((t) => window.includes(t)).length;
+    if (score > best.score) best = { start, score };
+  }
+  return text.slice(best.start, Math.min(text.length, best.start + EXCERPT_MAX_CHARS));
 }
 
 /**

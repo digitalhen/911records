@@ -349,9 +349,23 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   if (filters.docs?.length) {
     // A document-scoped search (one building's own records, lib/ask/placeBoost.ts) must filter
     // BEFORE ranking: as a post_filter on the hybrid query it only sees the corpus-wide top hits,
-    // which rarely include the scoped documents, so it came back empty (2026-09-14). Keyword arm
-    // only — the semantic arm cannot be pre-filtered here.
-    queryBody = { bool: { must: textQuery, filter: [{ terms: { doc: filters.docs.slice(0, 1000) } }] } };
+    // which rarely include the scoped documents, so it came back empty (2026-09-14). Both arms
+    // are pre-filtered (the index uses the Lucene k-NN engine, which supports an in-query filter):
+    // the semantic arm is what lets "environmental testing" find an "Asbestos Fiber Analysis by
+    // TEM" report whose date is written "7/1/02", where the keyword arm only found fax covers.
+    const docFilter = { terms: { doc: filters.docs.slice(0, 1000) } };
+    const keywordArm = { bool: { must: textQuery, filter: [docFilter] } };
+    if (strippedQuery && vector) {
+      queryBody = {
+        hybrid: {
+          queries: [keywordArm, withCoverSheetHandling({ knn: { vector: { vector, k: Math.max(50, pageSize * 5), filter: docFilter } } }, includeCoverSheets)],
+          pagination_depth: Math.max(1000, from + pageSize),
+        },
+      };
+      searchPath += `?search_pipeline=${PIPELINE}`;
+    } else {
+      queryBody = keywordArm;
+    }
   } else if (strippedQuery && vector) {
     queryBody = {
       hybrid: {
