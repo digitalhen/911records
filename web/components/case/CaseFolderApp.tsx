@@ -6,6 +6,7 @@ import { useCaseFolder } from '@/lib/case/useCaseFolder';
 import { exportCsv } from '@/lib/case/store';
 import type { CaseItem } from '@/lib/case/types';
 import type { CaseDocMeta } from '@/lib/case/lookup';
+import { useSession } from '@/lib/auth/client';
 import { Button, ButtonLink, Callout, Dialog, Textarea, Toast, useToast } from '@/components/ui';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
@@ -29,6 +30,8 @@ interface Suggestion {
 
 export function CaseFolderApp() {
   const { items, remove, updateNote, moveUp, moveDown } = useCaseFolder();
+  const { data: session, isPending: sessionPending } = useSession();
+  const signedIn = !sessionPending && !!session?.user;
   const [meta, setMeta] = useState<Record<string, CaseDocMeta>>({});
   const [suggestions, setSuggestions] = useState<{ rows: Suggestion[]; unavailable: boolean; loaded: boolean }>({
     rows: [],
@@ -128,9 +131,18 @@ export function CaseFolderApp() {
     <>
       <div className="page-title">
         <div>
-          <div className="eyebrow">Saved research / Stored in this browser</div>
+          <div className="eyebrow">{sessionPending ? 'Saved research' : signedIn ? 'Saved research / Synced to your account' : 'Saved research / Stored in this browser'}</div>
           <h1>Case folder</h1>
-          <p className="subtitle">Pages, working notes and the order you want to cite them. No account, no cloud sync.</p>
+          <p className="subtitle">
+            Pages, working notes and the order you want to cite them.{' '}
+            {signedIn ? (
+              <>Signed in — this case folder is synced to your account and available on any device.</>
+            ) : (
+              <>
+                Saved in this browser only. <Link href="/account">Sign in</Link> to sync it across devices.
+              </>
+            )}
+          </p>
         </div>
         {items.length > 0 && (
           <Button variant="primary" type="button" onClick={openExport}>
@@ -181,7 +193,7 @@ export function CaseFolderApp() {
                         onBlur={(e) => {
                           if (e.target.value !== item.note) {
                             updateNote(item.doc, item.page, e.target.value);
-                            show('Note saved in this browser.');
+                            show(signedIn ? 'Note saved to your account.' : 'Note saved in this browser.');
                           }
                         }}
                       />
@@ -227,8 +239,15 @@ export function CaseFolderApp() {
               </ButtonLink>
             </section>
             <section>
-              <h2>Local case folder</h2>
-              <p>These notes stay in this browser. No account or cloud sync is connected. Export to keep a separate copy.</p>
+              <h2>{signedIn ? 'Synced to your account' : 'Local case folder'}</h2>
+              {signedIn ? (
+                <p>These notes are saved to your account and load on any device you sign into. Export to keep a separate copy.</p>
+              ) : (
+                <p>
+                  These notes stay in this browser. <Link href="/account">Sign in</Link> to sync them to an account. Export to
+                  keep a separate copy either way.
+                </p>
+              )}
             </section>
           </aside>
         </div>

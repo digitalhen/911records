@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { APP_VERSION } from '@/lib/releases';
 import { CaseCountBadge } from '@/components/case/CaseCountBadge';
+import { AccountChip } from '@/components/auth/AccountChip';
 
 const NAV = [
   { href: '/ask', label: 'Ask & search' },
@@ -32,6 +33,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
             {item.href === '/case' && <CaseCountBadge />}
           </Link>
         ))}
+        <AccountChip />
       </nav>
     </header>
   );

@@ -11,7 +11,8 @@ import { socialMeta } from '@/lib/seo/social';
 // /ask, /a/[id] and /search.
 export function generateMetadata(): Metadata {
   const title = 'Case folder';
-  const description = 'Saved pages, notes and an exhibit list — stored in this browser only. No account, no cloud sync.';
+  const description =
+    'Saved pages, notes and an exhibit list — stored in this browser, or synced to your account if you sign in.';
   return {
     title,
     description,

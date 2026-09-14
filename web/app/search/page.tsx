@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
+import { SaveSearchButton } from '@/components/search/SaveSearchButton';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
@@ -116,12 +117,26 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
 
+  // "Save this search" (issue #21): the current query, minus pagination --
+  // a saved search is the terms and filters, not which results page you
+  // were on. Empty when there's really nothing to save (a bare /search).
+  const saveParams = (() => {
+    const usp = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) {
+      if (k === 'page' || v === undefined) continue;
+      const val = Array.isArray(v) ? v[0] : v;
+      if (val) usp.set(k, val);
+    }
+    return usp.toString();
+  })();
+  const saveLabel = q.trim() ? `“${q}”${filters.agency ? ` · ${filters.agency}` : ''}` : 'Untitled search';
+
   return (
     <>
       <Header active="/ask" />
       <main id="main">
         <SearchBox q={q} compact />
-        <CopyLinkButton />
+        <CopyLinkButton>{saveParams && <SaveSearchButton label={saveLabel} params={saveParams} />}</CopyLinkButton>
         <p className="small muted mb-4">
           {result.error
             ? 'Search is temporarily unavailable.'

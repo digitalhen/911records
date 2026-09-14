@@ -70,11 +70,13 @@ export function save(state: CaseFolderState): boolean {
   try {
     window.localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(state));
     notify();
+    scheduleSync();
     return true;
   } catch {
     // Private browsing / storage disabled / quota exceeded — degrade to
     // "changes last until this page closes" rather than throwing.
     notify();
+    scheduleSync();
     return false;
   }
 }
@@ -122,6 +124,99 @@ export function reorder(fromIndex: number, toIndex: number): boolean {
 
 export function clear(): boolean {
   return save(emptyState());
+}
+
+// --- Account sync (B19, issue #21) ------------------------------------------
+// localStorage stays the offline cache and the only thing read/written
+// above this point; everything below just layers a debounced push and a
+// one-time pull-and-merge on top, per this file's header comment. The only
+// caller is components/auth/AccountChip.tsx (mounted in the header on every
+// page), which calls setAccountUser() whenever Better Auth's session
+// changes — no other component needs to know accounts exist.
+
+let currentUserId: string | null = null;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSync(): void {
+  if (!currentUserId || typeof window === 'undefined') return;
+  if (syncTimer) clearTimeout(syncTimer);
+  // Debounced: a note edited keystroke-by-keystroke (onBlur, actually, but
+  // reorder/remove/add are each one save() call) should coalesce into one
+  // request, not one per action in a burst.
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    void pushToServer();
+  }, 800);
+}
+
+async function pushToServer(): Promise<void> {
+  if (!currentUserId) return;
+  try {
+    await fetch('/api/case/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Re-read rather than closing over a stale array: several save()
+      // calls may have coalesced into this one debounced push.
+      body: JSON.stringify({ items: load().items }),
+    });
+  } catch {
+    // Offline or the API is unreachable — localStorage already has the
+    // change; the next edit's debounce will try again.
+  }
+}
+
+/** Union by (doc, page): local order first, then any account-only items
+ *  appended in their saved order; the note is kept from whichever side has
+ *  one, local winning when both do (this browser is the one being used
+ *  right now). Pure, so it's easy to reason about independent of storage. */
+function mergeWithRemote(local: CaseFolderState, remote: CaseItem[]): CaseFolderState {
+  const byKey = new Map<string, CaseItem>();
+  const order: string[] = [];
+  for (const item of local.items) {
+    const key = itemKey(item.doc, item.page);
+    byKey.set(key, item);
+    order.push(key);
+  }
+  for (const item of remote) {
+    const key = itemKey(item.doc, item.page);
+    const existing = byKey.get(key);
+    if (existing) {
+      byKey.set(key, { ...existing, note: existing.note || item.note });
+    } else {
+      byKey.set(key, item);
+      order.push(key);
+    }
+  }
+  return { version: CASE_STORAGE_VERSION, items: order.map((k) => byKey.get(k)!) };
+}
+
+/** Called by AccountChip whenever Better Auth's session changes. Signing in
+ *  pulls the account's saved case folder once, merges it into this
+ *  browser's local copy (never discards local edits) and pushes the merged
+ *  result back so every device converges. Signing out just stops syncing —
+ *  localStorage is left exactly as it was, per /case's "saved in this
+ *  browser" promise. */
+export async function setAccountUser(userId: string | null): Promise<void> {
+  if (userId === currentUserId) return;
+  const wasSignedOut = currentUserId === null;
+  currentUserId = userId;
+  if (!userId || !wasSignedOut || typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/case/sync');
+    if (!res.ok) return;
+    const body = (await res.json()) as { items?: CaseItem[] };
+    const remote = Array.isArray(body.items) ? body.items : [];
+    if (!remote.length) {
+      // Nothing on the account yet — still push, so a brand-new account
+      // picks up whatever was already saved in this browser.
+      scheduleSync();
+      return;
+    }
+    save(mergeWithRemote(load(), remote));
+  } catch {
+    // Sync unavailable right now; local stays authoritative until the next
+    // sign-in check (e.g. a page reload) tries again.
+  }
 }
 
 function docHref(doc: string, page: number): string {
