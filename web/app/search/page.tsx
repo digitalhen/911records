@@ -295,7 +295,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       </span>
                     )}
                   </div>
-                  {summary && <p className="small">{summary}</p>}
+                  {summary && (
+                    <p className="result-summary">
+                      <span className="result-summary-label">Summary</span> {summary}
+                    </p>
+                  )}
                   {hit.snippetHtml ? (
                     <p className="snippet" dangerouslySetInnerHTML={{ __html: hit.snippetHtml }} />
                   ) : (

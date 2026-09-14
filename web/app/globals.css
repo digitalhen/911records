@@ -2974,3 +2974,25 @@ dialog .mono {
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 .sk-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 37px; }
 @media (max-width: 800px) { .sk-layout { grid-template-columns: 1fr; } }
+
+/* Search results: the plain-language document summary must read as a summary, not as more OCR
+   snippet (2026-09-14, founder: "i still don't see summaries on search"). */
+.result-summary {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--blue-line);
+  background: #f5f7f8;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  max-width: 78ch;
+}
+.result-summary-label {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
