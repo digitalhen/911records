@@ -5,11 +5,22 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.1';
+export const APP_VERSION = '0.14.2';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.2',
+    date: '2026-09-14',
+    notes: [
+      'Ask now reads a building’s own filed records when a question names its address, so questions about a building answer from its lab reports and memos rather than only from building lists.',
+      'The map legend is its own box beside the map controls, explaining what each colour means.',
+      'Building pages: the activity chart shows the month and page count on hover and has a year axis.',
+      'Building record tables label numbers found on a page as such, and explain the confidence figure.',
+      'Follow-up links under an answer and under an empty search sit on the left instead of stretching across the page.',
+    ],
+  },
   {
     version: '0.14.1',
     date: '2026-09-14',

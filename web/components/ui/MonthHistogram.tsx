@@ -68,8 +68,10 @@ function buildSlots(data: MonthCount[]): Slot[] {
  * implementation so the three don't drift. Inline SVG bars, no charting library, fully
  * server-renderable. Months run earliest → latest on the x axis; a run of more than
  * `GAP_THRESHOLD_MONTHS` consecutive empty months collapses to a small break mark rather
- * than spending width on it. Per-bar tooltip is a native <title> + aria-label on the
- * <rect> itself — NOT nested inside an <a> (that combination hydration-errored before).
+ * than spending width on it. Per-month hover/focus tooltip is an HTML overlay slot with a
+ * CSS ::after (not an SVG <title>: those only show after a long delay and the stretched SVG
+ * would distort any text; an <a> wrapper hydration-errored before). Year ticks and the
+ * first/last month label make up the x axis.
  * A visually-hidden <table> carries the same data for assistive tech / no-CSS fallback.
  */
 export function MonthHistogram({ data, ariaLabel, caption, unit = 'page' }: MonthHistogramProps) {
@@ -93,22 +95,48 @@ export function MonthHistogram({ data, ariaLabel, caption, unit = 'page' }: Mont
     .map((slot, i) => (slot.kind === 'gap' ? { pct: ((i + 0.5) / slots.length) * 100, slot } : null))
     .filter((g): g is { pct: number; slot: Extract<Slot, { kind: 'gap' }> } => g !== null);
 
+  const first = slots.find((s): s is Extract<Slot, { kind: 'month' }> => s.kind === 'month');
+  const last = [...slots].reverse().find((s): s is Extract<Slot, { kind: 'month' }> => s.kind === 'month');
+  // Year ticks sit on the January slot (or the first month of that year present in the run).
+  const yearTicks: { pct: number; year: number }[] = [];
+  let tickYear: number | null = null;
+  slots.forEach((slot, i) => {
+    if (slot.kind !== 'month') return;
+    const year = Number(slot.month.slice(0, 4));
+    if (year !== tickYear) {
+      yearTicks.push({ pct: (i / slots.length) * 100, year });
+      tickYear = year;
+    }
+  });
+
   return (
     <figure className={styles.figure}>
       <div className={styles.chart}>
-        <svg className={styles.svg} viewBox={`0 0 ${width} ${CHART_HEIGHT}`} preserveAspectRatio="none">
+        <svg className={styles.svg} viewBox={`0 0 ${width} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
           {slots.map((slot, i) => {
             if (slot.kind !== 'month' || slot.count <= 0) return null;
             const h = Math.max(2, (slot.count / max) * (CHART_HEIGHT - 6));
             const x = i * SLOT_WIDTH + (SLOT_WIDTH - BAR_WIDTH) / 2;
-            const label = `${monthLabel(slot.month)} · ${slot.count} ${unit}${slot.count === 1 ? '' : 's'}`;
-            return (
-              <rect key={slot.month} x={x} y={CHART_HEIGHT - h} width={BAR_WIDTH} height={h} className={styles.bar} tabIndex={0} role="img" aria-label={label}>
-                <title>{label}</title>
-              </rect>
-            );
+            return <rect key={slot.month} x={x} y={CHART_HEIGHT - h} width={BAR_WIDTH} height={h} className={styles.bar} />;
           })}
         </svg>
+        {/* One hover/focus target per month slot (HTML, so the tooltip isn't stretched with the
+            SVG): shows "Oct 2001 · 11 pages" above the column. CSS-only, server-rendered. */}
+        {slots.map((slot, i) => {
+          if (slot.kind !== 'month') return null;
+          const label = `${monthLabel(slot.month)} · ${slot.count} ${unit}${slot.count === 1 ? '' : 's'}`;
+          return (
+            <span
+              key={slot.month}
+              className={`${styles.slot} ${i < slots.length / 2 ? styles.slotLeft : styles.slotRight}`}
+              style={{ left: `${(i / slots.length) * 100}%`, width: `${100 / slots.length}%` }}
+              tabIndex={slot.count > 0 ? 0 : -1}
+              role={slot.count > 0 ? 'img' : undefined}
+              aria-label={slot.count > 0 ? label : undefined}
+              data-label={label}
+            />
+          );
+        })}
         {gapMarks.map(({ pct, slot }) => (
           <span
             key={`${slot.from}-${slot.to}`}
@@ -121,11 +149,20 @@ export function MonthHistogram({ data, ariaLabel, caption, unit = 'page' }: Mont
         ))}
       </div>
       <div className={styles.axis} aria-hidden="true">
+        {yearTicks.map(t => (
+          <span key={t.year} className={styles.tick} style={{ left: `${t.pct}%` }} />
+        ))}
         {yearLabels.map(y => (
           <span key={y.year} className={styles.yearLabel} style={{ left: `${y.pct}%` }}>
             {y.year}
           </span>
         ))}
+        {first && last && first !== last && (
+          <div className={styles.range}>
+            <span>{monthLabel(first.month)}</span>
+            <span>{monthLabel(last.month)}</span>
+          </div>
+        )}
       </div>
       {caption && <figcaption className={styles.caption}>{caption}</figcaption>}
       <table className={styles.srOnlyTable}>

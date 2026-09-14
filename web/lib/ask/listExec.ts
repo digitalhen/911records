@@ -65,12 +65,13 @@ function citeKey(doc: string | null, page: number | null): string | null {
  *  it matches. Same fragility as lib/ask/retrieve.ts's toSearchFilters: the model's phrasing rarely
  *  equals the roll's exact keyword-field spelling, so this tries an exact match first and only
  *  falls back to ILIKE — never a hard filter that silently returns zero on a near-miss address. */
-async function resolveBuildingPlaces(
+export async function resolveBuildingPlaces(
   address: string,
   bin: string,
 ): Promise<{ id: string; kind: string; key: string; label: string }[]> {
+  type Row = { id: string; kind: string; key: string; label: string };
   if (bin) {
-    const rows = await queryReadSafe<{ id: string; kind: string; key: string; label: string }>(
+    const rows = await queryReadSafe<Row>(
       `SELECT id,kind,key,label FROM site.places WHERE kind='bin' AND key=$1 LIMIT 1`,
       [bin],
     );
@@ -78,16 +79,42 @@ async function resolveBuildingPlaces(
   }
   const text = address.trim();
   if (!text) return [];
-  const exact = await queryReadSafe<{ id: string; kind: string; key: string; label: string }>(
-    `SELECT id,kind,key,label FROM site.places WHERE kind='address' AND upper(key)=upper($1) LIMIT 5`,
-    [text],
+  // 2026-09-14: "235-247 GREENWICH ST." is a kind='bin' place whose key is the BIN and whose
+  // label carries the address — the old key-only match (and "Street" vs "ST", trailing period)
+  // missed it, so Ask never saw the building's own pages. Compare a compacted form of both the
+  // key and the label: upper-cased, street types abbreviated, punctuation and spaces removed.
+  const exact = await queryReadSafe<Row>(
+    `SELECT id,kind,key,label FROM site.places
+      WHERE kind IN ('address','bin') AND (${COMPACT('key')} = $1 OR ${COMPACT('label')} = $1)
+      ORDER BY (kind='bin') DESC, length(label) LIMIT 5`,
+    [compactAddress(text)],
   );
   if (exact.length) return exact;
   const pattern = `%${text.replace(/[\\%_]/g, '\\$&')}%`;
-  return queryReadSafe<{ id: string; kind: string; key: string; label: string }>(
-    `SELECT id,kind,key,label FROM site.places WHERE kind IN ('address','bin') AND key ILIKE $1 ORDER BY length(key) LIMIT 10`,
+  return queryReadSafe<Row>(
+    `SELECT id,kind,key,label FROM site.places WHERE kind IN ('address','bin') AND (key ILIKE $1 OR label ILIKE $1) ORDER BY length(label) LIMIT 10`,
     [pattern],
   );
+}
+
+const STREET_TYPES: [RegExp, string][] = [
+  [/\bSTREET\b/g, 'ST'], [/\bAVENUE\b/g, 'AVE'], [/\bPLACE\b/g, 'PL'], [/\bROAD\b/g, 'RD'],
+  [/\bBOULEVARD\b/g, 'BLVD'], [/\bLANE\b/g, 'LN'], [/\bDRIVE\b/g, 'DR'], [/\bSQUARE\b/g, 'SQ'],
+  [/\bNORTH\b/g, 'N'], [/\bSOUTH\b/g, 'S'], [/\bEAST\b/g, 'E'], [/\bWEST\b/g, 'W'],
+];
+/** "235-247 Greenwich Street." -> "235247GREENWICHST" (mirrors the SQL in COMPACT). */
+export function compactAddress(s: string): string {
+  let out = s.toUpperCase();
+  for (const [re, abbr] of STREET_TYPES) out = out.replace(re, abbr);
+  return out.replace(/[^A-Z0-9]/g, '');
+}
+function COMPACT(col: string): string {
+  let expr = `upper(${col})`;
+  for (const [re, abbr] of STREET_TYPES) {
+    const word = re.source.replace(/\\b/g, '');
+    expr = `regexp_replace(${expr}, '\\m${word}\\M', '${abbr}', 'g')`;
+  }
+  return `regexp_replace(${expr}, '[^A-Z0-9]', '', 'g')`;
 }
 
 function isoOrNull(from: string): string | null {

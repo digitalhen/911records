@@ -16,6 +16,7 @@ import { findExactBates } from '@/lib/opensearch';
 import { routeAsk } from '@/lib/ask/router';
 import { askConfigured, planAsk, planFollowUp, ASK_MODEL, type AskPlan } from '@/lib/ask/plan';
 import { retrieveForQuestion, type PageRef, type RetrievedPage } from '@/lib/ask/retrieve';
+import { placePagesForQuestion } from '@/lib/ask/placeBoost';
 import { answerQuestion, validateAnswer, validateFollowUps, type AskAnswer } from '@/lib/ask/answer';
 import { runList } from '@/lib/ask/listExec';
 import { underDailyCap, recordSpend, estimateCostUsd } from '@/lib/ask/spend';
@@ -296,7 +297,24 @@ async function renderPlanOutcome(
   }
 
   // plan.kind === 'question'
-  const pages = await retrieveForQuestion(plan.terms.length ? plan.terms : [q], plan.filters, opts.boostPages ?? []);
+  // Parent-turn citations first, then the named building's own attributed pages (folder
+  // attribution is invisible to text search — lib/ask/placeBoost.ts), deduped by Bates page.
+  const placeBoost = await placePagesForQuestion(plan.filters, q);
+  const boost: PageRef[] = [];
+  const seenBates = new Set<string>();
+  for (const ref of [...(opts.boostPages ?? []), ...placeBoost.refs]) {
+    if (seenBates.has(ref.batesPage)) continue;
+    seenBates.add(ref.batesPage);
+    boost.push(ref);
+  }
+  const pages = await retrieveForQuestion(plan.terms.length ? plan.terms : [q], plan.filters, boost);
+  // A folder-attributed page rarely spells the address the question used (the folder is
+  // labelled "30 WEST BROADWAY; 1001414" for 235-247 Greenwich St) — tell the answer model
+  // how the City filed it, so it can cite the building's own records.
+  const placeBates = new Set(placeBoost.refs.map((r) => r.batesPage));
+  for (const p of pages) {
+    if (placeBates.has(p.batesPage)) p.excerpt = `[BUILDING RECORD: this page is one of the City's records for the building at ${placeBoost.label}${p.folder ? `, filed in the folder "${p.folder}"` : ''} — the folder is the same building under another address/BIN, so this page IS a record for ${placeBoost.label}.] ${p.excerpt}`;
+  }
   if (pages.length === 0) {
     return (
       <InsufficientView q={q} pages={[]} notEstablished={[]} followUps={[]} parentId={opts.parentId} refreshOf={opts.refreshedFrom} />

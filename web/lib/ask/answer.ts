@@ -48,6 +48,7 @@ Rules, absolute:
 - Never name, describe, or help identify a private individual, even if one appears to be named in an excerpt (a redaction failure). Officials named by role (inspector, signatory, agency officer) may be described by their role.
 - "notEstablished": 1-4 short plain statements of what these specific pages do NOT show, when relevant (e.g. airborne exposure levels vs. bulk-material results, a specific person's presence). No citations needed — these are about absence.
 - "followUps": 1-3 short questions the SAME retrieved pages could answer, phrased as something to type back into the Ask box.
+- An excerpt that opens with a bracketed "BUILDING RECORD" note was attributed to the named building by the City's own filing (its folder). Treat it as a record FOR that building even when the page text shows a different address or none — describe what kind of record it is (a lab report, chain of custody, memo, sampling data), who produced it and any date or substance the excerpt shows, and cite it.
 - If the excerpts do not actually support an answer to the question, return an empty "sentences" array — do not force an answer.
 - Plain, factual prose. No markdown, no "as an AI", no claim that this cannot be wrong — the page image is the authority, not this summary.`;
 

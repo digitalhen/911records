@@ -45,6 +45,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   const relatedQuestion=suggestions.substance?substanceQuestion(suggestions.substance):null;
   return <main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>setThreeD(false)} onToggleThreeD={()=>setThreeD(v=>!v)} />
+    <div className={styles.legend} aria-label="Map legend"><strong>What the colours mean</strong>{(['test','inspection','mention'] as const).map((k,i)=><span key={k}><i style={{background:COLORS[k]}}/>{['Test candidates on file','Inspection candidates only','Mentioned in the records only'][i]}</span>)}<span><i style={{background:COLORS.ground}}/>No matching indexed records</span><small>Colour describes what the records contain, never safety. Inspection candidates carry an inspection heading or date cue.</small></div>
     <section className={styles.search} aria-label="Ask and search the records">
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
@@ -94,8 +95,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
         <p role="status">{mapBusy?'Updating buildings…':mapError?'Building index unavailable.':`${places.length} mapped buildings match.`}{mapError && <button onClick={()=>setRevision(v=>v+1)}>Retry</button>}</p>
         <label>Choose a building<select value={selected && places.some(p=>p.id===selected)?selected:''} onChange={e=>select(e.target.value||null)}><option value="">Select a building…</option>{places.map(p=><option key={p.id} value={p.id}>{p.label} · {p.n_pages} pages</option>)}</select></label>
       </details>
-      <div className={styles.legend} aria-label="Map legend">{(['test','inspection','mention'] as const).map((k,i)=><span key={k}><i style={{background:COLORS[k]}}/>{['Test candidates','Inspection candidates','Mentioned only'][i]}</span>)}<span><i style={{background:COLORS.ground}}/>No matching indexed records</span></div>
-      <p className={styles.note}>Machine-extracted matches. Inspection candidates contain an inspection heading or date cue. Colour describes records, never safety. Select a building to verify its source pages.</p>
+      <p className={styles.note}>Machine-extracted matches. Select a building to verify its source pages.</p>
     </aside>
   </main>;
 }
