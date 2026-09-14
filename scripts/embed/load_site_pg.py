@@ -77,7 +77,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "entities": [
         ("id", "TEXT"), ("type", "TEXT"), ("slug", "TEXT"), ("label", "TEXT"), ("n_docs", "INTEGER"),
         ("n_pages", "INTEGER"), ("first_date", "DATE"), ("last_date", "DATE"), ("variants", "JSONB"),
-        ("bbl", "TEXT"), ("bin", "TEXT"),
+        ("bbl", "TEXT"), ("bin", "TEXT"), ("method", "TEXT"),
     ],
     "entity_pages": [
         ("entity_id", "TEXT"), ("doc", "TEXT"), ("page", "INTEGER"), ("role", "TEXT"),
