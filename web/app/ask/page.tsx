@@ -225,7 +225,7 @@ async function renderPlanOutcome(
   q: string,
   plan: AskPlan,
   planUsage: Record<string, unknown>,
-  opts: { parentId?: string; boostPages?: PageRef[]; refreshedFrom?: string } = {},
+  opts: { parentId?: string; boostPages?: PageRef[]; refreshedFrom?: string; parentTerms?: string[] } = {},
 ) {
   // 2026-09-14: the planner refused "Who was the contractor hired to clean 114 Liberty Street
   // apartments?" as an identity question. A question whose answer is an organisation is never
@@ -279,7 +279,7 @@ async function renderPlanOutcome(
   // plan.kind === 'question'
   // Parent-turn citations first, then the named building's own attributed pages (folder
   // attribution is invisible to text search — lib/ask/placeBoost.ts), deduped by Bates page.
-  const placeBoost = await placePagesForQuestion(plan.filters, q, plan.terms);
+  const placeBoost = await placePagesForQuestion(plan.filters, q, plan.terms, opts.parentTerms ?? []);
   const boost: PageRef[] = [];
   const seenBates = new Set<string>();
   // Building-scoped hits for THIS question go first: on a follow-up the parent's cited pages can
@@ -473,7 +473,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
 
       const citedSet = new Set(parentCited);
       const boostPages = parentRow.cites.filter((c) => citedSet.has(c.batesPage));
-      return renderPlanOutcome(q, plan, planUsage, { parentId: parentRow.id, boostPages });
+      return renderPlanOutcome(q, plan, planUsage, { parentId: parentRow.id, boostPages, parentTerms: parentRow.plan.terms });
     }
     // Unknown/expired parent id: fall through and treat this as a root question.
   }

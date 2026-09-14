@@ -21,7 +21,7 @@ const MAX_PLACE_PAGES = 6;
  */
 export interface PlaceBoost { label: string; refs: PageRef[] }
 const NONE: PlaceBoost = { label: '', refs: [] };
-export async function placePagesForQuestion(filters: AskFilters, q = '', terms: string[] = []): Promise<PlaceBoost> {
+export async function placePagesForQuestion(filters: AskFilters, q = '', terms: string[] = [], priorTerms: string[] = []): Promise<PlaceBoost> {
   // The planner usually fills filters.address; if it didn't, a street address written in the
   // question itself still counts (a map chip is always "… for <address>?").
   const address = filters.address || addressInText(q);
@@ -40,10 +40,28 @@ export async function placePagesForQuestion(filters: AskFilters, q = '', terms: 
       LIMIT 1000`,
     [places.map((p) => p.id)],
   );
-  const queryTerms = terms.filter(Boolean).filter((t) => t.toLowerCase() !== address.toLowerCase());
-  if (docRows.length && queryTerms.length) {
-    const scoped = await search({ q: queryTerms.join(' '), filters: { docs: docRows.map((r) => r.doc) }, page: 1, pageSize: MAX_PLACE_PAGES, allowSemanticOnly: true });
-    const refs = scoped.hits.map((h) => ({ doc: h.doc, page: h.page, batesPage: h.batesPage, agency: h.agency, box: h.box, folder: h.folder, volume: h.volume }));
+  // Inside one building's folder the words that describe the folder itself ("cleaning",
+  // "apartments", "decontamination") are on almost every page and drown the words that
+  // distinguish the question ("cost", "contract amount" — measured 2026-09-14 on 114 Liberty
+  // Street). So search first with the terms this question ADDED over the prior turn, then with
+  // every term, and keep the added-term hits in front.
+  const norm = (t: string) => t.trim().toLowerCase();
+  const prior = new Set(priorTerms.map(norm));
+  const allTerms = terms.filter(Boolean).filter((t) => norm(t) !== norm(address));
+  const newTerms = allTerms.filter((t) => !prior.has(norm(t)));
+  if (docRows.length && allTerms.length) {
+    const docs = docRows.map((r) => r.doc);
+    const queries = newTerms.length && newTerms.length < allTerms.length ? [newTerms, allTerms] : [allTerms];
+    const refs: PageRef[] = [];
+    const seen = new Set<string>();
+    for (const qt of queries) {
+      const scoped = await search({ q: qt.join(' '), filters: { docs }, page: 1, pageSize: MAX_PLACE_PAGES, allowSemanticOnly: true });
+      for (const h of scoped.hits) {
+        if (seen.has(h.batesPage) || refs.length >= MAX_PLACE_PAGES) continue;
+        seen.add(h.batesPage);
+        refs.push({ doc: h.doc, page: h.page, batesPage: h.batesPage, agency: h.agency, box: h.box, folder: h.folder, volume: h.volume });
+      }
+    }
     if (refs.length) return { label, refs };
   }
   const rows = await queryReadSafe<PageRef>(
