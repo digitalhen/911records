@@ -22,7 +22,8 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
   topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies, title, description,
          name_confidence)   doc_topics(doc, topic, prob)
   places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
-  place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
+  place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence, source)
+                                                                      source IN ('page','folder')
   building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total,
                   bldg_area, bldg_class, num_bldgs, landmark, historic_district, source)
                   present-day PLUTO-derived facts ONLY,
@@ -487,8 +488,14 @@ def load_places():
     places = con.execute(
         "SELECT place_id, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon "
         "FROM places").fetchall()
+    # `source` ('page'|'folder') is issue #19's folder-attribution follow-up (places.py, Henry
+    # 2026-09-14: "it shouldn't be 1 document, it should be all the documents under that cover
+    # page") — schema-first like doc_type/title/summary above: a places.sqlite built before that
+    # change has no such column, and every row loads with source=NULL rather than failing.
+    pp_cols = {r[1] for r in con.execute("PRAGMA table_info(place_pages)")}
+    source_sel = "source" if "source" in pp_cols else "NULL"
     place_pages = con.execute(
-        "SELECT place_id, doc, page, has_test, contaminants, units, dates, labs, confidence "
+        f"SELECT place_id, doc, page, has_test, contaminants, units, dates, labs, confidence, {source_sel} "
         "FROM place_pages").fetchall()
     con.close()
     return places, place_pages
@@ -708,7 +715,7 @@ CREATE TABLE places(
 );
 CREATE TABLE place_pages(
   place_id TEXT, doc TEXT, page INT, has_test INT, contaminants TEXT, units TEXT, dates TEXT, labs TEXT,
-  confidence REAL
+  confidence REAL, source TEXT
 );
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE building_facts(
@@ -855,7 +862,7 @@ def main() -> int:
     con.executemany("INSERT INTO topics VALUES (?,?,?,?,?,?,?,?,?,?,?)", topics_rows)
     con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
-    con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
+    con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?,?)", place_pages_rows)
     con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
     con.executemany(f"INSERT INTO facts (id,{','.join(FACTS_COLS)}) VALUES (NULL,{','.join('?' * len(FACTS_COLS))})",
                      facts_rows)

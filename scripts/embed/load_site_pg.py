@@ -111,7 +111,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "place_pages": [
         ("place_id", "TEXT"), ("doc", "TEXT"), ("page", "INTEGER"), ("has_test", "BOOLEAN"),
         ("contaminants", "JSONB"), ("units", "JSONB"), ("dates", "JSONB"), ("labs", "JSONB"),
-        ("confidence", "DOUBLE PRECISION"),
+        ("confidence", "DOUBLE PRECISION"), ("source", "TEXT"),
     ],
     "building_facts": [
         ("bbl", "TEXT"), ("bin", "TEXT"), ("address", "TEXT"), ("zip", "TEXT"),

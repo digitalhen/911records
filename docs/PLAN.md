@@ -153,16 +153,16 @@ topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies, titl
        -- `terms` when title is null. Source: scripts/embed/topics.py, which replaces related.py's
        -- topic/doc_topics stage (related.py's own `related`/`near_dupes` output is unchanged).
 places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
-place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
+place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence, source)
+                                                                        source ∈ page|folder
 page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
 building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total, bldg_area,
-                bldg_class, num_bldgs, source)
+                bldg_class, num_bldgs, landmark, historic_district, source)
 facts(id PK, doc, page, bates, building_key, substance, sample_type, value, unit, date, lab, method,
       limit_value, limit_source, result, sample_id, location, confidence, extractor)
 building_substances(building_key, substance, n_pages, n_readings, first_date, last_date, max_value,
                      unit, any_above_limit)
 lab_rollups(lab PK, n_pages, buildings, substances)
-                bldg_class, num_bldgs, landmark, historic_district, source)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
 
@@ -282,6 +282,28 @@ entities from `site.places`/`place_pages` entirely (via `mentions.canonical_boro
 `canonical_address_role`) — they stay as ordinary entities (reachable from `/entity/address/<slug>`
 and, once a workstream builds that link, from the owning lab/contractor's page), but never appear
 as a building on the map or in an Ask `buildings_by_substance` list (both read `site.places`).
+
+**Folder-level attribution** (issue #19 follow-up, Henry 2026-09-14: "documents should
+automatically get pulled into that building's records — on the map it shouldn't be 1 document, it
+should be all the documents under that cover page"). The City files by physical box and folder, and
+the folder's OWN label routinely carries the building (BIN/Block-Lot/address) even when most of the
+folder's individual pages carry no such mention of their own — `places.py` resolves ONE place per
+`(box, folder)` group (`resolve_folder_place()`), tried in order: the folder label's own BIN or
+Block/Lot (`parse_folder_label()`); failing that, the highest-confidence `doc_type='cover_sheet'`
+document in the folder, OCR-tolerant Block/Lot/BIN regexes over its page-1 text
+(`parse_cover_sheet_text()`, mirroring `doctypes.py`'s own patterns); failing that, the folder
+label's leading address matched against the Prospect roll gazetteer, exact or fuzzy
+(`resolve_address_fallback()`). Every page of every document in a resolved folder that did NOT
+already get a page-level place gets a `place_pages` row, `confidence` fixed at 0.95,
+`source='folder'` (page-level rows are `source='page'`, untouched, never overwritten — the stronger
+per-page resolution always wins where it exists). `places.n_docs`/`n_pages`/`n_test_pages` include
+the folder attributions. **A folder label that reads as a bare person's name is never resolved**
+(`looks_like_person_name()`) — a DEP claims box files its folders by claimant name (open item #30);
+every resolver here also independently requires a leading house number (and the address fallback a
+real street-type word), which already excludes a name-shaped label structurally, so the explicit
+check is belt-and-suspenders. Verified on DEP Box 46's "345 SOUTH END AVENUE Block: 16 Lot: 100
+BIN: 1083378 365 South End Avenue, Building #300": all 7 documents / 79 pages attach (1 page was
+already page-level via its own BIN mention; the other 78 via the folder).
 
 Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
 one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.
