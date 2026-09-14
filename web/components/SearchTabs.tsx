@@ -1,3 +1,4 @@
+import { formatTotal } from '@/lib/searchUrl';
 import Link from 'next/link';
 
 /**
@@ -26,7 +27,7 @@ export function SearchTabs({
         Answer from records
       </Link>
       <Link href={documentsHref} className={active === 'documents' ? 'active' : ''} aria-current={active === 'documents' ? 'page' : undefined}>
-        Document results{documentCount != null && <span className="count">{documentCount.toLocaleString()}</span>}
+        Document results{documentCount != null && <span className="count">{formatTotal(documentCount)}</span>}
       </Link>
     </nav>
   );

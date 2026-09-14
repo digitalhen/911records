@@ -9,7 +9,7 @@ import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { getDocSummaries } from '@/lib/search/docSummaries';
-import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
+import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput, formatTotal } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
 import { SUGGESTED_QUESTIONS } from '@/lib/suggestedQuestions';
@@ -249,7 +249,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <section>
             <div className="result-toolbar">
               <h1>
-                <span id="result-count">{result.total.toLocaleString()}</span> document results
+                <span id="result-count">{formatTotal(result.total)}</span> document results
               </h1>
               <div className="actions">
                 <form action="/search" method="get">

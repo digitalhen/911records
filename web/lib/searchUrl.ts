@@ -35,3 +35,9 @@ export function getStr(sp: SearchParamsInput, key: string): string | undefined {
   const v = sp[key];
   return Array.isArray(v) ? v[0] : v;
 }
+
+/** OpenSearch stops counting at 10,000 hits, so a capped total reads "10,000+" rather than as an
+ *  exact figure (2026-09-14). */
+export function formatTotal(total: number): string {
+  return total >= 10000 ? '10,000+' : total.toLocaleString();
+}
