@@ -21,8 +21,11 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
          name_confidence)   doc_topics(doc, topic, prob)
   places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
   place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
-  building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
-                  num_bldgs, source)   present-day PLUTO-derived facts ONLY, never owner/sales/people
+  building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total,
+                  bldg_area, bldg_class, num_bldgs, source)   present-day PLUTO-derived facts ONLY,
+                  never owner/sales/people. `address` is Title Case "<housenum> <street>" straight
+                  off the roll (never a machine-extracted/OCR address) — the building page's title
+                  falls back to it ahead of anything OCR-derived.
   meta(key PK, value)                                     built_at, snapshot_date, counts
 
 Sources:
@@ -457,6 +460,13 @@ def _float_or_none(v: str | None) -> float | None:
     return float(v) if v not in (None, "") else None
 
 
+def _roll_address(housenum: str | None, street: str | None) -> str | None:
+    """Title Case "<housenum> <street>" straight off the roll, e.g. "77 Pearl Street". Never an
+    OCR/machine-extracted address — those stay in `places.label`, not here."""
+    parts = [p for p in (housenum, street) if p]
+    return " ".join(parts).title() if parts else None
+
+
 def load_building_facts() -> list[tuple]:
     """building_facts rows straight from GAZETTEER_CSV (export_prospect_gazetteer.py's one-time
     dump of Prospect's property roll + pluto_lots). PRESENT-DAY BUILDING FACTS ONLY — year built,
@@ -476,7 +486,9 @@ def load_building_facts() -> list[tuple]:
                 continue
             seen.add(bbl)
             out.append((
-                bbl, row.get("bin") or None, _int_or_none(row.get("year_built")),
+                bbl, row.get("bin") or None,
+                _roll_address(row.get("housenum"), row.get("street_canonical")),
+                row.get("zip") or None, _int_or_none(row.get("year_built")),
                 _float_or_none(row.get("num_floors")), _int_or_none(row.get("units_res")),
                 _int_or_none(row.get("units_total")), _int_or_none(row.get("bldg_area")),
                 row.get("bldg_class") or None, _int_or_none(row.get("num_bldgs")),
@@ -528,8 +540,8 @@ CREATE TABLE place_pages(
 );
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE building_facts(
-  bbl TEXT PRIMARY KEY, bin TEXT, year_built INT, num_floors REAL, units_res INT, units_total INT,
-  bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
+  bbl TEXT PRIMARY KEY, bin TEXT, address TEXT, zip TEXT, year_built INT, num_floors REAL,
+  units_res INT, units_total INT, bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
 );
 """
 
@@ -559,6 +571,7 @@ CREATE INDEX place_pages_place ON place_pages(place_id);
 CREATE INDEX place_pages_doc ON place_pages(doc);
 CREATE INDEX building_facts_bin ON building_facts(bin);
 CREATE INDEX entities_bbl ON entities(bbl);
+CREATE INDEX entities_bin ON entities(bin);
 """
 
 
@@ -647,7 +660,7 @@ def main() -> int:
     con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
     con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
-    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
+    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
 
     counts = {
         "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),
