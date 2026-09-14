@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  nyc.911records.refresh — runs scripts/refresh_daily.sh once a day at 03:30 local time on
+  StudioMac. See docs/RUNBOOK.md for installation and troubleshooting.
+
+  Bash needs an interactive-ish PATH to find node/python/pdftotext when launchd starts it (launchd
+  does not source .zshrc/.zprofile), so PATH is set explicitly below. Adjust it if Homebrew or the
+  repo checkout live somewhere else.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>nyc.911records.refresh</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>scripts/refresh_daily.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/henry/Code/sept11-docs</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/henry/Code/sept11-docs/data/refresh.launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/henry/Code/sept11-docs/data/refresh.launchd.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

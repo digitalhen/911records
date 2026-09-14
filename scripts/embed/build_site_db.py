@@ -1,0 +1,566 @@
+#!/usr/bin/env python3
+"""build_site_db.py — build data/site/site.sqlite, the one file the app reads for everything
+except full-text/vector search (which lives in OpenSearch).
+
+Local only; touches no network. Stdlib only (python3, sqlite3, json, re, hashlib).
+
+Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly):
+
+  documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
+            first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
+            pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url)
+  pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
+  snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
+  changes(date, doc, kind, fields)                       kind IN added|removed|changed|reappeared
+  entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date)
+  entity_pages(entity_id, doc, page, role, confidence)
+  signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
+  signatory_pages(id, doc, page, action, confidence)
+  related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
+  topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   doc_topics(doc, topic, prob)
+  places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
+  place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
+  meta(key PK, value)                                     built_at, snapshot_date, counts
+
+Sources:
+  data/manifest.jsonl (+ .summary.json)         one row per document, current state — see enumerate.mjs.
+                                                 `doc` IS the Bates start (already stable/ASCII/unique;
+                                                 no separate slug needed for documents).
+  data/catalog/*.summary.json                   one row per catalog snapshot -> `snapshots`.
+  data/catalog/diff-*.json                      day-over-day deltas (diff_catalog.mjs) -> `changes`
+                                                 (added/removed/changed). `reappeared` instead comes
+                                                 from manifest.jsonl's own reappeared_at (enumerate.mjs
+                                                 already distinguishes a reappearance from a plain add).
+  data/embed/pages.sqlite    pages(doc,page,bates,chars,status)      status: ok|empty|junk|ocr
+  data/embed/entities.sqlite mentions(...), roles(...)               roles.official=1 only ever surfaces
+  data/embed/related.sqlite  related, near_dupes, topics, doc_topics
+  data/embed/places.sqlite   places, place_pages
+  data/pages/**/pages.json   {pages:n, w:[...], h:[...], dpi, rendered_at} -> image_ready per page
+                             (written by A1's render_pages.mjs; may not exist yet — treated as optional)
+
+Entities are five types, drawn from entities.sqlite `mentions` where source='regex':
+  substance (mentions.label='contaminant'), agency, lab, contractor, address.
+Dates/measurements/bin/block_lot are not entities (bin/block_lot/address feed `places` too, via
+places.py). A person is NEVER an entity; the only people ever surfaced are `signatories`, built
+from `roles` WHERE official=1 (a title or org attached, or the role is a certifying action) — see
+entities.py's docstring. No other mention of a person is written anywhere in this database.
+
+Usage: .venv/bin/python scripts/embed/build_site_db.py [--out PATH]
+Build-then-swap: writes data/site/site.sqlite.tmp, indexes, VACUUMs, then os.replace()s over
+data/site/site.sqlite. Prints a one-line JSON summary of row counts and timing.
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import datetime as dt
+import json
+import os
+import re
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+DATA = REPO / "data"
+EMB = DATA / "embed"
+SITE_DIR = DATA / "site"
+OUT_PATH = SITE_DIR / "site.sqlite"
+
+RE_BATES_NUM = re.compile(r"(\d+)$")
+RE_LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+
+
+def bates_num(b: str | None) -> int | None:
+    if not b:
+        return None
+    m = RE_BATES_NUM.search(b)
+    return int(m.group(1)) if m else None
+
+
+def slugify(s: str, maxlen: int = 80) -> str:
+    s = re.sub(r"[^A-Za-z0-9]+", "-", s.strip()).strip("-").lower()
+    s = re.sub(r"-{2,}", "-", s)
+    return (s or "x")[:maxlen]
+
+
+def unique_slug(base: str, taken: set[str]) -> str:
+    slug = base
+    i = 2
+    while slug in taken:
+        slug = f"{base}-{i}"
+        i += 1
+    taken.add(slug)
+    return slug
+
+
+# ---------------------------------------------------------------- manifest --
+
+def load_manifest() -> list[dict]:
+    path = DATA / "manifest.jsonl"
+    rows = []
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+# ---------------------------------------------------------------- catalog ---
+
+def load_snapshots() -> list[dict]:
+    """One row per calendar date from data/catalog/<date>[...].summary.json (accepted only).
+    A second, differing same-day snapshot overwrites the first — `snapshots.date` is the PK."""
+    out: dict[str, dict] = {}
+    cat_dir = DATA / "catalog"
+    if not cat_dir.exists():
+        return []
+    for p in sorted(cat_dir.glob("*.summary.json")):
+        try:
+            s = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not s.get("accepted"):
+            continue
+        date = s.get("date") or (RE_LEADING_DATE.match(p.name).group(1) if RE_LEADING_DATE.match(p.name) else None)
+        if not date:
+            continue
+        stats = s.get("stats") or {}
+        diff = s.get("diff_vs_previous") or {}
+        out[date] = {
+            "date": date,
+            "documents": stats.get("documents"),
+            "pages": stats.get("pages"),
+            "bytes": stats.get("pdf_bytes"),
+            "added": diff.get("added", 0),
+            "removed": diff.get("removed", 0),
+            "changed": diff.get("changed", 0),
+            "sha256": s.get("sha256"),
+        }
+    return sorted(out.values(), key=lambda r: r["date"])
+
+
+def load_changes(manifest_by_doc: dict[str, dict]) -> list[tuple]:
+    """(date, doc, kind, fields_json) from data/catalog/diff-*.json (added/removed/changed) plus
+    manifest.jsonl's reappeared_at (an 'added' bates that the manifest recognises as a comeback)."""
+    rows: list[tuple] = []
+    cat_dir = DATA / "catalog"
+    for p in sorted(cat_dir.glob("diff-*.json")) if cat_dir.exists() else []:
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        new_path = (d.get("new") or {}).get("path") or ""
+        m = RE_LEADING_DATE.match(Path(new_path).name)
+        date = m.group(1) if m else (d.get("generated_at") or "")[:10]
+        if not date:
+            continue
+        for r in d.get("added", []):
+            doc = r.get("bates")
+            man = manifest_by_doc.get(doc)
+            kind = "reappeared" if man and man.get("reappeared_at") == date else "added"
+            rows.append((date, doc, kind, None))
+        for r in d.get("removed", []):
+            rows.append((date, r.get("bates"), "removed", None))
+        for r in d.get("changed", []):
+            rows.append((date, r.get("bates"), "changed", json.dumps(r.get("fields"))))
+    # De-duplicate identical (date, doc, kind) rows a re-run might reproduce.
+    return sorted(set(rows))
+
+
+# ------------------------------------------------------------- pages.sqlite -
+
+def load_page_status() -> dict[tuple, dict]:
+    """(doc, page) -> {bates, chars, status} from data/embed/pages.sqlite, if it exists yet."""
+    path = EMB / "pages.sqlite"
+    out: dict[tuple, dict] = {}
+    if not path.exists():
+        return out
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    for doc, page, bates, chars, status in con.execute("SELECT doc, page, bates, chars, status FROM pages"):
+        out[(doc, page)] = {"bates": bates, "chars": chars, "status": status}
+    con.close()
+    return out
+
+
+def page_status_counts(page_status: dict[tuple, dict]) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = collections.defaultdict(lambda: collections.defaultdict(int))
+    for (doc, _page), v in page_status.items():
+        counts[doc][v["status"] or "unknown"] += 1
+    return counts
+
+
+def pages_by_doc(page_status: dict[tuple, dict]) -> dict[str, set]:
+    out: dict[str, set] = collections.defaultdict(set)
+    for doc, page in page_status:
+        out[doc].add(page)
+    return out
+
+
+# ------------------------------------------------------------ page images ---
+
+def local_pdf_to_pages_dir(local_pdf: str) -> Path | None:
+    """data/pdf/<agency>/<volume>/<bates>.pdf -> data/pages/<agency>/<volume>/<bates>/ (A1's layout)."""
+    if not local_pdf or not local_pdf.startswith("data/pdf/") or not local_pdf.endswith(".pdf"):
+        return None
+    rel = local_pdf[len("data/pdf/"):-len(".pdf")]
+    return REPO / "data" / "pages" / rel
+
+
+def load_image_ready(manifest: list[dict]) -> dict[str, int]:
+    """doc -> rendered page count, from data/pages/<...>/<bates>/pages.json (A1's render_pages.mjs).
+    Optional: the directory may not exist at all yet."""
+    out: dict[str, int] = {}
+    for r in manifest:
+        d = local_pdf_to_pages_dir(r.get("local_pdf") or "")
+        if d is None:
+            continue
+        pj = d / "pages.json"
+        if not pj.exists():
+            continue
+        try:
+            info = json.loads(pj.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        n = info.get("pages")
+        if isinstance(n, int) and n > 0:
+            out[r["bates_start"]] = n
+    return out
+
+
+# ---------------------------------------------------------- entities.sqlite -
+
+ENTITY_TYPE = {"contaminant": "substance", "agency": "agency", "lab": "lab", "contractor": "contractor",
+               "address": "address"}
+
+
+def load_doc_date_range(entities_con: sqlite3.Connection | None) -> dict[str, tuple[str, str]]:
+    """doc -> (min_date, max_date) from mentions(label='date'), used for entities'/signatories'
+    first_date/last_date (there is no direct date on a mention/role otherwise)."""
+    out: dict[str, tuple[str, str]] = {}
+    if entities_con is None:
+        return out
+    acc: dict[str, list[str]] = collections.defaultdict(list)
+    for doc, norm in entities_con.execute("SELECT doc, norm FROM mentions WHERE label='date'"):
+        acc[doc].append(norm)
+    for doc, dates in acc.items():
+        out[doc] = (min(dates), max(dates))
+    return out
+
+
+def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str, tuple[str, str]]):
+    """entities + entity_pages rows from mentions (source='regex', label in ENTITY_TYPE)."""
+    entities: list[tuple] = []
+    entity_pages: list[tuple] = []
+    if entities_con is None:
+        return entities, entity_pages
+    # (type, norm) -> aggregate
+    agg: dict[tuple, dict] = {}
+    display: dict[tuple, collections.Counter] = collections.defaultdict(collections.Counter)
+    pages_seen: dict[tuple, set] = collections.defaultdict(set)
+    docs_seen: dict[tuple, set] = collections.defaultdict(set)
+    rows_by_key: dict[tuple, list] = collections.defaultdict(list)
+    q = "SELECT doc, page, label, text, norm FROM mentions WHERE source='regex' AND label IN ({})".format(
+        ",".join("?" * len(ENTITY_TYPE)))
+    for doc, page, label, text, norm in entities_con.execute(q, list(ENTITY_TYPE)):
+        etype = ENTITY_TYPE[label]
+        key = (etype, norm)
+        display[key][text] += 1
+        docs_seen[key].add(doc)
+        pages_seen[key].add((doc, page))
+        rows_by_key[key].append((doc, page))
+
+    taken_slugs: dict[str, set] = collections.defaultdict(set)
+    for (etype, norm), pages in pages_seen.items():
+        docs = docs_seen[(etype, norm)]
+        label = display[(etype, norm)].most_common(1)[0][0]
+        base_slug = slugify(label)
+        slug = unique_slug(base_slug, taken_slugs[etype])
+        eid = f"{etype}:{slug}"
+        dr = [doc_dates[d] for d in docs if d in doc_dates]
+        first_date = min((d[0] for d in dr), default=None)
+        last_date = max((d[1] for d in dr), default=None)
+        entities.append((eid, etype, slug, label, len(docs), len(pages), first_date, last_date))
+        # `role` has no extra information beyond the entity's own `type` for a regex mention (there
+        # is no sense of e.g. "subject of the test" vs "mentioned in passing" yet) — it is set to
+        # `etype` so the column is never NULL and stays meaningful if a future extractor adds a
+        # real distinction. `confidence` is 1.0 for every regex mention (entities.py doesn't score
+        # them); only `gliner` mentions carry a real score, and gliner output isn't used here.
+        for doc, page in rows_by_key[(etype, norm)]:
+            entity_pages.append((eid, doc, page, etype, 1.0))
+    return entities, entity_pages
+
+
+def build_signatories(entities_con: sqlite3.Connection | None, doc_dates: dict[str, tuple[str, str]]):
+    """signatories + signatory_pages from roles WHERE official=1 — people in an official/professional
+    capacity ONLY (entities.py already decides `official`; this never re-derives it)."""
+    signatories: list[tuple] = []
+    signatory_pages: list[tuple] = []
+    if entities_con is None:
+        return signatories, signatory_pages
+    docs_seen: dict[str, set] = collections.defaultdict(set)
+    pages_seen: dict[str, set] = collections.defaultdict(set)
+    titles: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    orgs: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    names: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    rows_by_name: dict[str, list] = collections.defaultdict(list)
+    for doc, page, role, name, name_norm, title, org in entities_con.execute(
+            "SELECT doc, page, role, name, name_norm, title, org FROM roles WHERE official=1"):
+        docs_seen[name_norm].add(doc)
+        pages_seen[name_norm].add((doc, page))
+        names[name_norm][name] += 1
+        if title:
+            titles[name_norm][title] += 1
+        if org:
+            orgs[name_norm][org] += 1
+        rows_by_name[name_norm].append((doc, page, role))
+
+    taken_slugs: set = set()
+    for name_norm, docs in docs_seen.items():
+        name = names[name_norm].most_common(1)[0][0]
+        title = titles[name_norm].most_common(1)[0][0] if titles[name_norm] else None
+        org = orgs[name_norm].most_common(1)[0][0] if orgs[name_norm] else None
+        slug = unique_slug(slugify(name), taken_slugs)
+        sid = slug
+        dr = [doc_dates[d] for d in docs if d in doc_dates]
+        first_date = min((d[0] for d in dr), default=None)
+        last_date = max((d[1] for d in dr), default=None)
+        signatories.append((sid, slug, name, title, org, len(docs), first_date, last_date))
+        for doc, page, role in rows_by_name[name_norm]:
+            signatory_pages.append((sid, doc, page, role, 1.0))
+    return signatories, signatory_pages
+
+
+# ---------------------------------------------------------- related.sqlite --
+
+def load_related():
+    path = EMB / "related.sqlite"
+    related, near_dupes, topics, doc_topics = [], [], [], []
+    topic_of_doc: dict[str, int] = {}
+    cross_of_doc: dict[str, int] = collections.defaultdict(int)
+    if not path.exists():
+        return related, near_dupes, topics, doc_topics, topic_of_doc, cross_of_doc
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    for doc, rank, other, score, cross in con.execute("SELECT doc, rank, other, score, cross FROM related"):
+        related.append((doc, rank, other, score, cross))
+        if cross:
+            cross_of_doc[doc] += 1
+    for doc, other, score in con.execute("SELECT doc, other, score FROM near_dupes"):
+        near_dupes.append((doc, other, score))
+    for topic, parent, size_docs, size_pages, terms, boxes, agencies in con.execute(
+            "SELECT topic, parent, size_docs, size_pages, terms, boxes, agencies FROM topics"):
+        try:
+            term_list = json.loads(terms) if terms else []
+        except json.JSONDecodeError:
+            term_list = []
+        label = " · ".join(term_list[:3]) if term_list else f"topic {topic}"
+        topics.append((topic, parent, label, size_docs, size_pages, terms, boxes, agencies))
+    for doc, topic, prob in con.execute("SELECT doc, topic, prob FROM doc_topics"):
+        doc_topics.append((doc, topic, prob))
+        if topic is not None and topic >= 0:
+            topic_of_doc[doc] = topic
+    con.close()
+    return related, near_dupes, topics, doc_topics, topic_of_doc, cross_of_doc
+
+
+# ----------------------------------------------------------- places.sqlite --
+
+def load_places():
+    path = EMB / "places.sqlite"
+    places, place_pages = [], []
+    if not path.exists():
+        return places, place_pages
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    places = con.execute(
+        "SELECT place_id, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon "
+        "FROM places").fetchall()
+    place_pages = con.execute(
+        "SELECT place_id, doc, page, has_test, contaminants, units, dates, labs, confidence "
+        "FROM place_pages").fetchall()
+    con.close()
+    return places, place_pages
+
+
+# --------------------------------------------------------------- build ------
+
+SCHEMA = """
+CREATE TABLE documents(
+  doc TEXT PRIMARY KEY, bates_end TEXT, agency TEXT, source TEXT, volume TEXT, box TEXT, folder TEXT,
+  page_count INT, pdf_size INT, status TEXT, first_seen TEXT, removed_at TEXT, reappeared_at TEXT,
+  changed_at TEXT, changed_fields TEXT, held_locally INT, pages_ok INT, pages_empty INT, pages_ocr INT,
+  topic INT, n_related_cross INT, official_url TEXT
+);
+CREATE TABLE pages(
+  doc TEXT, page INT, bates TEXT, chars INT, ocr_status TEXT, ocr_source TEXT, image_ready INT,
+  PRIMARY KEY(doc, page)
+);
+CREATE TABLE snapshots(
+  date TEXT PRIMARY KEY, documents INT, pages INT, bytes INT, added INT, removed INT, changed INT, sha256 TEXT
+);
+CREATE TABLE changes(date TEXT, doc TEXT, kind TEXT, fields TEXT);
+CREATE TABLE entities(
+  id TEXT PRIMARY KEY, type TEXT, slug TEXT, label TEXT, n_docs INT, n_pages INT, first_date TEXT, last_date TEXT
+);
+CREATE TABLE entity_pages(entity_id TEXT, doc TEXT, page INT, role TEXT, confidence REAL);
+CREATE TABLE signatories(
+  id TEXT PRIMARY KEY, slug TEXT, name TEXT, title TEXT, org TEXT, n_docs INT, first_date TEXT, last_date TEXT
+);
+CREATE TABLE signatory_pages(id TEXT, doc TEXT, page INT, action TEXT, confidence REAL);
+CREATE TABLE related(doc TEXT, rank INT, other TEXT, score REAL, cross INT);
+CREATE TABLE near_dupes(doc TEXT, other TEXT, score REAL);
+CREATE TABLE topics(
+  id INT PRIMARY KEY, parent INT, label TEXT, size_docs INT, size_pages INT, terms TEXT, boxes TEXT, agencies TEXT
+);
+CREATE TABLE doc_topics(doc TEXT, topic INT, prob REAL);
+CREATE TABLE places(
+  id TEXT PRIMARY KEY, kind TEXT, key TEXT, label TEXT, n_docs INT, n_pages INT, n_test_pages INT,
+  first_date TEXT, last_date TEXT, lat REAL, lon REAL
+);
+CREATE TABLE place_pages(
+  place_id TEXT, doc TEXT, page INT, has_test INT, contaminants TEXT, units TEXT, dates TEXT, labs TEXT,
+  confidence REAL
+);
+CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
+"""
+
+INDEXES = """
+CREATE INDEX documents_status ON documents(status);
+CREATE INDEX documents_volume ON documents(volume);
+CREATE INDEX documents_agency ON documents(agency);
+CREATE INDEX documents_topic ON documents(topic);
+CREATE INDEX pages_doc ON pages(doc);
+CREATE INDEX pages_bates ON pages(bates);
+CREATE INDEX changes_date ON changes(date);
+CREATE INDEX changes_doc ON changes(doc);
+CREATE UNIQUE INDEX entities_type_slug_unique ON entities(type, slug);
+CREATE INDEX entity_pages_entity ON entity_pages(entity_id);
+CREATE INDEX entity_pages_doc ON entity_pages(doc);
+CREATE UNIQUE INDEX signatories_slug_unique ON signatories(slug);
+CREATE INDEX signatory_pages_id ON signatory_pages(id);
+CREATE INDEX signatory_pages_doc ON signatory_pages(doc);
+CREATE INDEX related_doc ON related(doc);
+CREATE INDEX related_other ON related(other);
+CREATE INDEX near_dupes_doc ON near_dupes(doc);
+CREATE INDEX near_dupes_other ON near_dupes(other);
+CREATE INDEX doc_topics_doc ON doc_topics(doc);
+CREATE INDEX doc_topics_topic ON doc_topics(topic);
+CREATE INDEX places_kind_key ON places(kind, key);
+CREATE INDEX place_pages_place ON place_pages(place_id);
+CREATE INDEX place_pages_doc ON place_pages(doc);
+"""
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=str(OUT_PATH))
+    args = ap.parse_args()
+    out_path = Path(args.out)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+
+    t0 = time.time()
+    SITE_DIR.mkdir(parents=True, exist_ok=True)
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    manifest = load_manifest()
+    manifest_by_doc = {r["bates_start"]: r for r in manifest}
+
+    page_status = load_page_status()
+    status_counts = page_status_counts(page_status)
+    doc_pages = pages_by_doc(page_status)
+    image_ready_counts = load_image_ready(manifest)
+
+    entities_path = EMB / "entities.sqlite"
+    entities_con = sqlite3.connect(f"file:{entities_path}?mode=ro", uri=True) if entities_path.exists() else None
+    doc_dates = load_doc_date_range(entities_con)
+    entities_rows, entity_pages_rows = build_entities(entities_con, doc_dates)
+    signatories_rows, signatory_pages_rows = build_signatories(entities_con, doc_dates)
+    if entities_con is not None:
+        entities_con.close()
+
+    related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related()
+    places_rows, place_pages_rows = load_places()
+    snapshots_rows = load_snapshots()
+    changes_rows = load_changes(manifest_by_doc)
+
+    con = sqlite3.connect(tmp_path)
+    con.executescript(SCHEMA)
+
+    # ---- documents ----
+    doc_rows = []
+    pages_rows = []
+    for r in manifest:
+        doc = r["bates_start"]
+        held = (REPO / r["local_pdf"]).exists() if r.get("local_pdf") else False
+        counts = status_counts.get(doc, {})
+        doc_rows.append((
+            doc, r.get("bates_end"), r.get("agency"), r.get("source"), r.get("production_volume"),
+            r.get("box_name"), r.get("folder_name"), r.get("page_count"), r.get("pdf_size"), r.get("status"),
+            r.get("first_seen"), r.get("removed_at"), r.get("reappeared_at"), r.get("changed_at"),
+            json.dumps(r.get("changed_fields")) if r.get("changed_fields") else None,
+            1 if held else 0,
+            counts.get("ok", 0), counts.get("empty", 0), counts.get("ocr", 0),
+            topic_of_doc.get(doc), cross_of_doc.get(doc, 0), r.get("download_url"),
+        ))
+        n_rendered = image_ready_counts.get(doc, 0)
+        start_n = bates_num(doc)
+        page_nums = set(range(1, n_rendered + 1))
+        page_nums.update(doc_pages.get(doc, ()))
+        for p in sorted(page_nums):
+            st = page_status.get((doc, p))
+            ocr_status = st["status"] if st else None
+            ocr_source = "ours" if ocr_status == "ocr" else "pdftotext"
+            bates = st["bates"] if st and st.get("bates") else (
+                f"NYC-WTC_{start_n + p - 1:09d}" if start_n is not None else None)
+            pages_rows.append((doc, p, bates, st["chars"] if st else None, ocr_status, ocr_source,
+                                1 if p <= n_rendered else 0))
+
+    con.executemany("INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", doc_rows)
+    con.executemany("INSERT INTO pages VALUES (?,?,?,?,?,?,?)", pages_rows)
+    con.executemany("INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?)",
+                     [(s["date"], s["documents"], s["pages"], s["bytes"], s["added"], s["removed"], s["changed"],
+                       s["sha256"]) for s in snapshots_rows])
+    con.executemany("INSERT INTO changes VALUES (?,?,?,?)", changes_rows)
+    con.executemany("INSERT INTO entities VALUES (?,?,?,?,?,?,?,?)", entities_rows)
+    con.executemany("INSERT INTO entity_pages VALUES (?,?,?,?,?)", entity_pages_rows)
+    con.executemany("INSERT INTO signatories VALUES (?,?,?,?,?,?,?,?)", signatories_rows)
+    con.executemany("INSERT INTO signatory_pages VALUES (?,?,?,?,?)", signatory_pages_rows)
+    con.executemany("INSERT INTO related VALUES (?,?,?,?,?)", related_rows)
+    con.executemany("INSERT INTO near_dupes VALUES (?,?,?)", near_dupes_rows)
+    con.executemany("INSERT INTO topics VALUES (?,?,?,?,?,?,?,?)", topics_rows)
+    con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
+    con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
+    con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
+
+    counts = {
+        "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),
+        "changes": len(changes_rows), "entities": len(entities_rows), "entity_pages": len(entity_pages_rows),
+        "signatories": len(signatories_rows), "signatory_pages": len(signatory_pages_rows),
+        "related": len(related_rows), "near_dupes": len(near_dupes_rows), "topics": len(topics_rows),
+        "doc_topics": len(doc_topics_rows), "places": len(places_rows), "place_pages": len(place_pages_rows),
+    }
+    latest_snapshot = snapshots_rows[-1]["date"] if snapshots_rows else None
+    meta_rows = [
+        ("built_at", dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")),
+        ("snapshot_date", latest_snapshot),
+        ("counts", json.dumps(counts)),
+    ]
+    con.executemany("INSERT INTO meta VALUES (?,?)", meta_rows)
+
+    con.executescript(INDEXES)
+    con.commit()
+    con.execute("VACUUM")
+    con.close()
+
+    os.replace(tmp_path, out_path)
+
+    summary = {"out": str(out_path), "seconds": round(time.time() - t0, 2), "counts": counts,
+               "snapshot_date": latest_snapshot}
+    print(json.dumps(summary, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
