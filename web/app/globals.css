@@ -2935,3 +2935,7 @@ dialog .mono {
 .toast[role="status"] {
   border: 1px solid #0000;
 }
+
+/* Ask pending state (AskPending.tsx) */
+.ask-pending{display:block;flex-basis:100%;font-size:var(--fs-sm,13px);color:var(--muted);padding-top:6px}
+.ask-pending:empty{display:none}

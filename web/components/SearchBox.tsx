@@ -1,4 +1,5 @@
 import { AiMark, Button } from '@/components/ui';
+import { AskPending } from '@/components/ask/AskPending';
 
 /**
  * A plain GET form — no client JS required. One box, one button: submits to
@@ -30,6 +31,7 @@ export function SearchBox({ q, compact }: { q?: string; compact?: boolean }) {
       <div className="search-help">
         <span>A question gets a cited answer. Keywords, addresses and Bates numbers go straight to the records.</span>
       </div>
-    </form>
+      <AskPending />
+      </form>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { AskPending } from '@/components/ask/AskPending';
 import { useEffect, useState, type ReactNode } from 'react';
 import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, placeQuestion, substanceQuestion, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
@@ -49,7 +50,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
         <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask <AiMark /> →</button></div>
-      </form>
+      <AskPending /></form>
       <div className={styles.chips}>
         {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}

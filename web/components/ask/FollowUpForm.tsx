@@ -1,4 +1,5 @@
 import { AiMark, Button } from '@/components/ui';
+import { AskPending } from '@/components/ask/AskPending';
 
 /**
  * The free-text "Ask a follow-up" input under every answer (/a/[id]) and
@@ -22,6 +23,7 @@ export function FollowUpForm({ parentId }: { parentId?: string }) {
           Ask <AiMark /> →
         </Button>
       </div>
-    </form>
+      <AskPending />
+      </form>
   );
 }
