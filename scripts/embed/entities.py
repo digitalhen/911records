@@ -459,7 +459,7 @@ def main() -> int:
                 con.execute("DELETE FROM mentions WHERE doc=? AND page=? AND source='regex'", (doc, page))
                 con.execute("DELETE FROM roles WHERE doc=? AND page=?", (doc, page))
                 rows = [(doc, page, s, e, lab, t, n, None, "regex", pii) for s, e, lab, t, n, pii in regex_mentions(text)]
-                con.executemany('INSERT INTO mentions VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+                con.executemany('INSERT INTO mentions(doc,page,start,"end",label,text,norm,score,source,pii) VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
                 rrows = [(doc, page, *r) for r in role_mentions(text)]
                 con.executemany('INSERT INTO roles VALUES (?,?,?,?,?,?,?,?,?,?)', rrows)
                 stats["regex_pages"] += 1
@@ -474,7 +474,7 @@ def main() -> int:
                         rows.append((doc, page, cs + ent["start"], cs + ent["end"], f"g:{lab}", ent["text"],
                                      re.sub(r"\s+", " ", ent["text"]).strip().upper(), float(ent["score"]), "gliner",
                                      1 if lab in ("person", "location", "building") else 0))
-                con.executemany('INSERT INTO mentions VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+                con.executemany('INSERT INTO mentions(doc,page,start,"end",label,text,norm,score,source,pii) VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
                 stats["gliner_pages"] += 1
                 stats["gliner_mentions"] += len(rows)
             con.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?)",
