@@ -10,6 +10,7 @@
 // A2's pipeline is still filling in tables this app doesn't need for day one
 // (entities, signatories, topics, places are read by later workstreams).
 import { queryRead, queryReadOne, queryReadSafe } from './db';
+import type { DatabaseDate } from './dates';
 
 export interface DocumentRow {
   doc: string;
@@ -22,10 +23,10 @@ export interface DocumentRow {
   page_count: number | null;
   pdf_size: number | null;
   status: string | null;
-  first_seen: string | null;
-  removed_at: string | null;
-  reappeared_at: string | null;
-  changed_at: string | null;
+  first_seen: DatabaseDate | null;
+  removed_at: DatabaseDate | null;
+  reappeared_at: DatabaseDate | null;
+  changed_at: DatabaseDate | null;
   changed_fields: unknown;
   held_locally: boolean | null;
   pages_ok: number | null;
@@ -54,7 +55,7 @@ export interface PageTextRow {
 }
 
 export interface SnapshotRow {
-  date: string;
+  date: DatabaseDate;
   documents: number;
   pages: number;
   bytes: number;
@@ -65,7 +66,7 @@ export interface SnapshotRow {
 }
 
 export interface ChangeRow {
-  date: string;
+  date: DatabaseDate;
   doc: string;
   kind: 'added' | 'removed' | 'changed' | 'reappeared';
   fields: unknown;

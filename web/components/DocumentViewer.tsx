@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/dates';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
@@ -77,7 +78,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             <h3>This document was removed by the City</h3>
             <p>
               It was present in an earlier snapshot and no longer appears in the City&apos;s catalog
-              {docRow.removed_at ? ` as of ${docRow.removed_at}` : ''}. We keep the mirrored copy and metadata for the
+              {docRow.removed_at ? ` as of ${formatDate(docRow.removed_at)}` : ''}. We keep the mirrored copy and metadata for the
               record; it is not republished as current. See{' '}
               <Link href="/changes">the release and change log</Link>.
             </p>

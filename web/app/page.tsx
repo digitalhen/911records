@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/dates';
 import type { Metadata } from 'next';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -28,7 +29,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Header active="/" edition={snapshot ? `${snapshot.date} release` : undefined} />
+      <Header active="/" edition={snapshot ? `${formatDate(snapshot.date)} release` : undefined} />
       <main id="main">
         <div className="home-top">
           <section className="home-intro">
