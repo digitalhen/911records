@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { getDocument } from '@/lib/site';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
+import { socialMeta } from '@/lib/seo/social';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,10 +12,15 @@ type Query = Promise<SearchParamsInput>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { doc, n } = await params;
   const row = await getDocument(doc);
+  const title = row ? `${row.folder || doc} · page ${n}` : `${doc} p${n}`;
+  const description = row ? `Page ${n} of ${row.folder || doc}, Bates-numbered ${doc}. Mirrored independently; not affiliated with the City of New York.` : undefined;
   return {
-    title: row ? `${row.folder || doc} · page ${n} · 9/11 City Records` : `${doc} p${n}`,
+    // Root layout's title template already appends " · 9/11 City Records".
+    title,
+    description,
     alternates: { canonical: `/doc/${doc}/p/${n}` },
     robots: row?.status === 'removed' ? { index: false } : undefined,
+    ...socialMeta(title, description, `/doc/${doc}/p/${n}`),
   };
 }
 

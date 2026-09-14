@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getEntity, getOccurrences, formatDate, entityHref, months, pageHref } from '@/lib/discovery/data';
 import { Shell, Extraction, Caveat, Records, metadata } from '@/components/discovery/Shared';
+import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic = 'force-dynamic';
 type Params = Promise<{type:string;slug:string}>;
@@ -15,7 +16,13 @@ export default async function EntityPage({params}:{params:Params}) {
   const activity=allMonths.map(month=>({month,rows:rows.filter(r=>months(r.dates).includes(month))}));
   const unknown=rows.filter(r=>!months(r.dates).length);
   const max=Math.max(1,...activity.map(a=>new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size));
-  return <Shell title={entity.label} eyebrow="Entity / role on the source record"><Link href="/entities">← Change entity</Link><p>{type} · {formatDate(entity.first_date) || 'Date unavailable'} – {formatDate(entity.last_date) || 'date unavailable'}</p><Extraction source={source} confidence={null}/><Caveat/>
+  const crumbs = breadcrumbJsonLd([
+    { name: 'Home', path: '/' },
+    { name: 'Entities', path: '/entities' },
+    { name: type },
+    { name: entity.label, path: entityHref(type, slug) },
+  ]);
+  return <Shell title={entity.label} eyebrow="Entity / role on the source record"><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(crumbs) }} /><Link href="/entities">← Change entity</Link><p>{type} · {formatDate(entity.first_date) || 'Date unavailable'} – {formatDate(entity.last_date) || 'date unavailable'}</p><Extraction source={source} confidence={null}/><Caveat/>
     <div className={styles.stats}><div><a href="#records"><strong>{new Set(rows.map(r=>r.doc)).size}</strong>documents</a><Extraction source={source} confidence={null}/></div><div><a href="#records"><strong>{new Set(rows.map(r=>`${r.doc}:${r.page}`)).size}</strong>source pages</a><Extraction source={source} confidence={null}/></div><div><a href="#filings"><strong>{filings.length}</strong>box / folder filings</a><Extraction source={source} confidence={null}/></div></div>
     <div className={styles.grid}><section><h2>Activity over time</h2><p className="small muted">Distinct page counts by extracted month, not measurements. A page may carry several dates. Coverage is limited to dates on indexed place pages.</p>{activity.length>0&&<svg className={styles.histogram} viewBox={`0 0 640 ${activity.length*32}`} role="img" aria-label="Source pages by extracted month">{activity.map((a,i)=><a key={a.month} href={`#month-${a.month}`}><title>{a.month}: {new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size} pages</title><text x="0" y={i*32+20} fontSize="12">{a.month}</text><rect x="80" y={i*32+4} width={500*new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size/max} height="23" fill="#dfe7f1"/><text x="600" y={i*32+20} fontSize="12">{new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}</text></a>)}</svg>}
     {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · source pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}{unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}<Extraction source={source} confidence={null}/></section>

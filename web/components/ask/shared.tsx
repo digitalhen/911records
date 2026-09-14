@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CitationLink } from './CitationLink';
 import { pageImagePath } from '@/lib/files';
+import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
 import type { AskAnswer } from '@/lib/ask/answer';
 
 /** A page this answer cited, or was retrieved for — the minimal shape
@@ -63,6 +64,12 @@ export function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q: stri
           <a className="bates" href={docHref(p.doc, p.page)}>
             {p.batesPage} ↗
           </a>
+          <div style={{ marginTop: 8 }}>
+            <SaveToCaseButton
+              small
+              item={{ doc: p.doc, page: p.page, batesPage: p.batesPage, label: p.folder || p.doc, box: p.box, agency: p.agency, volume: p.volume }}
+            />
+          </div>
         </div>
       ))}
       <a className="button" href={searchFallbackUrl(q)} style={{ marginTop: 20 }}>

@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { MachineNote, SourceRail, searchFallbackUrl } from '@/components/ask/shared';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
+import { socialMeta } from '@/lib/seo/social';
 import { getPageByBates } from '@/lib/site';
 import { findExactBates } from '@/lib/opensearch';
 import { routeAsk } from '@/lib/ask/router';
@@ -20,7 +21,10 @@ import { saveAnswer } from '@/lib/ask/store';
 export const dynamic = 'force-dynamic';
 
 export function generateMetadata(): Metadata {
-  return { title: 'Ask anything — 9/11 City Records', robots: { index: false } };
+  // Root layout's title template already appends " · 9/11 City Records".
+  const title = 'Ask anything';
+  const description = "Ask a question and get a cited answer from New York City's released 9/11 records.";
+  return { title, description, robots: { index: false }, ...socialMeta(title, description, '/ask') };
 }
 
 function AskAgainForm({ q }: { q: string }) {

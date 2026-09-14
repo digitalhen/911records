@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { pageHref, type Source, type Occurrence } from '@/lib/discovery/data';
+import { socialMeta } from '@/lib/seo/social';
 import styles from './discovery.module.css';
-export function metadata(title: string, description: string, canonical: string): Metadata { return { title, description, alternates: { canonical } }; }
+export function metadata(title: string, description: string, canonical: string): Metadata { return { title, description, alternates: { canonical }, ...socialMeta(title, description, canonical) }; }
 export function Shell({ title, eyebrow, active = '/entities', children }: {title: string; eyebrow: string; active?: string; children: ReactNode}) {
   return <><Header active={active}/><main id="main" className={styles.root}><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{children}</main><Footer/></>;
 }
