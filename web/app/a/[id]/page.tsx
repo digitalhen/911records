@@ -6,7 +6,7 @@ import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
-import { AnswerBody, PriorTurn, searchFallbackUrl } from '@/components/ask/shared';
+import { AnswerBody, PriorTurns, searchFallbackUrl } from '@/components/ask/shared';
 import { ListAnswer } from '@/components/ask/ListAnswer';
 import { AiMark, ButtonLink, Callout } from '@/components/ui';
 import { getAnswer, getAnswerChain } from '@/lib/ask/store';
@@ -96,18 +96,12 @@ export default async function AnswerPage({ params }: { params: Params }) {
             <Link href={`/a/${olderRow.id}`}>earlier version</Link>
           </p>
         )}
-        {priorTurns.length > 0 && (
-          <div className="mb-5">
-            {priorTurns.map((turn) => (
-              <PriorTurn key={turn.id} id={turn.id} q={turn.q} firstSentence={turn.answer.sentences[0]?.text ?? ''} />
-            ))}
-          </div>
-        )}
         {row.list_result ? (
           <ListAnswer q={row.q} result={row.list_result} answerId={row.id} />
         ) : (
           <AnswerBody q={row.q} answer={row.answer} pages={row.cites} answerId={row.id} />
         )}
+        <PriorTurns turns={priorTurns.map((t) => ({ id: t.id, q: t.q }))} />
       </main>
       <Footer />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />

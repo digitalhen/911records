@@ -97,25 +97,22 @@ export async function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q
   );
 }
 
-/** One ancestor turn in a follow-up thread (B17, issue #23), rendered
- *  compactly above the current answer on /a/[id]: the question asked and
- *  the first sentence of what was answered, linking to that turn's own
- *  frozen permalink so the thread stays independently shareable turn by
- *  turn. */
-export function PriorTurn({ id, q, firstSentence }: { id: string; q: string; firstSentence: string }) {
+/** The follow-up thread's earlier turns (B17, issue #23), one compact block under the answer
+ *  (Henry, 2026-09-14: "make this more compact, put it at the bottom"): the heading once, then
+ *  each earlier question as a link to its own frozen permalink — no answer excerpts. */
+export function PriorTurns({ turns }: { turns: { id: string; q: string }[] }) {
+  if (!turns.length) return null;
   return (
-    <Panel className="mb-4">
-      <PanelBody>
-        <p className="small muted mb-2">Earlier in this thread</p>
-        <Link href={`/a/${id}`} className="question-link">
-          <span>
-            {q}
-            {firstSentence ? ` — ${firstSentence}` : ''}
-          </span>
-          <span>→</span>
-        </Link>
-      </PanelBody>
-    </Panel>
+    <section className="prior-turns" aria-label="Earlier in this thread">
+      <p className="small muted mb-2">Earlier in this thread</p>
+      <ol>
+        {turns.map((t) => (
+          <li key={t.id}>
+            <Link href={`/a/${t.id}`}>{t.q}</Link>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
