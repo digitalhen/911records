@@ -17,7 +17,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
     <header className="masthead">
       <div className="mast-top">
         <Link className="brand" href="/" aria-label="9/11 Records home">
-          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.nyc" className="brand-logo" style={{ display: 'block' }} />
+          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.nyc" className="brand-logo" />
         </Link>
         <div className="edition">
           <strong>{edition || 'NYC Law Department release'}</strong>

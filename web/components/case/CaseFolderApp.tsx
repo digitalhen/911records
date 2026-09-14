@@ -6,6 +6,7 @@ import { useCaseFolder } from '@/lib/case/useCaseFolder';
 import { exportCsv } from '@/lib/case/store';
 import type { CaseItem } from '@/lib/case/types';
 import type { CaseDocMeta } from '@/lib/case/lookup';
+import { Button, ButtonLink, Callout, Dialog, Textarea, Toast, useToast } from '@/components/ui';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
 
@@ -16,17 +17,6 @@ function docHref(doc: string, page: number): string {
 function batesRange(doc: string, batesEnd: string | null | undefined): string {
   if (!batesEnd || batesEnd === doc) return doc;
   return `${doc}–${batesEnd.replace(/^NYC-WTC_/, '')}`;
-}
-
-function useToast() {
-  const [message, setMessage] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const show = (text: string) => {
-    setMessage(text);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setMessage(''), 4500);
-  };
-  return { message, show };
 }
 
 interface Suggestion {
@@ -143,20 +133,19 @@ export function CaseFolderApp() {
           <p className="subtitle">Pages, working notes and the order you want to cite them. No account, no cloud sync.</p>
         </div>
         {items.length > 0 && (
-          <button className="button primary" type="button" onClick={openExport}>
+          <Button variant="primary" type="button" onClick={openExport}>
             Export exhibit list ↓
-          </button>
+          </Button>
         )}
       </div>
 
       {!items.length ? (
-        <div className="note">
-          <h3>Nothing saved yet</h3>
+        <Callout title="Nothing saved yet">
           <p>
             Open any <Link href="/search">document</Link> or an <Link href="/ask">answer</Link> and use "Save to case"
             to start building an exhibit list.
           </p>
-        </div>
+        </Callout>
       ) : (
         <div className="case-layout">
           <section>
@@ -186,7 +175,7 @@ export function CaseFolderApp() {
                         {removed ? ' · removed by the City' : ''}
                       </p>
                       <label htmlFor={`case-note-${i}`}>Your note</label>
-                      <textarea
+                      <Textarea
                         id={`case-note-${i}`}
                         defaultValue={item.note}
                         onBlur={(e) => {
@@ -196,14 +185,9 @@ export function CaseFolderApp() {
                           }
                         }}
                       />
-                      <button
-                        className="button small"
-                        type="button"
-                        style={{ marginTop: 8 }}
-                        onClick={() => remove(item.doc, item.page)}
-                      >
+                      <Button variant="secondary" size="small" type="button" className="mt-2" onClick={() => remove(item.doc, item.page)}>
                         Remove from case
-                      </button>
+                      </Button>
                     </div>
                     <div className="order-controls">
                       <button
@@ -238,9 +222,9 @@ export function CaseFolderApp() {
             <section>
               <h2>Before using a page</h2>
               <p>Open the current official PDF and check the Bates stamp. A City removal or new redaction may change what is available.</p>
-              <Link className="button" href="/changes">
+              <ButtonLink variant="secondary" href="/changes">
                 Check release changes →
-              </Link>
+              </ButtonLink>
             </section>
             <section>
               <h2>Local case folder</h2>
@@ -250,7 +234,7 @@ export function CaseFolderApp() {
         </div>
       )}
 
-      <section className="discovery" style={{ marginTop: 34 }}>
+      <section className="discovery mt-7">
         <div className="section-head">
           <h2>Case-folder suggestions</h2>
           <Link href="/topics">Browse subjects →</Link>
@@ -266,11 +250,11 @@ export function CaseFolderApp() {
           <p>No similar unsaved pages found yet.</p>
         ) : (
           <div className="discovery-grid">
-            <div>
+            <div className="stack">
               {suggestions.rows.map((s) => {
                 const m = meta[s.doc];
                 return (
-                  <div key={`${s.doc}:${s.page}`} style={{ marginBottom: 18 }}>
+                  <div key={`${s.doc}:${s.page}`}>
                     <Link className="question-link" href={docHref(s.doc, s.page)}>
                       {m?.folder || s.doc} · page {s.page} <span>{s.score.toFixed(2)}</span>
                     </Link>
@@ -285,25 +269,17 @@ export function CaseFolderApp() {
         )}
       </section>
 
-      <dialog ref={dialogRef} id="case-export-dialog">
-        <h2>Exhibit list</h2>
-        <p>Copy this list, or download it as a CSV.</p>
-        <textarea aria-label="Exhibit list CSV" readOnly value={csv} style={{ width: '100%', minHeight: 160 }} />
-        <div className="actions" style={{ marginTop: 14 }}>
-          <button className="button primary" type="button" onClick={copyCsv}>
-            Copy
-          </button>
-          <button className="button" type="button" onClick={downloadCsv}>
-            Download CSV
-          </button>
-          <button className="button" type="button" onClick={() => dialogRef.current?.close()}>
-            Close
-          </button>
-        </div>
-      </dialog>
-      <div className="toast" role="status" aria-live="polite">
-        {message}
-      </div>
+      <Dialog
+        ref={dialogRef}
+        id="case-export-dialog"
+        title="Exhibit list"
+        description="Copy this list, or download it as a CSV."
+        primaryAction={{ label: 'Copy', onClick: copyCsv }}
+        secondaryAction={{ label: 'Download CSV', onClick: downloadCsv }}
+      >
+        <Textarea aria-label="Exhibit list CSV" readOnly value={csv} style={{ minHeight: 160 }} />
+      </Dialog>
+      <Toast message={message} />
     </>
   );
 }

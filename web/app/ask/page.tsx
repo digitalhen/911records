@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { MachineNote, SourceRail, searchFallbackUrl } from '@/components/ask/shared';
 import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { AiMark } from '@/components/ui';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { getPageByBates } from '@/lib/site';
@@ -32,7 +33,7 @@ function AskAgainForm({ q }: { q: string }) {
   return (
     <>
       <SearchBox q={q} compact />
-      <p className="small muted" style={{ marginBottom: 14 }}>
+      <p className="small muted mb-4">
         Questions get a cited answer built from the mirrored records. Keywords and Bates numbers go straight to
         search.
       </p>
@@ -49,17 +50,14 @@ function RefusalView({ q, reason }: { q: string; reason: string }) {
         <article className="answer-main summary-rule">
           <MachineNote />
           <div className="citation-rule">
-            <h2 style={{ marginBottom: 8 }}>Identity questions are refused</h2>
+            <h2 className="mb-2">Identity questions are refused</h2>
             <p>
               {reason ||
                 'This tool cannot help identify a redacted or private person. You can ask about building conditions, test results, dates, offices and officials’ actions on the records instead.'}
             </p>
           </div>
         </article>
-        <aside
-          className="source-rail"
-          style={{ marginTop: 24, borderLeft: 0, borderTop: '1px solid var(--line)', paddingLeft: 0, paddingTop: 24 }}
-        >
+        <aside className="source-rail source-rail-top">
           <h2>City 9/11 records only</h2>
           <p>
             This service covers the City&apos;s 9/11 records only. No people browser, no co-mention search, no
@@ -82,13 +80,13 @@ function OfftopicView({ q }: { q: string }) {
         <article className="answer-main summary-rule">
           <MachineNote />
           <div className="citation-rule">
-            <h2 style={{ marginBottom: 8 }}>City records only</h2>
+            <h2 className="mb-2">City records only</h2>
             <p>This tool answers only from the City&apos;s released 9/11 records. Try:</p>
           </div>
           <section className="followup">
             {suggestions.map((s, i) => (
               <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
-                {s} <span>→</span>
+                {s} <AiMark /> <span>→</span>
               </Link>
             ))}
           </section>
@@ -140,7 +138,7 @@ function InsufficientView({
                 </ul>
               </section>
             )}
-            <p className="small muted" style={{ marginTop: 24 }}>
+            <p className="small muted mt-6">
               A gap in these pages is not proof that a record does not exist elsewhere. This tool does not determine
               medical causation or claim eligibility.
             </p>
@@ -149,7 +147,7 @@ function InsufficientView({
                 <h2>A narrower question these pages might support</h2>
                 {followUps.map((f, i) => (
                   <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                    {f} <span>→</span>
+                    {f} <AiMark /> <span>→</span>
                   </Link>
                 ))}
               </section>

@@ -8,6 +8,7 @@ import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
+import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
 import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
 
 export const dynamic = 'force-dynamic';
@@ -81,7 +82,7 @@ function FacetGroup({
           .filter((b) => b.key !== selected)
           .map((b) => (
             <label className="check" key={b.key}>
-              <Link href={searchHref(sp, { [filterKey]: b.key })} style={{ color: 'inherit', textDecoration: 'none', display: 'flex', width: '100%' }}>
+              <Link className="facet-link" href={searchHref(sp, { [filterKey]: b.key })}>
                 <span>{b.key}</span>
                 <span className="facet-count">{b.count}</span>
               </Link>
@@ -120,7 +121,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <main id="main">
         <SearchBox q={q} compact />
         <CopyLinkButton />
-        <p className="small muted" style={{ marginBottom: 14 }}>
+        <p className="small muted mb-4">
           {result.error
             ? 'Search is temporarily unavailable.'
             : result.noSearchableTerms
@@ -135,14 +136,19 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           )}
         </p>
         {!result.error && !result.noSearchableTerms && !result.noLexicalMatch && q.trim() && (
-          <p className="small" style={{ marginBottom: 14 }}>
-            <Link href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>Ask this as a question →</Link>
+          <p className="small mb-4">
+            <Link href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
+              Ask this as a question <AiMark /> →
+            </Link>
           </p>
         )}
-        {result.error && <div className="error-note">{result.error}</div>}
+        {result.error && (
+          <Callout tone="error" role="status">
+            {result.error}
+          </Callout>
+        )}
         {result.noSearchableTerms ? (
-          <div className="note" id="no-searchable-terms">
-            <h3>No searchable terms in that query</h3>
+          <Callout id="no-searchable-terms" title="No searchable terms in that query">
             <p>
               “{q}” is made up entirely of common words this index does not search on. Try a specific keyword, an
               address, a substance or a Bates number — or ask one of these questions instead:
@@ -150,24 +156,23 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <div className="followup">
               {SUGGESTED_QUESTIONS.slice(0, 3).map((s, i) => (
                 <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
-                  {s} <span>→</span>
+                  {s} <AiMark /> <span>→</span>
                 </Link>
               ))}
             </div>
-          </div>
+          </Callout>
         ) : result.noLexicalMatch ? (
-          <div className="note" id="no-lexical-match">
-            <h3>No documents contain “{q}”</h3>
+          <Callout id="no-lexical-match" title={`No documents contain “${q}”`}>
             <p>
               None of the mirrored pages contain that word or phrase. Try a different spelling or a broader term, or
               ask it as a question — a cited answer can draw on related wording a literal search would miss.
             </p>
             <div className="followup">
               <Link className="question-link" href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
-                Ask this as a question <span>→</span>
+                Ask this as a question <AiMark /> <span>→</span>
               </Link>
             </div>
-          </div>
+          </Callout>
         ) : (
         <div className="results-layout">
           <aside className="facets" aria-label="Filter documents">
@@ -203,9 +208,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       <option value="newest">Derived date, newest first</option>
                     </select>
                   </label>{' '}
-                  <button className="button small" type="submit">
+                  <Button variant="secondary" size="small" type="submit">
                     Apply
-                  </button>
+                  </Button>
                 </form>
               </div>
             </div>
@@ -242,9 +247,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 </article>
               ))}
               {!result.hits.length && !result.error && (
-                <div className="note" id="no-results">
-                  <h3>No matches</h3>
-                  <p>Try different keywords, clear a filter, or search a Bates number directly.</p>
+                <div id="no-results">
+                  <EmptyState compact title="No matches">
+                    <p>Try different keywords, clear a filter, or search a Bates number directly.</p>
+                  </EmptyState>
                 </div>
               )}
             </div>
@@ -253,8 +259,16 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 Page {page} of {totalPages.toLocaleString()} · {result.total.toLocaleString()} pages matched
               </span>
               <div className="actions">
-                {page > 1 && <Link className="button small" href={searchHref(sp, { page: String(page - 1) })}>← Previous</Link>}
-                {page < totalPages && <Link className="button small" href={searchHref(sp, { page: String(page + 1) })}>Next →</Link>}
+                {page > 1 && (
+                  <ButtonLink variant="secondary" size="small" href={searchHref(sp, { page: String(page - 1) })}>
+                    ← Previous
+                  </ButtonLink>
+                )}
+                {page < totalPages && (
+                  <ButtonLink variant="secondary" size="small" href={searchHref(sp, { page: String(page + 1) })}>
+                    Next →
+                  </ButtonLink>
+                )}
               </div>
             </div>
           </section>

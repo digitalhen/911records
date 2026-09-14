@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
+import { EmptyState } from '@/components/ui';
 
 // Next's special not-found convention (docs/PLAN.md SEO section: "a 404
 // page with search box"). Applies to any route that calls notFound() or
@@ -20,20 +21,18 @@ export default function NotFound() {
     <>
       <Header />
       <main id="main">
-        <div className="page-title">
-          <div>
-            <div className="eyebrow">404</div>
-            <h1>Page not found</h1>
-            <p className="subtitle">
-              That page doesn&apos;t exist, or the link is out of date. Search the records, or a Bates number, below.
-            </p>
+        <EmptyState eyebrow="404" title="Page not found">
+          <p className="subtitle">
+            That page doesn&apos;t exist, or the link is out of date. Search the records, or a Bates number, below.
+          </p>
+          <div className="mt-6">
+            <SearchBox />
           </div>
-        </div>
-        <SearchBox />
-        <p className="small muted" style={{ marginTop: 20 }}>
-          Looking for a removed record? See <Link href="/changes">releases &amp; changes</Link> — or start from{' '}
-          <Link href="/">the home page</Link>.
-        </p>
+          <p className="small muted mt-4">
+            Looking for a removed record? See <Link href="/changes">releases &amp; changes</Link> — or start from{' '}
+            <Link href="/">the home page</Link>.
+          </p>
+        </EmptyState>
       </main>
       <Footer />
     </>

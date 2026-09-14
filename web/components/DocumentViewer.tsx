@@ -13,6 +13,7 @@ import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
 import { RelatedRecords } from '@/components/discovery/RelatedRecords';
 import { MoreLikePage } from '@/components/discovery/MoreLikePage';
 import BuildingsForDoc from '@/components/map/BuildingsForDoc';
+import { Button, ButtonLink } from '@/components/ui';
 
 function fmtBytes(n: number | null): string {
   if (!n) return '—';
@@ -120,9 +121,9 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
         <form className="findbar" action={`/doc/${doc}${page > 1 ? `/p/${page}` : ''}`} method="get">
           <label htmlFor="hl">Find within this page (highlights the page image)</label>
           <input id="hl" name="hl" type="search" defaultValue={highlight || ''} />
-          <button className="button small" type="submit">
+          <Button variant="secondary" size="small" type="submit">
             Find
-          </button>
+          </Button>
           {highlight && !boxes && <span className="muted">No word-box data for this page yet.</span>}
         </form>
 
@@ -130,19 +131,20 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
           <section aria-label="Page viewer">
             <div className="viewer-toolbar">
               <div className="pager">
-                <Link
-                  className="button small"
+                <ButtonLink
+                  variant="secondary"
+                  size="small"
                   aria-disabled={page <= 1}
                   href={page > 2 ? `/doc/${doc}/p/${page - 1}` : `/doc/${doc}`}
                 >
                   ←
-                </Link>
+                </ButtonLink>
                 <span>
                   Page {page} of {pageCount}
                 </span>
-                <Link className="button small" aria-disabled={page >= pageCount} href={`/doc/${doc}/p/${page + 1}`}>
+                <ButtonLink variant="secondary" size="small" aria-disabled={page >= pageCount} href={`/doc/${doc}/p/${page + 1}`}>
                   →
-                </Link>
+                </ButtonLink>
               </div>
               <div className="view-tools">
                 <a href={pdfPath(agency, volume, doc)}>Mirrored PDF</a>
@@ -195,11 +197,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                 {pageText?.text ? (
                   <div>
                     {pageText.text.split(/\n{2,}/).map((para, i) => (
-                      <p
-                        key={i}
-                        style={{ whiteSpace: 'pre-wrap' }}
-                        dangerouslySetInnerHTML={{ __html: highlightText(para, highlight) }}
-                      />
+                      <p key={i} className="ocr-text" dangerouslySetInnerHTML={{ __html: highlightText(para, highlight) }} />
                     ))}
                   </div>
                 ) : (

@@ -51,7 +51,7 @@ export default async function AnswerPage({ params }: { params: Params }) {
       <Header active="/ask" />
       <main id="main">
         <SearchBox q={row.q} compact />
-        <p className="small muted" style={{ marginBottom: 14 }}>
+        <p className="small muted mb-4">
           Permanent answer · frozen citations ·{' '}
           {new Date(row.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
         </p>

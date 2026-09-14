@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CitationLink } from './CitationLink';
 import { pageImagePath } from '@/lib/files';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
+import { AiMark, ButtonLink } from '@/components/ui';
 import type { AskAnswer } from '@/lib/ask/answer';
 
 /** A page this answer cited, or was retrieved for — the minimal shape
@@ -41,7 +42,9 @@ export function citationLabel(p: { folder: string | null; box: string | null }):
 export function MachineNote() {
   return (
     <div className="machine-note">
-      <strong>Machine-written summary</strong>
+      <strong>
+        Machine-written summary <AiMark />
+      </strong>
       <span>Verify against the cited pages. This can misread scans and OCR — the page image is the authority.</span>
     </div>
   );
@@ -64,7 +67,7 @@ export function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q: stri
           <a className="bates" href={docHref(p.doc, p.page)}>
             {p.batesPage} ↗
           </a>
-          <div style={{ marginTop: 8 }}>
+          <div className="mt-2">
             <SaveToCaseButton
               small
               item={{ doc: p.doc, page: p.page, batesPage: p.batesPage, label: p.folder || p.doc, box: p.box, agency: p.agency, volume: p.volume }}
@@ -72,9 +75,9 @@ export function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q: stri
           </div>
         </div>
       ))}
-      <a className="button" href={searchFallbackUrl(q)} style={{ marginTop: 20 }}>
+      <ButtonLink variant="secondary" href={searchFallbackUrl(q)} className="mt-5">
         View document results →
-      </a>
+      </ButtonLink>
     </aside>
   );
 }
@@ -133,7 +136,7 @@ export function AnswerBody({ q, answer, pages }: { q: string; answer: AskAnswer;
             <h2>Continue from the evidence</h2>
             {answer.followUps.map((f, i) => (
               <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                {f} <span>→</span>
+                {f} <AiMark /> <span>→</span>
               </Link>
             ))}
             <Link className="question-link" href={searchFallbackUrl(q)}>
