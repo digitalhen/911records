@@ -160,9 +160,17 @@ a description from the first non-empty page, canonical URLs, Open Graph, `Datase
 changes; page-level URLs stay out of the sitemap), `robots.txt` allowing everything except
 `/ask`, `/a/`, `/case`, `/api/`. Removed documents return 410 with a notice and safe metadata.
 
+## Accounts (v1.1, Henry 09-14)
+
+User accounts modelled on prospect.nyc's **magic-link sign-in** (Better Auth, emailed links via the
+same Resend account, sender on a verified domain). Case folders sync to the account (local-first,
+merged on sign-in), saved searches become real alerts (daily email digest of new matches from the
+change log), and answers/reports can be tied to a user. No passwords, no social login. Prospect's
+rule carries over: never mint a magic link for a real address in testing.
+
 ## Out of scope for v1
 
-Accounts, email alerts, our own redaction pass, City data joins beyond the building footprints
+Email alerts before accounts, our own redaction pass, City data joins beyond the building footprints
 (`docs/research/city-data-linkage.md` phases 2–4), and anything outside the City's 9/11 records.
 
 ---
