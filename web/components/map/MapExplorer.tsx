@@ -30,7 +30,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
     return()=>{clearTimeout(timer);abort.abort()};
   },[filters,revision]);
   function change<K extends keyof MapFilters>(key:K,value:MapFilters[K]) {setFilters(f=>({...f,[key]:value}))}
-  const question=suggestions.place?`What was measured at ${suggestions.place.label} in October 2001?`:null;
+  // Only a real street address makes a sensible question; fallback labels ("BIN …", "Block …",
+  // "Building address in the source record") produced nonsense starter questions.
+  const placeLabel=suggestions.place && /^\d/.test(suggestions.place.label)?suggestions.place.label:null;
+  const question=placeLabel?`What was measured at ${placeLabel} in October 2001?`:null;
   const relatedQuestion=suggestions.substance?`Which buildings have ${suggestions.substance} test records?`:null;
   return <main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>{setFallback(true);setThreeD(false)}} />
