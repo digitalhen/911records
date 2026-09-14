@@ -117,13 +117,14 @@ open "http://localhost:3000/doc/<a bates_start from site.documents that has a do
   polish, not a foundation gap.
 - **Facet counts** reflect the query, not the currently-selected filters
   (computed before `post_filter` is applied). Good enough for v1.
-- **OpenSearch over TLS in production.** `docker-compose.host.yml`'s
-  `opensearch` service is meant to run with the security plugin on and its
-  demo self-signed cert once cut over from the dev instance (see that file's
-  header comment for the cutover steps — not yet performed); the `app`
-  service is given `NODE_TLS_REJECT_UNAUTHORIZED=0` to tolerate that.
-  `scripts/search/opensearch.py` doesn't read basic-auth env yet either —
-  that's part of A2's listed `--host`/basic-auth work.
+- **OpenSearch auth in production.** `docker-compose.host.yml`'s `opensearch`
+  runs with the security plugin ON but `plugins.security.ssl.http.enabled`
+  OFF — plain HTTP with basic auth on a LAN-only service, deliberately, so
+  the app never needs a `NODE_TLS_REJECT_UNAUTHORIZED` workaround for a
+  self-signed demo cert. Not yet cut over from the dev instance (see that
+  file's header comment for the steps). `scripts/search/opensearch.py`
+  doesn't read basic-auth env yet either — that's part of A2's listed
+  `--host`/basic-auth work.
 - **`site.page_text`** is read directly by `lib/site.ts`; word boxes still
   come from files (`lib/boxes.ts`) since they're geometry tied to a specific
   rendered image, not something that belongs in a text column.
