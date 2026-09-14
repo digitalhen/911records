@@ -5,11 +5,20 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.5.1';
+export const APP_VERSION = '0.6.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.6.0',
+    date: '2026-09-14',
+    notes: [
+      'Entity pages (labs, agencies, contractors, substances, addresses, officials) redesigned: key facts up top, documents grouped by the role the entity plays, where it appears, related organisations, buildings and substances, and a building file for addresses.',
+      'Alternative spellings read from the scans are listed as "also read as" so nothing is hidden.',
+      'Addresses that misread in the scans (for example "Latsyeiie" for Lafayette) are now grouped under the correct street.',
+    ],
+  },
   {
     version: '0.5.1',
     date: '2026-09-14',
