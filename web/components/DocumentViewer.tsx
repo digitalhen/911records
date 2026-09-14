@@ -1,13 +1,12 @@
-import fs from 'node:fs';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { CiteButton } from '@/components/CiteButton';
-import { getDocument, getPage as getSitePage } from '@/lib/siteDb';
+import { getDocument, getPage as getSitePage, getPageText } from '@/lib/site';
 import { getIndexedPage } from '@/lib/opensearch';
-import { getPageBoxes, getPageText } from '@/lib/textFiles';
-import { pageImagePath } from '@/lib/paths';
+import { getPageBoxes } from '@/lib/boxes';
+import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
 
 function fmtBytes(n: number | null): string {
   if (!n) return '—';
@@ -36,7 +35,7 @@ function batesRange(doc: string, batesEnd: string | null): string {
 }
 
 export async function DocumentViewer({ doc, page, highlight }: { doc: string; page: number; highlight?: string }) {
-  const docRow = getDocument(doc);
+  const docRow = await getDocument(doc);
   if (!docRow) notFound();
 
   const pageCount = docRow.page_count ?? 1;
@@ -46,16 +45,18 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
   const volume = docRow.volume || '';
   const removed = docRow.status === 'removed';
 
-  const [pageText, boxes, indexedFacts] = await Promise.all([
-    getPageText(agency, volume, doc, page),
+  const [pageText, boxes, indexedFacts, sitePage] = await Promise.all([
+    getPageText(doc, page),
     getPageBoxes(agency, volume, doc, page),
     getIndexedPage(doc, page),
+    getSitePage(doc, page),
   ]);
 
-  const sitePage = getSitePage(doc, page);
-  const imagePath = pageImagePath(agency, volume, doc, page);
-  const hasImage = fs.existsSync(imagePath);
-  const bates = pageText?.bates || sitePage?.bates || doc;
+  // The files service has no listing endpoint, so "does this page have a
+  // rendered image yet" is a HEAD request, not a filesystem stat (this app
+  // has no bind mount to data/ — see lib/files.ts).
+  const hasImage = await fileExists(pageImageUrl(agency, volume, doc, page));
+  const bates = sitePage?.bates || doc;
 
   const citation = `NYC Law Department, ${bates}. Mirrored by 911records.nyc (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
 
@@ -125,7 +126,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                 </Link>
               </div>
               <div className="view-tools">
-                <a href={`/files/pdf/${doc}.pdf`}>Mirrored PDF</a>
+                <a href={pdfPath(agency, volume, doc)}>Mirrored PDF</a>
                 {docRow.official_url && (
                   <a href={docRow.official_url} target="_blank" rel="noopener">
                     Official City PDF ↗
@@ -139,7 +140,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                 {hasImage ? (
                   <div className="page-image-wrap">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/files/page/${doc}/${page}.webp`} alt={`Scanned page image, ${bates}`} />
+                    <img src={pageImagePath(agency, volume, doc, page)} alt={`Scanned page image, ${bates}`} />
                     {boxes &&
                       highlight &&
                       boxes.words
@@ -169,8 +170,8 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
               <section className="ocr">
                 <div className="pane-label">OCR text</div>
                 <p className="quality">
-                  OCR status: {sitePage?.ocr_status || pageText?.text ? (pageText?.chars ? 'text extracted' : 'empty') : 'unknown'}
-                  {sitePage?.ocr_source ? ` · source: ${sitePage.ocr_source}` : ''}
+                  OCR status: {sitePage?.ocr_status || (pageText?.text ? 'text extracted' : 'unknown')}
+                  {sitePage?.ocr_source ? ` · source: ${sitePage.ocr_source}` : pageText?.source ? ` · source: ${pageText.source}` : ''}
                 </p>
                 {pageText?.text ? (
                   <div>

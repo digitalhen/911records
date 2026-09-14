@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { DocumentViewer } from '@/components/DocumentViewer';
-import { getDocument } from '@/lib/siteDb';
+import { getDocument } from '@/lib/site';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ type Query = Promise<SearchParamsInput>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { doc, n } = await params;
-  const row = getDocument(doc);
+  const row = await getDocument(doc);
   return {
     title: row ? `${row.folder || doc} · page ${n} · 9/11 City Records` : `${doc} p${n}`,
     alternates: { canonical: `/doc/${doc}/p/${n}` },

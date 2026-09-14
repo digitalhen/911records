@@ -4,15 +4,18 @@ const FILES_URL = process.env.FILES_URL || 'http://127.0.0.1:8911';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  // Server external packages: better-sqlite3 is a native addon and must not
-  // be bundled by webpack/turbopack — same pattern prospect uses for `pg`.
-  serverExternalPackages: ['better-sqlite3'],
+  // `pg` ships some optional native/CJS-only paths (pg-native, pg-cloudflare)
+  // that webpack/turbopack shouldn't try to bundle — same reasoning as
+  // prospect's serverExternalPackages: ['pg'].
+  serverExternalPackages: ['pg'],
   async rewrites() {
     return [
       {
-        // PDFs and page images are served by the `files` service (nginx in
-        // docker-compose.yml, scripts/files-dev-server.mjs in dev) straight
-        // from the read-only data bind mount — never buffered through Next.
+        // PDFs, page images and word-box files are served by the `files`
+        // service — docker-compose.host.yml's nginx on StudioMac in
+        // production, scripts/files-dev-server.mjs in dev. This app is
+        // deployed HA with no bind mount to data/, so every one of these is
+        // a proxied URL, never a local file read.
         source: '/files/:path*',
         destination: `${FILES_URL}/:path*`,
       },

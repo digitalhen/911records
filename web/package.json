@@ -11,18 +11,17 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "files": "node scripts/files-dev-server.mjs",
-    "fixture-db": "node scripts/fixture-site-db.mjs"
+    "files": "node scripts/files-dev-server.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.9.1",
     "next": "^15.2.3",
+    "pg": "^8.23.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.13.10",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "typescript": "^5.8.2"

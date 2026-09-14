@@ -1,0 +1,66 @@
+# Data-plane services for 911records.nyc, run on the STUDIOMAC HOST'S
+# docker — NOT Dokploy, and NOT the same compose as docker-compose.yml
+# (which is the Dokploy-deployed `app` only; see its header comment for why
+# they're split: two Dokploy replicas can't share a bind mount).
+#
+#   docker compose -f docker-compose.host.yml up -d
+#
+# Both services bind to 127.0.0.1 (for tools running on StudioMac itself,
+# e.g. scripts/search/opensearch.py) AND 192.168.200.51 (the LAN IP, so the
+# two Dokploy replicas — wherever they run — can reach them). Never 0.0.0.0.
+#
+# ## Cutover from docker-compose.opensearch.yml (dev, security OFF)
+#
+# docker-compose.opensearch.yml stays as-is for local dev (`sept11-opensearch`,
+# no auth, 127.0.0.1 only) — do NOT stop it as a side effect of adding this
+# file. When it's time to cut the app over to this one instead:
+#   1. `docker compose -f docker-compose.host.yml up -d opensearch` (a new,
+#      separate container/volume — it starts empty).
+#   2. Re-run the indexer against it with basic auth:
+#      `OPENSEARCH_URL=https://127.0.0.1:9200 OPENSEARCH_USER=admin \
+#       OPENSEARCH_PASSWORD=<the password below> NODE_TLS_REJECT_UNAUTHORIZED=0 \
+#       .venv/bin/python scripts/search/opensearch.py setup && ... index`
+#      (scripts/search/opensearch.py doesn't read basic-auth env yet — that's
+#      A2's `--host`/basic-auth env work per docs/PLAN.md's workstream table.)
+#   3. Point the app's OPENSEARCH_URL/OPENSEARCH_USER/OPENSEARCH_PASSWORD at
+#      this instance and redeploy.
+#   4. Once confirmed, `docker compose -f docker-compose.opensearch.yml down`
+#      and update refresh_daily.sh to index into this one going forward.
+# Until that cutover, the app's OPENSEARCH_URL in Dokploy should point at
+# whichever instance is actually live — this file existing doesn't move it.
+services:
+  files:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./data/pdf:/data/pdf:ro
+      - ./data/pages:/data/pages:ro
+      - ./data/text:/data/text:ro
+      - ./files/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - '127.0.0.1:8911:8911'
+      - '192.168.200.51:8911:8911'
+    restart: unless-stopped
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.2
+    environment:
+      discovery.type: single-node
+      cluster.name: sept11-records
+      node.name: sept11-os-1
+      # Security plugin ON (unlike docker-compose.opensearch.yml's dev
+      # instance) — this one is reachable from the LAN.
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:?set the OpenSearch admin password}
+      OPENSEARCH_JAVA_OPTS: '-Xms2g -Xmx2g'
+      bootstrap.memory_lock: 'true'
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-host-data:/usr/share/opensearch/data
+    ports:
+      - '127.0.0.1:9200:9200'
+      - '192.168.200.51:9200:9200'
+    restart: unless-stopped
+
+volumes:
+  opensearch-host-data: {}

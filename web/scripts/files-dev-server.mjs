@@ -1,47 +1,33 @@
 #!/usr/bin/env node
-// Dev-only stand-in for the `files` nginx service in docker-compose.yml.
-// Serves data/pdf and data/pages straight off disk with Range support, so
-// `npm run dev` can render /doc/<bates> without the production compose
-// stack. Mirrors files/generate-maps.sh's bates -> agency/volume lookup by
-// reading data/manifest.jsonl once at startup (same source, same logic).
+// Dev-only stand-in for the `files` service (docker-compose.host.yml in
+// production). Serves data/pdf, data/pages and data/text straight off disk
+// with Range support and a URL scheme that carries agency/volume directly —
+// see lib/files.ts — so there's no map to generate, just a path mirror.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '..', 'data');
 const PORT = Number(process.env.FILES_PORT || 8911);
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 
-const dirByBates = new Map();
+const ROOTS = {
+  pdf: path.join(DATA_DIR, 'pdf'),
+  page: path.join(DATA_DIR, 'pages'),
+  text: path.join(DATA_DIR, 'text'),
+};
 
-async function loadManifest() {
-  const manifestPath = path.join(DATA_DIR, 'manifest.jsonl');
-  if (!fs.existsSync(manifestPath)) {
-    console.warn(`[files-dev-server] no manifest at ${manifestPath}; PDF/page routes will 404 until it exists`);
-    return;
-  }
-  const rl = readline.createInterface({ input: fs.createReadStream(manifestPath, { encoding: 'utf8' }) });
-  let n = 0;
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line);
-      const bates = row.bates_start;
-      const localPdf = row.local_pdf; // "data/pdf/<dir>/<volume>/<bates>.pdf"
-      if (!bates || !localPdf) continue;
-      const rel = localPdf.replace(/^data\/pdf\//, '').replace(new RegExp(`/${bates}\\.pdf$`), '');
-      dirByBates.set(bates, rel);
-      n++;
-    } catch {
-      // skip malformed line
-    }
-  }
-  console.log(`[files-dev-server] loaded ${n} bates -> path mappings from ${manifestPath}`);
+function contentTypeFor(filePath) {
+  if (filePath.endsWith('.pdf')) return 'application/pdf';
+  if (filePath.endsWith('.webp')) return 'image/webp';
+  if (filePath.endsWith('.jsonl')) return 'application/x-ndjson';
+  return 'application/octet-stream';
 }
 
-function streamFile(req, res, filePath, contentType) {
+function streamFile(req, res, filePath) {
+  const contentType = contentTypeFor(filePath);
   fs.stat(filePath, (err, stat) => {
-    if (err) {
+    if (err || !stat.isFile()) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not found');
       return;
@@ -65,37 +51,47 @@ function streamFile(req, res, filePath, contentType) {
   });
 }
 
+/** Resolves a URL under one of the known roots without escaping it via `..`. */
+function resolveUnder(root, relPath) {
+  const resolved = path.normalize(path.join(root, relPath));
+  if (!resolved.startsWith(path.normalize(root) + path.sep) && resolved !== root) return null;
+  return resolved;
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const pdfMatch = /^\/pdf\/([^/]+)\.pdf$/.exec(url.pathname);
-  const pageMatch = /^\/page\/([^/]+)\/(\d+)(\.t)?\.webp$/.exec(url.pathname);
 
-  if (pdfMatch) {
-    const bates = pdfMatch[1];
-    const dir = dirByBates.get(bates);
-    if (!dir) {
-      res.writeHead(404).end('Unknown Bates number');
-      return;
-    }
-    streamFile(req, res, path.join(DATA_DIR, 'pdf', dir, `${bates}.pdf`), 'application/pdf');
+  if (url.pathname.startsWith('/ollama/')) {
+    const target = new URL(url.pathname.replace(/^\/ollama\//, '/'), OLLAMA_URL);
+    target.search = url.search;
+    const proxyReq = http.request(
+      target,
+      { method: req.method, headers: { ...req.headers, host: target.host } },
+      (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+        proxyRes.pipe(res);
+      },
+    );
+    proxyReq.on('error', () => res.writeHead(502).end('Ollama unreachable'));
+    req.pipe(proxyReq);
     return;
   }
 
-  if (pageMatch) {
-    const [, bates, n, thumb] = pageMatch;
-    const dir = dirByBates.get(bates);
-    if (!dir) {
-      res.writeHead(404).end('Unknown Bates number');
+  for (const [prefix, root] of Object.entries(ROOTS)) {
+    const marker = `/${prefix}/`;
+    if (url.pathname.startsWith(marker)) {
+      const rel = decodeURIComponent(url.pathname.slice(marker.length));
+      const filePath = resolveUnder(root, rel);
+      if (!filePath) {
+        res.writeHead(400).end('Bad path');
+        return;
+      }
+      streamFile(req, res, filePath);
       return;
     }
-    const fileName = `${n}${thumb || ''}.webp`;
-    streamFile(req, res, path.join(DATA_DIR, 'pages', dir, bates, fileName), 'image/webp');
-    return;
   }
 
   res.writeHead(404).end('Not found');
 });
 
-loadManifest().then(() => {
-  server.listen(PORT, () => console.log(`[files-dev-server] listening on http://127.0.0.1:${PORT} (DATA_DIR=${DATA_DIR})`));
-});
+server.listen(PORT, () => console.log(`[files-dev-server] listening on http://127.0.0.1:${PORT} (DATA_DIR=${DATA_DIR})`));

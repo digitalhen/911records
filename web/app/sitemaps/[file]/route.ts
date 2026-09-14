@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDocIdsPage } from '@/lib/siteDb';
+import { getDocIdsPage } from '@/lib/site';
 import { SITEMAP_CHUNK_SIZE } from '@/lib/sitemap';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
@@ -12,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ file: s
   const m = /^documents-(\d+)\.xml$/.exec(file);
   if (!m) return new NextResponse('Not found', { status: 404 });
   const n = Number(m[1]);
-  const docs = getDocIdsPage(n * SITEMAP_CHUNK_SIZE, SITEMAP_CHUNK_SIZE);
+  const docs = await getDocIdsPage(n * SITEMAP_CHUNK_SIZE, SITEMAP_CHUNK_SIZE);
   const entries = docs.map((doc) => `  <url><loc>${SITE_URL}/doc/${doc}</loc></url>`).join('\n');
   const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</urlset>\n`;
   return new NextResponse(body, { headers: { 'Content-Type': 'application/xml' } });

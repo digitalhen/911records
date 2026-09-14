@@ -3,3 +3,7 @@ node_modules
 .git
 *.tsbuildinfo
 README.md
+# Never bake local secrets (DATABASE_URL etc.) into a build layer.
+.env
+.env.*
+!.env.example

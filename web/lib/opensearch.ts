@@ -2,7 +2,7 @@
 // Mapping, pipeline name and field names here must track that file — see its
 // header comment for the authoritative schema. Local network call only.
 import { embedQuery } from './embed';
-import { BATES_RE } from './paths';
+import { BATES_RE } from './bates';
 
 const OPENSEARCH_URL = process.env.OPENSEARCH_URL || 'http://127.0.0.1:9200';
 const OPENSEARCH_USER = process.env.OPENSEARCH_USER;

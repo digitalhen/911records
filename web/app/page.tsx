@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
-import { getMeta, getLatestSnapshot, siteDbExists } from '@/lib/siteDb';
+import { getMeta, getLatestSnapshot, siteSchemaReady } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: '9/11 City Records — search and read the released records',
@@ -16,9 +16,7 @@ export const dynamic = 'force-dynamic';
 // home page: suggested questions, recent releases panel, browse/topic/map
 // entry points, the "reading these records" note.
 export default async function HomePage() {
-  const haveDb = siteDbExists();
-  const meta = getMeta();
-  const snapshot = getLatestSnapshot();
+  const [ready, meta, snapshot] = await Promise.all([siteSchemaReady(), getMeta(), getLatestSnapshot()]);
 
   // snapshots.{documents,pages} are the catalog's authoritative corpus-wide
   // totals; meta.counts.{documents,pages} are the pipeline's own processed
@@ -62,11 +60,10 @@ export default async function HomePage() {
               Released by the NYC Law Department. Environmental sampling, correspondence and other City records,
               mirrored here and updated as the City releases more.
             </p>
-            {!haveDb && (
+            {!ready && (
               <p className="error-note">
-                Collection index not built yet (data/site/site.sqlite is missing). Run{' '}
-                <code>npm run fixture-db</code> for a development fixture, or wait for the pipeline&apos;s first
-                build.
+                Collection index not built yet (schema <code>site</code> is missing from the database). Waiting on
+                the pipeline&apos;s first build.
               </p>
             )}
           </aside>

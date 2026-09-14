@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { DocumentViewer } from '@/components/DocumentViewer';
-import { getDocument } from '@/lib/siteDb';
+import { getDocument } from '@/lib/site';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ type Query = Promise<SearchParamsInput>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { doc } = await params;
-  const row = getDocument(doc);
+  const row = await getDocument(doc);
   const label = row?.folder ? `${row.folder} · ${doc}` : doc;
   return {
     title: row ? `${label} · 9/11 City Records` : doc,
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function DocPage({ params, searchParams }: { params: Params; searchParams: Query }) {
   const { doc } = await params;
   const sp = await searchParams;
-  const row = getDocument(doc);
+  const row = await getDocument(doc);
   const jsonLd = row && {
     '@context': 'https://schema.org',
     '@type': 'DigitalDocument',
