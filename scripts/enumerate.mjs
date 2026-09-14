@@ -202,10 +202,21 @@ async function main() {
   }
   const facetCheck = compareFacets(stats, facets);
 
+  // Re-running against a snapshot that already exists (identical bytes) must not erase how
+  // it was first obtained: keep the earlier origin / fetch time / export info / facet check
+  // unless this run has live values of its own.
+  const earlier = snap.reused ? (await listSnapshots()).find((s) => s.name === snap.name)?.summary : null;
+  const live = !SEED;
   await writeSnapshotSummary(snap.name, {
-    name: snap.name, sha256: snap.sha256, origin, fetched_at: SEED ? null : fetchedAt.toISOString(), date: snap.date,
-    reused_existing_file: snap.reused, export: exportInfo, accepted: !quarantined, quarantined, quarantine_reasons: reasons,
-    stats, facet_check: facetCheck, diff_vs_previous: diffCounts,
+    name: snap.name, sha256: snap.sha256,
+    origin: live || !earlier?.origin ? origin : earlier.origin,
+    fetched_at: live ? fetchedAt.toISOString() : earlier?.fetched_at ?? null,
+    date: snap.date, reused_existing_file: snap.reused,
+    export: exportInfo ?? earlier?.export ?? null,
+    accepted: !quarantined, quarantined, quarantine_reasons: reasons, stats,
+    facet_check: facetCheck ?? earlier?.facet_check ?? null,
+    diff_vs_previous: diffCounts,
+    ...(earlier?.notes ? { notes: earlier.notes } : {}),
   });
   say(`snapshot ${snap.name}${snap.reused ? ' (identical, reused)' : ''} sha256 ${snap.sha256.slice(0, 12)}…: ` +
     `${stats.documents} docs, ${stats.pages} pages, ${(stats.pdf_bytes / 1e9).toFixed(2)} GB, ${stats.boxes} boxes, ${stats.folders} folders`);
