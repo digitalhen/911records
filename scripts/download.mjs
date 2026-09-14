@@ -81,8 +81,9 @@ async function fetchOne(row) {
   const headers = {};
   if (have && sidecar?.etag && sidecar.bytes === have.size) headers['If-None-Match'] = sidecar.etag;
 
-  const started = Date.now();
   const res = await client.request(row.download_url, { headers }, { idleTimeoutMs: 120_000 });
+  const started = Date.now(); // after pacing
+  const headersMs = res.headersAt - res.startedAt;
   if (res.status === 304) {
     res.done();
     return { status: have.size === row.pdf_size ? 'skip-etag' : 'skip-etag-size-differs', bytes: 0, ms: Date.now() - started, etag: sidecar.etag };
@@ -136,7 +137,8 @@ async function fetchOne(row) {
     size_matches_manifest: bytes === row.pdf_size, fetched_at: new Date().toISOString(),
     replaced_previous: !!have,
   }, null, 2) + '\n');
-  return { status: have ? 'replaced' : 'ok', bytes, ms: Date.now() - started, etag, sizeMismatch: bytes !== row.pdf_size };
+  return { status: have ? 'replaced' : 'ok', bytes, ms: Date.now() - started + headersMs, headersMs, bodyMs: Date.now() - started,
+    etag, sizeMismatch: bytes !== row.pdf_size };
 }
 
 async function main() {
@@ -166,7 +168,9 @@ async function main() {
   const writeProgress = async (current) => {
     const elapsed = (Date.now() - session.started) / 1000;
     const bps = session.transferMs > 0 ? session.bytes / (session.transferMs / 1000) : null;
-    // Each remaining document costs max(1 s pacing slot, its bytes at observed throughput).
+    // Each remaining document costs max(1 s pacing slot, time-to-headers) plus its
+    // bytes at the observed BODY throughput (headers and body timed separately, so
+    // thousands of tiny files don't make request overhead look like slow bandwidth).
     const remainingFiles = pending.length - session.files - session.errors;
     let etaSeconds = null;
     if (bps && session.files >= 5) {
@@ -207,8 +211,8 @@ async function main() {
       else {
         done++; bytesDone += r.bytes;
         session.files++; session.bytes += r.bytes;
-        session.transferMs += r.ms;
-        session.overheadMs += Math.min(r.ms, 1000);
+        session.transferMs += r.bodyMs;
+        session.overheadMs += r.headersMs;
         if (r.sizeMismatch) session.sizeMismatch++;
       }
       await logLine(`${r.status} ${row.key} bytes=${r.bytes} ms=${r.ms ?? 0} etag=${r.etag ?? ''}${r.sizeMismatch ? ` manifest_size=${row.pdf_size}` : ''}`);

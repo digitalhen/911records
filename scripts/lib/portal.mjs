@@ -90,6 +90,8 @@ export function makeClient({ minGapMs, maxAttempts = 6, log = (m) => console.err
       }
       // Hand the caller a response plus the idle-timer controls so a long
       // streaming body keeps the timer alive per chunk.
+      res.startedAt = lastStart;
+      res.headersAt = Date.now();
       res.touch = touch;
       res.done = () => clearTimeout(timer);
       return res;

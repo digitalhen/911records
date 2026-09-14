@@ -81,16 +81,28 @@ async function quality(n) {
   const have = [];
   for (const r of rows) if (await exists(join(REPO, r.local_text))) have.push(r);
   if (!have.length) { console.log('no extracted text yet'); return; }
-  // Stratify: spread picks across volumes, then across sizes within the pool.
+  const pagesOf = (text) => { const p = text.split('\f'); if (p.length > 1 && p.at(-1).trim() === '') p.pop(); return p; };
+
+  // Corpus-wide over everything extracted: how many documents have no usable text layer at all?
+  let noText = 0, sparse = 0, totalPages = 0, blankPagesAll = 0;
+  for (const r of have) {
+    const p = pagesOf(await readFile(join(REPO, r.local_text), 'utf8'));
+    const chars = p.reduce((s, x) => s + x.trim().length, 0);
+    totalPages += p.length; blankPagesAll += p.filter((x) => !x.trim()).length;
+    if (chars === 0) noText++; else if (chars / p.length < 50) sparse++;
+  }
+  console.log(JSON.stringify({ extracted_documents: have.length, no_text_layer: noText, under_50_chars_per_page: sparse,
+    pages: totalPages, blank_pages: blankPagesAll }));
+
+  // Samples: typical documents, not the smallest — one per volume where possible,
+  // each the document closest to the median size of that volume's extracted pool.
   const byVol = new Map();
   for (const r of have) (byVol.get(r.production_volume) ?? byVol.set(r.production_volume, []).get(r.production_volume)).push(r);
+  const vols = [...byVol.keys()].sort((a, b) => byVol.get(b).length - byVol.get(a).length);
   const picks = [];
-  const vols = [...byVol.keys()].sort();
-  for (let k = 0; picks.length < Math.min(n, have.length); k++) {
-    const pool = byVol.get(vols[k % vols.length]).sort((a, b) => a.pdf_size - b.pdf_size);
-    const cand = pool[Math.floor(((k * 7919) % 100) / 100 * pool.length)];
-    if (!picks.includes(cand)) picks.push(cand);
-    if (k > n * 50) break;
+  for (let k = 0; picks.length < Math.min(n, have.length) && k < n * 10; k++) {
+    const pool = byVol.get(vols[k % vols.length]).filter((r) => !picks.includes(r)).sort((a, b) => a.pdf_size - b.pdf_size);
+    if (pool.length) picks.push(pool[Math.floor(pool.length / 2)]);
   }
   const out = [];
   for (const r of picks) {
@@ -103,9 +115,10 @@ async function quality(n) {
       if (/\d/.test(bare)) { numeric++; continue; }
       if (/^\p{L}{3,}$/u.test(bare)) { words++; if (dict.has(bare.toLowerCase())) inDict++; }
     }
-    const pages = text.split('\f').filter((p, i, a) => i < a.length - 1 || p.trim()).length;
-    const blankPages = text.split('\f').filter((p) => !p.trim()).length;
-    out.push({ key: r.key, volume: r.production_volume, agency: r.agency, manifest_pages: r.page_count, text_pages: pages,
+    const pageTexts = pagesOf(text);
+    const pages = pageTexts.length;
+    const blankPages = pageTexts.filter((p) => !p.trim()).length;
+    out.push({ key: r.key, volume: r.production_volume, pdf_bytes: r.pdf_size, manifest_pages: r.page_count, text_pages: pages,
       blank_pages: blankPages, chars: text.length, tokens: tokens.length, words_3plus: words, numeric_tokens: numeric, junk_tokens: junk,
       junk_rate: tokens.length ? +(junk / tokens.length).toFixed(3) : null,
       dictionary_rate: words ? +(inDict / words).toFixed(3) : null,

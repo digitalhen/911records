@@ -92,9 +92,17 @@ data/samples/, data/sample_fetch/             recon captures
 - 24,436 documents: DEP 21,392, DCAS 2,915, FDNY 96, DORIS 21, DDC 9 and DOB
   3. These match the API facets exactly.
 - 7 production volumes, `NYC-WTC0001` to `NYC-WTC0007`.
-- 172,537 pages and 36.3 GB (by declared `pdf_size`). The largest PDF is
-  377 MB, and 23 exceed 100 MB.
+- 172,537 pages. The declared `pdf_size` sums to 36.3 GB, which is a
+  **lower bound** (see below). The largest PDF is 377 MB, and 23 exceed
+  100 MB.
 - Bates `NYC-WTC_000000001` to `NYC-WTC_000174150`, with 18 gaps totalling
   1,613 numbers (presumably withheld or unpublished).
-- `pdf_size` is wrong on about 39 rows (tens of bytes declared for a real
-  multi-KB file). The downloader's sidecar-size check covers them.
+- **`pdf_size` is unreliable at the small end.** Among the first ~100 downloads
+  (smallest declared first), 20 were served larger than declared: 16 declared
+  under 2 KB/page and 4 declared 2–5 KB but served 1–2 MB. It has not been seen
+  wrong in the other direction. The true byte total comes from the sidecars,
+  not the manifest. The downloader treats "a sidecar records a finished
+  download of this size" as complete, so these rows do not re-download.
+- **Not every PDF has a text layer.** The recon's "every PDF carries ABBYY OCR"
+  held for its samples, not for the corpus. Some documents extract to zero
+  characters. `extract_text.mjs --quality` reports how many.

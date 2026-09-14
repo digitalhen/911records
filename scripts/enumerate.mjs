@@ -156,8 +156,10 @@ async function main() {
   const nonPdf = rows.filter((r) => r.extension !== 'pdf').length;
   const pageMismatch = rows.filter((r) => r.bates_pages != null && r.page_count != null && r.bates_pages !== r.page_count).length;
   const missingSize = rows.filter((r) => !r.pdf_size).length;
-  // pdf_size is wrong for a few dozen rows (e.g. 54 B declared, 241,635 B served);
-  // mes:size is 0 on those. Count both so a growing problem is visible.
+  // pdf_size is wrong at the small end (54 B declared / 241,635 B served; also
+  // 2-5 KB declared / 1-2 MB served), so sum(pdf_size) is a lower bound. Only
+  // the grossest cases are detectable from metadata; the download sidecars are
+  // the truth. Count what we can so a growing problem is visible.
   const implausibleSize = rows.filter((r) => r.pdf_size && r.page_count && r.pdf_size / r.page_count < 2000).length;
   const mesSizeDiffers = rows.filter((r) => typeof r.mes_size === 'number' && r.mes_size !== r.pdf_size).length;
 
