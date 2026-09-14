@@ -1,296 +1,247 @@
 # 9/11 Document Portal — reconnaissance
 
-Recon run 2026-09-13 (portal launched 2026-09-08) against
-`https://sept11documents.cityofnewyork.us/`. About 140 HTTP requests to the portal
-in total (plus two short browser sessions), all sequential at ≤2 req/s with UA
-`sept11-docs-research/0.1 (contact: digitalhen@gmail.com)`. Four PDFs were
-downloaded (three distinct documents). Raw responses are under `data/samples/`
-(gitignored). No personal names appear in this document; documents are
-referred to by Bates number only.
+Recon ran on 2026-09-13 against `https://sept11documents.cityofnewyork.us/`; the
+portal launched 2026-09-08. About 150 HTTP requests were made to the portal and its
+Mindbreeze backend, all sequential at ≤2 req/s with UA
+`sept11-docs-research/0.1 (contact: digitalhen@gmail.com)`, plus two short
+browser sessions. Five PDFs were downloaded (four distinct). Raw responses live
+under `data/samples/` (gitignored). This document names no private individuals;
+documents are referred to by Bates number only.
 
 ## TL;DR
 
-- **Product: Mindbreeze InSpire** (a SaaS enterprise-search product). The
-  backend is `https://nyc.mindbreeze.com/search/september-11/` (server
-  26.5.3.402), reverse-proxied at the city hostname. The client is the
-  Mindbreeze "Workplace" SPA (25.3.2.318) rendered into a shadow root. There is
-  **no dtSearch**: the boolean/NEAR/`^` syntax is Mindbreeze's query language.
-- **The API is open JSON, with no auth, cookies or tokens required.**
-  `POST /api/v2/search` returns results, metadata and facets.
-- **Downloads:** `GET /apps/content/September11_MD/<title>` returns the
-  original PDF.
-- **Enumeration is feasible: YES**, with one caveat. Each request returns at
-  most 100 results, and offset paging stops working somewhere between offsets
-  30,000 and 39,900. A plain match-all walk (48,872 index records) therefore
-  cannot reach the tail. Filtering to `extension:pdf` (24,436 records) is fully
-  pageable, and was verified to the exact last record. Partitioning by
-  `production_volume` (at most 7,559 PDFs per volume) keeps every walk short.
-- **Corpus:** **24,436 documents** (PDFs), each with an OCR-markdown twin in the
-  index. There are an estimated **~152k pages**; the city says ~170k, and the
-  highest Bates number seen is 166,488. The corpus is roughly **~41 GB**; the
-  largest single PDF is 377 MB.
-- **OCR text:** every PDF carries an ABBYY FineReader Engine 12 text layer, so
-  the full text comes from `pdftotext`. The index's markdown twin is **not**
-  downloadable; the API returns only a snippet of it.
+- **Product.** The portal runs on **Mindbreeze InSpire**, a SaaS enterprise-search
+  appliance. The backend is `https://nyc.mindbreeze.com/search/september-11/`
+  (server 26.5.3.402), reverse-proxied at the city hostname. The boolean, NEAR
+  and `^` operators are Mindbreeze query syntax, not dtSearch. The API is
+  anonymous JSON; no auth, cookies or tokens are needed.
+- **Enumeration: YES, trivially.** A single `POST
+  https://nyc.mindbreeze.com/search/september-11/api/v2/export` returns the
+  entire catalog as CSV: 24,436 rows, 8.06 MB, 24 s, verified 2026-09-13. The
+  city hostname returns 404 for that path, so the Mindbreeze host is required.
+  This was learned from prior art (§0) and confirmed live. Paged search also
+  works, via offsets (a ceiling somewhere between 30k and 39.9k) or cursor
+  `paging_states`.
+- **Corpus (exact, 2026-09-13).** 24,436 documents, 172,537 pages and
+  36,282,050,090 bytes (36.3 GB) of PDFs. Every PDF also has an OCR-markdown twin
+  in the index. The largest file is 377 MB and the longest document is 620 pages.
+- **Documents.** `GET https://sept11documents.cityofnewyork.us/apps/content/September11_MD/<Bates>.pdf`
+  returns the original PDF.
+- **Text.** Every PDF carries an ABBYY FineReader text layer, so `pdftotext` or
+  pypdf yields the full text. The index's markdown twin is not downloadable;
+  search returns only a snippet of it.
+- **The corpus already changes.** Between the prior-art snapshot on 09-09 and
+  today it lost 5 documents and 762 pages. A mirror must be versioned.
+
+## 0. Prior art: `pranava0x0/sept11documents-mcp`
+
+<https://github.com/pranava0x0/sept11documents-mcp> is cloned read-only at
+`vendor/sept11documents-mcp` (gitignored), commit `3d96199`, 2026-09-11. It is an MCP
+server and toolkit over the same portal, and it had already reverse-engineered
+the API. The files that matter:
+
+| File | What it gives us |
+|---|---|
+| `sept11/adapters/portal.py` | The whole client. `search` with `paging_states` plus `paging:{direction:"NEXT"}` cursor paging; **`/api/v2/export`** CSV catalog export; `facets` with `max_entries`; the PDF URL pattern; a CSV parser and summarizer. Etiquette is an honest UA, ≥1 s between requests, retry only on 429/5xx, check the `%PDF-` magic and the size against the catalog, and refuse redirects. |
+| `sept11/core/citations.py` | `CONTENT_PATH = /apps/content/September11_MD/{bates}.pdf`; `normalize_bates()` strips `NYC-WTC0003/SPDF/PDF001/…`, `.pdf`, `_MD` and `.pdf_MD` down to `NYC-WTC_#########`. |
+| `scripts/export_catalog.py`, `scripts/watchdog.py`, `sept11/storage/snapshots.py`, `sept11/core/catalog.py` | Daily snapshot of the export (`catalog_<date>_pdf.csv` plus a summary JSON with sha256). Snapshots are immutable and written once, with an accept/quarantine rule for >5% drops, and diffed by Bates into added/removed/changed plus page deltas. |
+| `scripts/fetch_sources.py` | Text extraction via pypdf, written as `===== PAGE n =====` blocks. |
+| `docs/data/catalog-summary.json` | Their 2026-09-09 baseline: 24,441 docs, 173,299 pages, 36,568,326,274 bytes, 74 boxes, 4,173 folders. |
+
+**What was confirmed live on 2026-09-13, and what differs:**
+
+| Claim in the repo | Live result |
+|---|---|
+| Export at `{base}/api/v2/export`, with base defaulting to the city host (`FRONT`) | **Only on the backend host.** The city host returns 404. The same body POSTed to `https://nyc.mindbreeze.com/search/september-11/api/v2/export` returns `200 text/csv` with header `Mindbreeze Key;Name;source;agency;box_name;folder_name;page_count;pdf_size;production_volume;production_end;related_document;Date;Search for "<query>"`. A partition test (`production_volume:NYC-WTC0005`) returned 21 rows and 1,588 pages; the full export returned 24,436 rows with 24,436 distinct names. Their `captured_at` note says the baseline was a "manual curl export" against `api_base: nyc.mindbreeze.com`, which is consistent. |
+| Cursor paging with `paging_states` plus `paging:{direction:"NEXT"}` | **Works.** Page 1 and page 2 returned 100 results each with 0 overlap and `next_avail: true`. My own earlier attempt sent `paging_states` without the `paging` field, and **that** is what the server silently ignored. |
+| `facets: [{name, max_entries}]` | Works, but `folder_name` is still truncated at 150 entries. Use the export for folder totals. |
+| PDF at `/apps/content/September11_MD/{bates}.pdf` | Confirmed; see §4. |
+| Counts | Their 09-09 figures were 24,441 / 173,299 / 36.57 GB. Today's are 24,436 / 172,537 / 36.28 GB: DEP −3, DDC −2, volume 0004 −3, volume 0007 −2. The removed Bates list could be recovered by diffing against their CSV, but they do not commit the CSV (it contains folder labels), only its sha256. |
 
 ## 1. What the site is
 
 | Layer | Finding |
 |---|---|
-| Outer page `/` | Serves the Mindbreeze Workplace bootstrap HTML directly: `workplace/scripts/workplace.js?25.3.2.318`, `Mindbreeze.require(...)`, app rendered into `#designer-container` shadow root. The Google Translate bar and the header tabs (FAQs, Disclaimers, How to Search, …) are app fragments inside that shadow root. There is no separate iframe document at a different origin. |
-| Config | `GET /apps/workplace-config/index.json`. It lists the modules `main.Welcome.html`, `base/base.Welcome.html` and `modules/base-search-qa.html`, plus the custom JS files `base/base.Welcome.js`, `js/search-watch.js` and `js/downloadlink.js`. |
-| Source info | `GET /api/v2/sourceinfo`. It advertises the services `search`, `suggest`, `sourceinfo`, `preview`, `personalization`, `persistedresources`, `persistedcollections` and `mindbreeze.chat.v1beta`, all rooted at `https://nyc.mindbreeze.com/search/september-11/api/v2/…`. |
-| Data source | One datasource, `september11 Connector:September11_MD`. |
-| Provenance in the PDFs | `/Creator (ABBYY FineReader Engine 12)` and `/Producer (iText 5.5.12 … Nuix Pty Ltd; licensed version)`. This is an **eDiscovery production**: Nuix processed it, ABBYY did the OCR, and each document is Bates-stamped `NYC-WTC_#########` across production volumes `NYC-WTC0001…0007`. |
-| robots / sitemap | `/robots.txt` returns **404** and `/sitemap.xml` returns **404**, so there is no robots policy. |
-| Caching / edge | Responses carry `X-Cache-Status` (nginx-style cache). Content has `Cache-Control: public, max-age=3600` and `ETag: W/"<bytes>-<mtime ms>"`. No WAF challenge, CAPTCHA or 429 was seen at this rate. A `JSESSIONID` cookie is set, but no request needed it. |
+| Outer page `/` | Serves the Mindbreeze Workplace bootstrap HTML directly (`workplace/scripts/workplace.js?25.3.2.318`, `Mindbreeze.require(...)`). The app renders into the `#designer-container` shadow root. The Google Translate bar and the header tabs (FAQs, Disclaimers, How to Search, …) are fragments inside that root. There is no separate iframe document. |
+| Config | `GET /apps/workplace-config/index.json` lists the modules `main.Welcome.html`, `base/base.Welcome.html` and `modules/base-search-qa.html`, plus the custom JS `base/base.Welcome.js`, `js/search-watch.js` and `js/downloadlink.js`. |
+| Source info | `GET /api/v2/sourceinfo` lists the services search, suggest, sourceinfo, preview, personalization, persistedresources, persistedcollections and `mindbreeze.chat.v1beta`, all under `https://nyc.mindbreeze.com/search/september-11/api/v2/…`. |
+| Data source | One source: `september11 Connector:September11_MD`. |
+| PDF provenance | `/Creator (ABBYY FineReader Engine 12)` and `/Producer (iText 5.5.12 … Nuix Pty Ltd; licensed version)`. This is an eDiscovery production: processed in Nuix, OCRed with ABBYY, Bates-stamped `NYC-WTC_#########`, in volumes `NYC-WTC0001…0007`. |
+| robots / sitemap | Both `/robots.txt` and `/sitemap.xml` return 404. |
+| Edge | Responses carry `X-Cache-Status`. Content is served with `Cache-Control: public, max-age=3600` and `ETag: W/"<bytes>-<mtime ms>"`. No WAF challenge or 429 was seen. A `JSESSIONID` cookie is set but never required. |
 
-## 2. The search API
+## 2. APIs
 
-### Request (minimal, proven with curl)
+### 2a. Catalog export (the enumeration path)
 
 ```http
-POST https://sept11documents.cityofnewyork.us/api/v2/search
+POST https://nyc.mindbreeze.com/search/september-11/api/v2/export
 Content-Type: application/json
+Accept: text/csv
 
-{
-  "user": { "query": { "and": [ { "unparsed": "extension:pdf" } ] } },
-  "count": 100,
-  "max_page_count": 1,
-  "properties": [ { "name": "title", "formats": ["VALUE"] }, { "name": "agency", "formats": ["VALUE"] } ],
-  "facets": [ { "name": "agency", "count": 100 } ],
-  "orderby": "mes:size", "order_direction": "DESCENDING"
-}
+{ "search_request": {
+    "count": 100,
+    "properties": [ {"name":"mes:key","formats":["VALUE"]}, {"name":"title","formats":["VALUE"]},
+                    {"name":"source",…}, {"name":"agency",…}, {"name":"box_name",…}, {"name":"folder_name",…},
+                    {"name":"page_count",…}, {"name":"pdf_size",…}, {"name":"production_volume",…},
+                    {"name":"production_end",…}, {"name":"related_document",…}, {"name":"mes:date",…} ],
+    "user": { "query": { "and": [ { "unparsed": "ALL extension:pdf", "id": "query" } ] }, "constraints": [] },
+    "source_context": { "constraints": [ { "unparsed": "ALL", "id": "view_base" } ] } },
+  "export_format": "text/csv", "batch_size": 1000, "allow_duplicate": false, "groupby_properties": [] }
 ```
 
-- **`formats: ["VALUE"]` is required** to get typed values (`{"str":…}` /
-  `{"num":…}`). Without it the data items carry no `value` key.
-- **`count` is capped at 100.** Asking for 200 or 1000 returns 100 results with
-  `termination_cause: COUNT_LIMIT`.
-- `estimated_count` is rounded: it reports 24,500 for 24,436. Use facet counts
-  for exact totals.
-- `orderable`: `mes:relevance` (default), `mes:date`, `mes:size`. Ordering by
-  `mes:size` DESCENDING was verified monotone over the top 300.
-- Facets are truncated at 150 values (`folder_name` covered only 16,084 of
-  48,872 records).
+The response is a UTF-8 BOM followed by semicolon-delimited, RFC 4180-quoted CSV.
+The last header column echoes the query, and `related_document` holds quoted
+multi-line text. The full run took 8,062,370 bytes and 24.2 s, sha256
+`33319629…4d657`, and the file is saved as `data/samples/catalog_2026-09-13_pdf.csv`.
 
-The real browser request (captured in Chrome) adds `name: "sept11search"`,
-`count: 10`, `max_page_count: 10`, `content_sample_length: 300`, `facets:
-[index_hierarchy]` and a `query_context`. None of those are required.
+### 2b. Search
 
-### Paging (offsets)
-
-The first response with `max_page_count ≥ 1` returns
-`resultset.result_pages.qeng_ids`. To get any later page, repeat the same
-request with:
-
-```json
-"result_pages": {
-  "qeng_ids": [ …copied from the first response… ],
-  "pages": [ { "starts": [OFFSET], "counts": [100], "page_number": OFFSET/100, "current_page": true } ]
-}
+```http
+POST https://sept11documents.cityofnewyork.us/api/v2/search     (also works on the backend host)
+{ "user": { "query": { "and": [ { "unparsed": "extension:pdf" } ] } },
+  "count": 100, "max_page_count": 1,
+  "properties": [ { "name": "title", "formats": ["VALUE"] } ],
+  "facets": [ { "name": "agency", "max_entries": 100 } ],
+  "orderby": "mes:size", "order_direction": "DESCENDING" }
 ```
 
-These results were measured with `*` (48,872 records):
+- `formats: ["VALUE"]` is required to get typed values. `count` is capped at 100.
+  `estimated_count` is rounded (24,500 for 24,436).
+- The sortable fields are `mes:relevance`, `mes:date` and `mes:size`. Descending
+  `mes:size` was verified monotone over 300 results.
+- **Offset paging.** Send `result_pages: {qeng_ids: <from the first response>,
+  pages: [{starts:[offset], counts:[100], page_number, current_page:true}]}`.
+  With `*` (48,872 records including the markdown twins), offset 30,000 works and
+  39,900 returns an empty result. With `extension:pdf`, every record up to the
+  exact last one (24,436) was reached, and a repeated page came back identical.
+  Results tie on relevance, so this path requires dedupe.
+- **Cursor paging** (prior art, confirmed live). Send `paging_states:
+  [per_service_dataset[].paging_state]` and `paging: {direction: "NEXT"}`.
+- `unparsed` accepts `field:value`: `production_volume:NYC-WTC0005`,
+  `box_name:"DEP Box 57"`, `agency:"Buildings, Dept. of"`,
+  `title:NYC-WTC_000058160.pdf`. Terms are ANDed by listing several `unparsed`
+  entries. Wildcards inside a field value fail, and short labels such as
+  `agency:DOB` return 0 results.
+- The browser's own request (captured in Chrome) is `name:"sept11search"`,
+  `count:10`, `max_page_count:10`, `content_sample_length:300`, `facets:[index_hierarchy]`.
 
-- Offsets 100, 1,000, 10,000, 10,100, 15,000, 20,000 and 30,000 each return 100
-  results, with no overlap with page 0.
-- Offset 39,900 and 40,000 returned an empty resultset. The ceiling lies
-  somewhere in (30,000, 39,900]; it was not pinned further.
+## 3. Counts — exact, from the 2026-09-13 export
 
-These results were measured with `extension:pdf` (24,436 records):
+| agency | docs | | production_volume | docs | | source | docs |
+|---|---:|---|---|---:|---|---|---:|
+| Environmental Protection, Dept. of | 21,392 | | NYC-WTC0001 | 133 | | DEP Hard Copies (68 Boxes) | 21,392 |
+| Citywide Administrative Services, Dept. of | 2,915 | | NYC-WTC0002 | 4,998 | | WTC 7 | 3,023 |
+| Fire Department | 96 | | NYC-WTC0003 | 3,355 | | DORIS Giuliani | 21 |
+| Records and Information Services, Dept. of | 21 | | NYC-WTC0004 | 7,559 | | | |
+| Design and Construction, Dept. of | 9 | | NYC-WTC0005 | 21 | | | |
+| Buildings, Dept. of | 3 | | NYC-WTC0006 | 5,347 | | | |
+| **total** | **24,436** | | NYC-WTC0007 | 3,023 | | | |
 
-- Offset 24,300 returns 100 results, offset 24,400 returns 36, and offset
-  24,436 returns 0. **All records were reached** (24,400 + 36 = 24,436).
-- The same page requested twice returned an identical ID list.
-- Adjacent pages overlapped by 0.
-- **Caveat:** within a match-all page every result has the same relevance
-  `order` value, so the walk is ordered by ties. It was stable across repeats
-  here, but stability over a whole walk while the index changes is not proven.
-  The ingest must dedupe on `mes:key` and reconcile against facet counts.
+The corpus has 74 boxes and 4,172 folders.
 
-`paging_states` and `order_next_result` (keyset-style fields in the response)
-were tried as request fields. They are silently ignored and page 0 comes back.
+**Pages:** Σ `page_count` = **172,537**, which exactly equals Σ(`production_end` −
+Bates start + 1). The highest Bates end is 174,150, so 1,613 Bates numbers are
+not in the portal (withheld or removed, or never produced).
 
-### Query syntax (partitioning)
+Correction: my pre-export estimates (≈152k pages, ≈41 GB, from sampling) were
+low on pages and high on bytes. The exact figures above supersede them.
 
-`unparsed` accepts `field:value` constraints:
+## 4. Identifiers and URLs
 
-| Query | estimated_count (records) |
-|---|---|
-| `*`, empty, `ALL` | 48,900 (exact 48,872) |
-| `extension:pdf` / `extension:md` | 24,500 each (exact 24,436 each) |
-| `production_volume:NYC-WTC0005` | 42 |
-| `box_name:"DEP Box 57"` | 768 |
-| `agency:"Buildings, Dept. of"` | 6 |
-| `agency:DOB` | 0 (the full label is required) |
-| `title:NYC-WTC_000058160.pdf` | 2 (the PDF and its md twin) |
-| `title:NYC-WTC_00005816*` | no resultset (field wildcards are not supported) |
-
-Queries can be ANDed as multiple `unparsed` entries, for example
-`[{unparsed:"title:X"},{unparsed:"extension:md"}]`.
-
-## 3. Counts (from facets on `*`, 2026-09-13)
-
-Every document appears twice in the index (`extension:pdf` and
-`extension:md`), so the documents column is records ÷ 2.
-
-| agency | records | documents |
-|---|---:|---:|
-| Environmental Protection, Dept. of | 42,784 | 21,392 |
-| Citywide Administrative Services, Dept. of | 5,830 | 2,915 |
-| Fire Department | 192 | 96 |
-| Records and Information Services, Dept. of | 42 | 21 |
-| Design and Construction, Dept. of | 18 | 9 |
-| Buildings, Dept. of | 6 | 3 |
-| **total** | **48,872** | **24,436** |
-
-| production_volume | records | | source | records |
-|---|---:|---|---|---:|
-| NYC-WTC0004 | 15,118 | | DEP Hard Copies (68 Boxes) | 42,784 |
-| NYC-WTC0006 | 10,694 | | WTC 7 (DCAS+FDNY+DDC+DOB) | 6,046 |
-| NYC-WTC0002 | 9,996 | | DORIS Giuliani | 42 |
-| NYC-WTC0003 | 6,710 | | | |
-| NYC-WTC0007 | 6,046 | | | |
-| NYC-WTC0001 | 266 | | | |
-| NYC-WTC0005 | 42 | | | |
-
-`box_name` has 73 values, the largest holding 5,830 records. The DEP source is
-the "68 Boxes".
-
-**Pages:** the `page_count` facet is truncated, so it is unusable for totals.
-The page estimate combines the exact top 300 PDFs by size (22,446 pages) with a
-random sample of 963 other PDFs (mean 5.39 pages each), giving **≈152,400
-pages**. That sits against the city's "approximately 170,000 pages" and the
-highest Bates end seen, 166,488. Bates numbers run contiguously within
-volumes, so `max(production_end)` from a full listing is the exact answer.
-
-## 4. Document identifiers and URLs
-
-| Identifier | Example | Stability |
+| Identifier | Example | Notes |
 |---|---|---|
-| `title` | `NYC-WTC_000058160.pdf` | Stable. It is the Bates start and the download filename. |
-| `production_end` | `NYC-WTC_000058162` | Stable (Bates end). Pages = end − start + 1, which matches `page_count`. |
-| `mes:key` (datasource key) | `NYC-WTC0003/SPDF/PDF001/NYC-WTC_000058160.pdf`, with the md twin at `…pdf_MD` | Stable, but **the format varies by volume**: some volumes key without `.pdf` (`NYC-WTC_000165863`, `NYC-WTC_000136391_MD`). Treat it as opaque. |
-| result `id` | `september11 Connector:September11_MD:<mes:key>:` | Derived from `mes:key`. |
-| `mes:docid` / preview `docid=` | `4645570810203938549` / `2` | Per-index and per-query. **Do not store as an identity.** |
+| Bates start (`Name`/`title`) | `NYC-WTC_000058160.pdf` | Stable. It is the document ID and the download filename, and all 24,436 names end in `.pdf`. |
+| `production_end` | `NYC-WTC_000058162` | Pages = end − start + 1, which holds for every row. |
+| `mes:key` | `NYC-WTC0003/SPDF/PDF001/NYC-WTC_000058160.pdf`, or `NYC-WTC_000165863` in some volumes | Its shape varies by volume, so reduce it with `normalize_bates()`. |
+| `related_document` | `header { key: "<own key>.pdf_MD" … kind: REFERENCE }` | Every one of the 24,436 rows points at **its own** markdown twin. It is not a cross-document relation. |
+| `Date` (export) / `mes:date` | `2026-08-05 12:27:22` | The crawl/index time, not a document date. |
+| `mes:docid`, preview `docid=` | `4645570810203938549` / `2` | Assigned per index or per query. Never store these. |
 
-**Download (what the portal's own "Download" link does):**
+**PDF.** `GET https://sept11documents.cityofnewyork.us/apps/content/September11_MD/<Bates>.pdf`
+returns `200 application/pdf` with `Content-Length = pdf_size`,
+`Content-Disposition: inline`, an ETag and a Last-Modified header. The same URL
+is what the portal's Download link builds (`js/downloadlink.js`). A fallback,
+`/content?key=<mes:key>&category=september11+Connector&category_instance=September11_MD&category_class=default&query_service_location=https%3A%2F%2Flocalhost%3A23301&disposition=false&fetch_from_index=true`,
+serves a re-serialized copy: 476,243 B against the original's 472,025 B, with
+the same pages and text.
 
-```
-GET https://sept11documents.cityofnewyork.us/apps/content/September11_MD/<title>
-→ 200 application/pdf, Content-Length = pdf_size, Content-Disposition: inline,
-  ETag: W/"472025-1785932768000", Last-Modified: Wed, 05 Aug 2026 12:26:08 GMT
-```
-
-The page's JS builds the link as `../apps/content/September11_MD/<title>`.
-`js/downloadlink.js` has a fallback that rewrites the preview URL's path to
-`/content`; that path also works, but it serves a re-serialized copy:
-
-```
-GET /content?key=<mes:key urlencoded>&category=september11+Connector&category_instance=September11_MD
-    &category_class=default&query_service_location=https%3A%2F%2Flocalhost%3A23301&disposition=false&fetch_from_index=true
-→ 200 application/pdf (476,243 B for the 472,025 B original; same 3 pages, same text layer)
-```
-
-The preview action is
-`https://nyc.mindbreeze.com/search/september-11/apps/pdfviewer/index.html?docid=…&key=…`,
-a pdf.js viewer over the same content.
-
-**OCR text:**
-- `…/September11_MD/<title>.md` and `…/<title>_MD` both return **404**.
-- `/content?key=…pdf_MD` returns the PDF, not the markdown.
-- The search `content` property returns only a hit-highlighted snippet, about
-  1.8k characters of HTML, even with `content_sample_length: 100000`.
-- The markdown twin's `mes:size` (6,685 B for the 3-page sample) shows it is
-  small, but it is not exposed.
-- **Use the PDF text layer** (`pdftotext -layout`).
+**OCR text.**
+- The markdown twin is not served. `<Bates>.pdf.md` and `<Bates>.pdf_MD` both
+  return 404, and `/content?key=…_MD` returns the PDF.
+- The search `content` property is only a snippet (about 1.8k characters of
+  HTML), even with `content_sample_length: 100000`.
+- **Extract text from the PDF layer instead**, using `pdftotext -layout` or pypdf
+  as the prior art does.
 
 ## 5. Metadata per document
 
-These fields are present on every sampled record: `title`, `agency`,
-`source`, `box_name`, `folder_name` (the richest descriptor — a
-hand-labelled folder name, e.g. `GCMS X 3/2/02 A 3/27/02`), `production_volume`,
-`production_end`, `page_count` (string), `pdf_size` (bytes), `full_filename`,
-`mes:key`, `extension`, `mes:size`, `contenttype` (`markdown` on the twin),
-`related_document` (null in every sample) and the `actions` (Open / Preview).
+The metadata fields are: Bates start/end, source, agency, box_name, folder_name
+(a hand-labelled folder, e.g. `GCMS X 3/2/02 A 3/27/02`, and the richest
+descriptor), production_volume, page_count, pdf_size and the index date.
 
 **Absent:** document date, document type, author/recipient and a descriptive
-title. `mes:date` is the *index* date (identical, 2026-09-08, on every record),
-not a document date. The PDF's `/ModDate` is the production date
-(2026-06-17), not a record date. Dates and types would have to be derived from
-the OCR text and `folder_name`.
+title. These must be derived from the OCR text and folder labels, and labelled
+as derived.
 
 ## 6. OCR quality (one sample, counts only)
 
-For `NYC-WTC_000058160.pdf` (DEP lab data sheets, 3 pages, 472 KB),
-`pdftotext -layout` gave 478 tokens: 181 purely alphabetic words, 232 tokens
-containing digits (tabular lab results) and 8 junk tokens (~1.7%), from 7,797
-characters. The text is usable for full-text search. Layout-heavy forms come
-through as whitespace-aligned columns. The Disclaimers tab says the city also ran a
+Sample: `NYC-WTC_000058160.pdf`, DEP lab data sheets, 3 pages. `pdftotext
+-layout` produced 478 tokens: 181 alphabetic, 232 containing digits (tabular
+results) and 8 junk (~1.7%). A one-page sample from volume 0007 gave 41 words.
+
+The text is usable for full-text search, and layout-heavy forms come out as
+whitespace-aligned columns. The Disclaimers tab says the city also ran a
 handwriting-to-text pass. Whether that text is in the PDF layer or only in the
-index's markdown twin is **unverified**. Compare `pdftotext` with the search
-snippet on a handwritten page before relying on the PDF layer alone.
-The 1-page sample from volume 0007 gave 41 words. One sample is not a quality
-survey; score a stratified sample per volume before trusting it.
+markdown twin is **unverified**; compare `pdftotext` with the search snippet on
+a handwritten page. One sample is not a survey, so score a stratified sample
+per volume.
 
-## 7. Size and time estimate
+## 7. Size and time
 
-| Quantity | Value | Basis |
-|---|---|---|
-| Documents | 24,436 | Exact, from facets |
-| Bytes, top 300 PDFs | 13.41 GB | Exact (`orderby mes:size`); largest 377,056,038 B, 300th 12.9 MB |
-| Bytes, other 24,136 | ≈27.3 GB | Random sample of 963: mean 1.13 MB, median 416 KB |
-| **Total bytes** | **≈41 GB** (plausible range 30–50 GB) | Heavy-tailed; a full metadata listing gives the exact sum of `pdf_size` |
-| Pages | ≈152k (city: ~170k) | As above |
-| Listing cost | ≈245 requests for PDFs (100 each), about 2 min at 2 req/s; ≈250 more to list the md twins, which is unnecessary | |
-| Download cost | 24,436 GETs; at 1 req/s that is ≥6.8 h of request slots, and bandwidth dominates: 41 GB at 5 MB/s ≈ 2.3 h | Throughput was not measured. Plan on an overnight run with resume. |
+| | Value |
+|---|---|
+| Metadata | 1 request, 8.06 MB, 24 s |
+| PDFs | 24,436 files, 36.28 GB (exact, from the export). Median 315 KB, p90 2.8 MB, p99 15.0 MB. 23 files exceed 100 MB and the largest is 377 MB. The top 300 files hold 13.41 GB (37%). Files of 10 MB or less hold 59.5% of the bytes. |
+| Text | Estimate ~0.5–1.5 GB of plain text (172k pages at 3–9 KB/page, unmeasured) |
+| Download time | Request slots at 1 req/s are ≥6.8 h, but bandwidth dominates: 36 GB at 5 MB/s ≈ 2 h, at 1 MB/s ≈ 10 h. Plan on one overnight run with resume. Throughput was not measured. |
 
 ## 8. Terms, robots, reuse
 
-- `robots.txt`: none (404).
-- Welcome message (base.Welcome.html, Corporation Counsel):
-  "All documents available through this portal may be viewed and downloaded
-  free of charge."
-- The same message says PII was redacted but that "an inadvertent disclosure
-  may occur". The portal has a "Notify Us About Personal Information" tab for
-  reporting it.
-- **Disclaimers tab** (read in the browser; it renders from the app fragment
-  `main.Disclaimers`, which is not a standalone file). It contains only
-  accuracy caveats, paraphrased here:
-  - search relies on OCR, and on a separate handwriting-to-text conversion;
-  - neither process is fully accurate, handwriting especially;
-  - previewing downloads the whole PDF, and some PDFs are very large.
-
-  It says **nothing** about copyright, reuse, redistribution, automated access
-  or scraping.
-
-- **FAQ tab** (the `main.FAQ` fragment, read in the browser; paraphrased).
-  - **Contents:** DEP paper records found in August 2025, City Hall records
-    held by DORIS, a WTC 7 set, and records collected from other agencies.
-    Most were held until recently by the World Trade Center Captive Insurance
-    Company.
-  - **Size and schedule:** more than 170,000 pages at launch, with further
-    documents posted on a rolling basis over the next year. Review of a large
-    additional set of agency records is ongoing.
-  - **Withheld:** only PII is named.
-  - **Reuse:** a keyword scan of the whole FAQ for copyright, reuse,
-    redistribution, permission, terms of use, bulk, automated, scraping,
-    public domain and licence found **0 matches**.
+- **robots.txt:** none (404).
+- **Welcome message** (`base.Welcome.html`, Corporation Counsel): "All
+  documents available through this portal may be viewed and downloaded free of
+  charge." It also says PII was redacted but inadvertent disclosure may occur,
+  and points readers to the "Notify Us About Personal Information" tab.
+- **Disclaimers tab** (`main.Disclaimers` fragment, read in the browser;
+  paraphrased). It contains accuracy caveats only: search relies on OCR and a
+  handwriting-to-text conversion, neither is fully accurate, and previews
+  download the whole PDF, some of which are very large. It says **nothing** about
+  copyright, reuse, redistribution, automated access or scraping.
+- **FAQ tab** (`main.FAQ`, paraphrased).
+  - **Contents:** DEP paper records found in August 2025, DORIS City Hall
+    records, a WTC 7 set, and records from other agencies, most of them until
+    recently held by the World Trade Center Captive Insurance Company.
+  - **Size and schedule:** more than 170,000 pages at launch, with more posted
+    on a rolling basis over the next year.
+  - **Withheld:** only PII is named as withheld.
+  - **Reuse:** a keyword scan for copyright, reuse, redistribution, permission,
+    terms of use, bulk, automated, scraping, public domain and licence found
+    **0 matches**.
 - **Net:** there is no robots file, no terms of use, and no stated restriction
-  on reuse or automated retrieval. The city's only statement on access is the
-  free view-and-download line above. Politeness is still the right default: a
-  descriptive UA, 1 req/s, backoff, off-peak runs, and a courtesy note to the
-  Law Department before a full mirror. Redistributing the files ourselves
-  deserves a PII-takedown process, because the city itself expects missed
-  redactions.
+  on reuse or automated retrieval. Stay polite anyway: descriptive UA, 1 req/s,
+  backoff, off-peak. Before a full mirror, send a courtesy note to the Law
+  Department. Republishing needs a PII takedown path, because the city itself
+  expects missed redactions.
 
 ## 9. `scripts/fetch_sample.mjs` (end-to-end proof)
 
-Node 20+ with no dependencies; `pdftotext` is optional and used for the OCR
-text. It lists N results through `/api/v2/search` with offset paging, writes
-`listing.json`, and downloads the smallest listed PDF along with its metadata
-JSON, its `pdftotext` OCR text and the md-twin snippet.
+Node 20+, no dependencies; `pdftotext` is optional. It lists N documents,
+either with paged search (default) or with the catalog export (`--export`),
+writes `listing.json`, and downloads the smallest listed PDF along with its
+metadata JSON, the `pdftotext` OCR text and the markdown-twin snippet.
+
+Search mode (run 2026-09-13):
 
 ```
 $ node scripts/fetch_sample.mjs 'extension:pdf' 25 data/sample_fetch
@@ -304,50 +255,60 @@ listed 25 (distinct 25) -> data/sample_fetch/listing.json
 downloaded NYC-WTC_000165864.pdf: 23074 bytes (declared pdf_size 23074), pages=1, ocr_words=41, md_snippet_chars=387, etag=W/"23074-1786501332000"
 ```
 
-Box names are elided from the transcript. Note that relevance order for
-`extension:pdf` differs from `*` (it starts in volume 0007, not 0003).
+Export mode (run 2026-09-13; one request lists the whole partition):
+
+```
+$ node scripts/fetch_sample.mjs --export 'ALL extension:pdf production_volume:NYC-WTC0005' 25 data/sample_fetch_export
+export query="ALL extension:pdf production_volume:NYC-WTC0005" rows=21 bytes=6287
+listed 21 (distinct 21) -> data/sample_fetch_export/listing.json
+  NYC-WTC_000136542  vol=NYC-WTC0005 pages=128 bytes=9243745
+  NYC-WTC_000136819  vol=NYC-WTC0005 pages=78 bytes=2512839
+  NYC-WTC_000136990  vol=NYC-WTC0005 pages=123 bytes=4580519
+  NYC-WTC_000137249  vol=NYC-WTC0005 pages=2 bytes=22380
+  NYC-WTC_000137282  vol=NYC-WTC0005 pages=24 bytes=588971
+downloaded NYC-WTC_000137249.pdf: 22380 bytes (declared pdf_size 22380), pages=2, ocr_words=49, md_snippet_chars=320, etag=W/"22380-1786046068000"
+```
+
+Box names are elided from the transcripts.
 
 ## 10. Open risks
 
-1. **The deep-offset ceiling** (somewhere in 30k–39.9k) blocks a match-all
-   walk. Partition by `production_volume` (at most 7,559 PDFs per volume)
-   and by `extension:pdf`.
-2. **Tie-ordered paging.** Relevance ties mean order is not guaranteed if the
-   index is re-sorted mid-walk, for example while a new agency drop lands.
-   Dedupe on `mes:key`, assert that the per-volume count equals the facet
-   count, and re-walk any partition that falls short.
-3. **New monthly drops.** New volumes (`NYC-WTC0008…`) and new agencies
-   (NYPD, DOHMH and EDC are announced) will appear. Detect them from the
-   `production_volume` facet. Re-redaction may replace existing PDFs, which
-   is detectable through the `ETag`/`Last-Modified` change and `pdf_size`.
-   Keep old versions.
-4. **Rate limiting / WAF.** None was observed over ~130 sequential requests.
-   The origin is Mindbreeze SaaS, where an unannounced limit is possible.
-   Back off on any 429/5xx and send a descriptive UA.
-5. **Session tokens.** None are needed today. `qeng_ids` carries a digest
-   that changes with the index, so do not persist it; re-fetch page 0 per
-   partition run.
-6. **Huge files.** The largest PDF is 377 MB. Stream to disk and verify the
-   byte count against `pdf_size`. HTTP Range support was not tested.
-7. **ID format drift.** `mes:key` shape already differs across volumes, so key
-   the local store on `title` (the Bates start) plus `production_volume`.
-8. **PII.** Un-redacted names may exist. The explorer needs a takedown path
-   that mirrors the city's Notify-Us corrections: re-fetch changed ETags and
-   drop removed keys.
+1. **The corpus mutates.** It lost 5 documents and 762 pages between 09-09 and
+   09-13, and new volumes and agencies (NYPD, DOHMH, EDC) are announced. Diff a
+   daily export by Bates. Never overwrite a PDF whose ETag or size changed; keep
+   both versions.
+2. **The export depends on the Mindbreeze tenant host.** The city could lock
+   down `nyc.mindbreeze.com` or the export service at any time. Keep the paged
+   search path, capped at 100 per request, working as a fallback, and snapshot
+   the CSV every run.
+3. **Paging.** Offset paging has a ceiling between 30k and 39.9k and returns
+   results in tie order, so partition by volume and dedupe. Cursor paging is
+   verified for only two pages here; assert that no Bates repeats, as the prior
+   art does.
+4. **Rate limiting and WAF.** None was seen over ~150 sequential requests. The
+   origin is Mindbreeze SaaS, so back off on 429/5xx and stop on sustained
+   403s. Because nyc.gov answers 403 to bare clients (per the prior art's
+   notes), keep sending a descriptive UA.
+5. **Huge files.** Stream to disk and verify size against `pdf_size` and the
+   `%PDF-` magic. Range requests were not tested.
+6. **Handwriting text.** It may exist only in the index's markdown twin, which
+   we cannot download (§6).
+7. **PII.** Unredacted names may exist. The explorer needs a takedown path that
+   mirrors the city's corrections: when a document disappears or changes, hide
+   ours.
 
 ## 11. Recommended ingest design
 
 ```
-1. GET /api/v2/search facets(production_volume, agency, extension) on "*"  → partition list + expected counts.
-2. For each volume V: walk "extension:pdf" AND production_volume:V in pages of 100 via result_pages offsets
-   (fresh qeng_ids per walk), properties = all §5 fields (formats VALUE); dedupe on mes:key.
-3. Assert walked count == facet count/2 for V; if short, re-walk once, else flag the partition.
-4. Upsert into SQLite `docs(title PK, mes_key, volume, agency, source, box, folder, bates_end,
-   page_count, pdf_size, first_seen, last_seen, etag, last_modified, sha256, removed_at)`.
-5. Download queue ordered small→large: GET /apps/content/September11_MD/<title>, 1 req/s, stream to
-   data/pdf/<volume>/<title>.tmp, verify size == pdf_size, sha256, rename; If-None-Match on re-sync.
-6. Extract text: pdftotext -layout per page (split on \f) → docs_pages(title, page_no, bates, text) + FTS5.
-7. Nightly/weekly: repeat 1–3 (cheap: ~250 requests); new volume/agency → enqueue; missing keys →
-   mark removed_at (don't hard-delete; hide in explorer); changed ETag/size → re-download + keep old sha.
-8. Log every run (requests, 4xx/5xx, bytes) and stop on sustained 429/403 rather than retry-storm.
+1. Daily: POST backend /api/v2/export ("ALL extension:pdf") → store catalog_<date>.csv immutably + sha256.
+   Parse with normalize_bates(); quarantine a snapshot that drops >5% (prior-art rule); diff vs last accepted.
+2. Upsert SQLite docs(bates PK, source, agency, box, folder, volume, bates_end, page_count, pdf_size,
+   first_seen, last_seen, removed_at); added → download queue; removed → removed_at (hide, never hard-delete).
+3. Download worker: 1 req/s, GET /apps/content/September11_MD/<bates>.pdf → .tmp, verify %PDF- + size ==
+   pdf_size, sha256, rename into data/pdf/<volume>/; store ETag/Last-Modified; size/ETag change → new version.
+4. Text: pdftotext -layout, split on \f → pages(bates, page_no, bates_page, text) + SQLite FTS5 (or Typesense).
+5. Derive (labelled "derived"): dates, addresses/buildings, sampling results, entity mentions per page.
+6. Serve PDFs from our mirror (survives removal for audit, but honour takedowns) or link to the city URL.
+7. Fallback if export is blocked: paged search per production_volume, dedupe on Bates, assert counts.
+8. Log per run: requests, 4xx/5xx, bytes; stop on sustained 429/403. Courtesy note to the Law Dept first.
 ```

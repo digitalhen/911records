@@ -10,8 +10,13 @@
 // The index also holds a markdown twin per PDF (extension:md) whose `content`
 // property returns only a hit-highlighted snippet — saved alongside as snippet.
 //
-// Usage: node scripts/fetch_sample.mjs [query] [N] [outDir]
+// Usage: node scripts/fetch_sample.mjs [--export] [query] [N] [outDir]
 //   defaults: query "extension:pdf", N 25, outDir data/sample_fetch
+//   --export: list via the catalog export endpoint (one request, the WHOLE query as CSV, no
+//             paging ceiling) instead of paged search. Only the Mindbreeze backend host serves
+//             it (the city hostname answers 404). Keep the query narrow for a sample, e.g.
+//             --export "ALL extension:pdf production_volume:NYC-WTC0005" 25
+//   Endpoint shapes credited to github.com/pranava0x0/sept11documents-mcp (verified live).
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -28,7 +33,12 @@ const PROPS = ['title', 'extension', 'agency', 'source', 'box_name', 'folder_nam
   'production_volume', 'production_end', 'page_count', 'pdf_size', 'full_filename',
   'related_document', 'mes:key', 'mes:size', 'mes:date'];
 
-const [query = 'extension:pdf', nArg = '25', outDir = 'data/sample_fetch'] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const useExport = argv[0] === '--export';
+if (useExport) argv.shift();
+const [query = useExport ? 'ALL extension:pdf production_volume:NYC-WTC0005' : 'extension:pdf',
+  nArg = '25', outDir = 'data/sample_fetch'] = argv;
+const EXPORT = 'https://nyc.mindbreeze.com/search/september-11/api/v2/export';
 const N = Math.max(1, Number(nArg) || 25);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -78,6 +88,58 @@ async function list(q, n) {
   return rows.slice(0, n);
 }
 
+// Semicolon CSV with RFC 4180 quoting (related_document holds quoted multi-line text).
+function parseCsv(text, delim = ';') {
+  const rows = []; let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === delim) { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = ''; if (row.some((f) => f !== '')) rows.push(row); row = [];
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+async function listExport(q, n) {
+  const body = {
+    search_request: {
+      count: 100,
+      properties: PROPS.filter((p) => !['extension', 'full_filename', 'mes:size'].includes(p))
+        .map((name) => ({ name, formats: ['VALUE'] })),
+      user: { query: { and: [{ unparsed: q, id: 'query' }] }, constraints: [] },
+      source_context: { constraints: [{ unparsed: 'ALL', id: 'view_base' }] },
+    },
+    export_format: 'text/csv', batch_size: 1000, allow_duplicate: false, groupby_properties: [],
+  };
+  const res = await fetch(EXPORT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/csv', 'User-Agent': UA },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`export HTTP ${res.status}`);
+  const text = (await res.text()).replace(/^﻿/, '');
+  const [header, ...data] = parseCsv(text);
+  const idx = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  const col = (r, k) => (idx[k] === undefined ? '' : (r[idx[k]] ?? '').trim());
+  console.error(`export query=${JSON.stringify(q)} rows=${data.length} bytes=${text.length}`);
+  const rows = data.map((r) => ({
+    id: col(r, 'Mindbreeze Key'), 'mes:key': col(r, 'Mindbreeze Key'), title: col(r, 'Name'),
+    extension: col(r, 'Name').split('.').pop(), source: col(r, 'source'), agency: col(r, 'agency'),
+    box_name: col(r, 'box_name'), folder_name: col(r, 'folder_name'), page_count: col(r, 'page_count'),
+    pdf_size: Number(col(r, 'pdf_size')) || null, production_volume: col(r, 'production_volume'),
+    production_end: col(r, 'production_end'), indexed_at: col(r, 'Date'),
+  }));
+  return rows.slice(0, n);
+}
+
 async function download(row, dir) {
   const title = row.title;
   const url = CONTENT(title);
@@ -116,7 +178,7 @@ async function download(row, dir) {
   return meta;
 }
 
-const rows = await list(query, N);
+const rows = useExport ? await listExport(query, N) : await list(query, N);
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, 'listing.json'), JSON.stringify(rows, null, 2));
 const ids = new Set(rows.map((r) => r.id));
