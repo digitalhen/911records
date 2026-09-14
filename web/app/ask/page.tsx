@@ -6,6 +6,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { MachineNote, SourceRail, searchFallbackUrl } from '@/components/ask/shared';
+import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 import { getPageByBates } from '@/lib/site';
 import { findExactBates } from '@/lib/opensearch';
@@ -61,6 +62,33 @@ function RefusalView({ q, reason }: { q: string; reason: string }) {
             network graph of people. See <Link href="/personal-information">the personal-information policy</Link>.
           </p>
         </aside>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+function OfftopicView({ q }: { q: string }) {
+  const suggestions = SUGGESTED_QUESTIONS.slice(0, 3);
+  return (
+    <>
+      <Header active="/ask" />
+      <main id="main">
+        <AskAgainForm q={q} />
+        <article className="answer-main summary-rule">
+          <MachineNote />
+          <div className="citation-rule">
+            <h2 style={{ marginBottom: 8 }}>City records only</h2>
+            <p>This tool answers only from the City&apos;s released 9/11 records. Try:</p>
+          </div>
+          <section className="followup">
+            {suggestions.map((s, i) => (
+              <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
+                {s} <span>→</span>
+              </Link>
+            ))}
+          </section>
+        </article>
       </main>
       <Footer />
     </>
@@ -136,20 +164,28 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   const q = (getStr(sp, 'q') || '').trim();
   if (!q) redirect('/search');
 
+  // /search's "Ask this as a question →" link (B11, "combine search and ask
+  // into one, like Prospect"): forces the planner even for a string the
+  // router would otherwise short-circuit to a Bates lookup or a keyword
+  // search — the user has already seen the plain search results and
+  // explicitly asked for the model instead. It never forces plan.kind
+  // itself; the planner can still come back 'search'/'refuse'/'offtopic'.
+  const forceQuestion = getStr(sp, 'mode') === 'question';
   const route = routeAsk(q);
 
-  if (route.kind === 'bates') {
+  if (!forceQuestion && route.kind === 'bates') {
     const found = (await getPageByBates(route.bates)) ?? (await findExactBates(route.bates));
     if (found) redirect(found.page > 1 ? `/doc/${found.doc}/p/${found.page}` : `/doc/${found.doc}`);
     redirect(searchFallbackUrl(q, 'bates-not-found'));
   }
 
-  if (route.kind === 'keyword') {
+  if (!forceQuestion && route.kind === 'keyword') {
     redirect(`/search?q=${encodeURIComponent(route.q)}`);
   }
 
-  // route.kind === 'model' from here: ANTHROPIC_API_KEY unset -> degrade to
-  // search with a note (docs/PLAN.md: "with no key, Ask degrades to search").
+  // route.kind === 'model' (or mode=question forcing it) from here:
+  // ANTHROPIC_API_KEY unset -> degrade to search with a note (docs/PLAN.md:
+  // "with no key, Ask degrades to search").
   if (!askConfigured()) {
     redirect(searchFallbackUrl(q, 'ask-unavailable'));
   }
@@ -178,6 +214,10 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
 
   if (plan.kind === 'refuse') {
     return <RefusalView q={q} reason={plan.refuseReason} />;
+  }
+
+  if (plan.kind === 'offtopic') {
+    return <OfftopicView q={q} />;
   }
 
   if (plan.kind === 'search') {

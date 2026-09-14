@@ -13,6 +13,40 @@ const PIPELINE = process.env.OPENSEARCH_PIPELINE || 'sept11-hybrid';
 const HL_OPEN = '';
 const HL_CLOSE = '';
 
+// The "_english_" predefined stop word list — exactly what
+// scripts/search/opensearch.py's mapping gives OpenSearch's built-in
+// "english" analyzer for the `text` field (see its header comment). Kept in
+// sync by hand: OpenSearch has no endpoint that hands this list back.
+const ENGLISH_STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for', 'if', 'in', 'into', 'is', 'it',
+  'no', 'not', 'of', 'on', 'or', 'such', 'that', 'the', 'their', 'then', 'there', 'these',
+  'they', 'this', 'to', 'was', 'will', 'with',
+]);
+
+// The analyzer's own list (above) is a BM25/indexing stopword list — by
+// design it does not touch pronouns or auxiliaries ("you", "do", "like"
+// are real, indexed tokens to it). That's exactly why "do you like jesus"
+// hit /search and highlighted "you" on nearly every page (B11): "you" is
+// common enough in correspondence OCR to match almost every document, and
+// the highlighter reflects whatever the query contains. So the *query-text*
+// noise list used here is deliberately wider than the analyzer's own —
+// mirrors lib/ask/router.ts's FLAGGED_WORDS (same words, same reason: they
+// carry no search-relevant content on their own).
+const QUERY_NOISE_WORDS = new Set([
+  ...ENGLISH_STOPWORDS,
+  'do', 'does', 'did', 'can', 'could', 'should', 'would',
+  'what', 'who', 'whom', 'why', 'how', 'when', 'where', 'which', 'like',
+  'you', 'your', 'i', 'me', 'my', 'we',
+]);
+
+/** The words of `text` that carry search-relevant content — see QUERY_NOISE_WORDS above. */
+function contentTerms(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ''))
+    .filter((t) => t && !QUERY_NOISE_WORDS.has(t.toLowerCase()));
+}
+
 function authHeaders(): Record<string, string> {
   if (!OPENSEARCH_USER) return {};
   const token = Buffer.from(`${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD || ''}`).toString('base64');
@@ -82,7 +116,13 @@ export interface SearchResult {
   semanticError?: string;
   exactBates?: { doc: string; page: number; batesPage: string } | null;
   error?: string;
+  /** q was non-empty but every token is an english-analyzer stopword — nothing to search on. */
+  noSearchableTerms?: boolean;
+  /** Content terms remained, but none of them literally appear in any page — the semantic arm was gated off. */
+  noLexicalMatch?: boolean;
 }
+
+const MULTI_MATCH_FIELDS = ['text', 'text.exact^0.5', 'folder.text^0.3'];
 
 const FACET_FIELDS = ['agency', 'source', 'box', 'volume', 'folder', 'contaminants', 'labs', 'addresses'] as const;
 
@@ -114,6 +154,30 @@ function renderSnippet(fragment: string): string {
   return escaped.split(HL_OPEN).join('<mark>').split(HL_CLOSE).join('</mark>');
 }
 
+/**
+ * Does the keyword arm alone have any hit at all? A hybrid query's k-NN arm
+ * always returns its nearest k neighbours regardless of whether the word
+ * means anything to the corpus — searching an off-corpus word like "jesus"
+ * came back with 100 semantically-"close" pages and zero actual matches,
+ * which reads as noise, not results (team brief). Skipped whenever the
+ * caller already knows it wants semantic recall regardless (a planner
+ * question, `SearchOptions.allowSemanticOnly`).
+ */
+async function hasLexicalHit(query: string, filterClauses: Record<string, unknown>[]): Promise<boolean> {
+  try {
+    const body = {
+      query: filterClauses.length
+        ? { bool: { must: { multi_match: { query, fields: MULTI_MATCH_FIELDS } }, filter: filterClauses } }
+        : { multi_match: { query, fields: MULTI_MATCH_FIELDS } },
+    };
+    const res = (await call('POST', `/${INDEX}/_count`, body, 5000)) as { count: number };
+    return (res.count ?? 0) > 0;
+  } catch {
+    // Don't let a broken count call falsely suppress a real search — fail open.
+    return true;
+  }
+}
+
 /** A bare Bates number in the query short-circuits straight to that page, exact per scripts/search/opensearch.py. */
 export async function findExactBates(q: string): Promise<{ doc: string; page: number; batesPage: string } | null> {
   const m = BATES_RE.exec(q.trim());
@@ -139,31 +203,55 @@ export interface SearchOptions {
   page?: number;
   pageSize?: number;
   sort?: 'relevance' | 'bates' | 'newest';
+  /**
+   * Skip the "semantic needs ≥1 lexical hit" gate below. Set by
+   * lib/ask/retrieve.ts: a planner-generated 'question' plan wants semantic
+   * recall for paraphrased content even when its exact terms don't appear
+   * verbatim — the gate exists for the bare /search box, which has no such
+   * intent signal and where an off-corpus word returning only "nearest
+   * neighbour" noise reads as a bug (team brief).
+   */
+  allowSemanticOnly?: boolean;
 }
 
 export async function search(opts: SearchOptions): Promise<SearchResult> {
-  const { q, filters = {}, page = 1, pageSize = 20, sort = 'relevance' } = opts;
+  const { q, filters = {}, page = 1, pageSize = 20, sort = 'relevance', allowSemanticOnly = false } = opts;
   const from = Math.max(0, (page - 1) * pageSize);
   const filterClauses = buildFilterClauses(filters);
   const trimmed = q.trim();
+  // Strip stopwords before it ever reaches OpenSearch: the keyword arm's
+  // query text, the embedding text for the semantic arm, and (since the
+  // highlighter reflects whatever query it's given) the highlighted snippet
+  // all come from `strippedQuery`, never the raw `trimmed` string. A query
+  // that was nothing but stopwords/pronouns ("do you like jesus") short-
+  // circuits before any OpenSearch or Ollama call — see B11.
+  const strippedQuery = trimmed ? contentTerms(trimmed).join(' ') : '';
+  if (trimmed && !strippedQuery) {
+    return { hits: [], total: 0, tookMs: 0, facets: {}, semantic: false, noSearchableTerms: true };
+  }
+
+  let noLexicalMatch = false;
+  if (strippedQuery && !allowSemanticOnly && !(await hasLexicalHit(strippedQuery, filterClauses))) {
+    noLexicalMatch = true;
+  }
 
   let semantic = false;
   let semanticError: string | undefined;
   let vector: number[] | null = null;
-  if (trimmed) {
-    const embed = await embedQuery(trimmed);
+  if (strippedQuery && !noLexicalMatch) {
+    const embed = await embedQuery(strippedQuery);
     vector = embed.vector;
     semantic = embed.reachable && !!embed.vector;
     if (!embed.reachable) semanticError = embed.error || 'Ollama unreachable';
   }
 
-  const textQuery = trimmed
-    ? { multi_match: { query: trimmed, fields: ['text', 'text.exact^0.5', 'folder.text^0.3'] } }
+  const textQuery = strippedQuery
+    ? { multi_match: { query: strippedQuery, fields: MULTI_MATCH_FIELDS } }
     : { match_all: {} };
 
   let queryBody: Record<string, unknown>;
   let searchPath = `/${INDEX}/_search`;
-  if (trimmed && vector) {
+  if (strippedQuery && vector) {
     queryBody = {
       hybrid: {
         queries: [textQuery, { knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } }],
@@ -224,7 +312,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     for (const f of FACET_FIELDS) {
       facets[f] = (res.aggregations?.[f]?.buckets ?? []).map((b) => ({ key: b.key, count: b.doc_count }));
     }
-    return { hits, total: res.hits.total.value, tookMs: res.took, facets, semantic, semanticError };
+    return { hits, total: res.hits.total.value, tookMs: res.took, facets, semantic, semanticError, noLexicalMatch };
   } catch (err) {
     return {
       hits: [],
@@ -233,6 +321,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       facets: {},
       semantic,
       semanticError,
+      noLexicalMatch,
       error: err instanceof Error ? err.message : String(err),
     };
   }
