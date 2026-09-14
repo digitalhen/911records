@@ -119,13 +119,32 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("units_res", "INTEGER"), ("units_total", "INTEGER"), ("bldg_area", "BIGINT"),
         ("bldg_class", "TEXT"), ("num_bldgs", "INTEGER"), ("source", "TEXT"),
     ],
+    # issue #34 (P4): sample-level facts (scripts/embed/facts.py) + two rollups build_site_db.py
+    # computes from them. Schema-first like everything else here: a build with no
+    # data/embed/p4-facts.sqlite yet loads these as empty tables, not missing ones.
+    "facts": [
+        ("id", "INTEGER"), ("doc", "TEXT"), ("page", "INTEGER"), ("bates", "TEXT"),
+        ("building_key", "TEXT"), ("substance", "TEXT"), ("sample_type", "TEXT"),
+        ("value", "DOUBLE PRECISION"), ("unit", "TEXT"), ("date", "DATE"), ("lab", "TEXT"),
+        ("method", "TEXT"), ("limit_value", "DOUBLE PRECISION"), ("limit_source", "TEXT"),
+        ("result", "TEXT"), ("sample_id", "TEXT"), ("location", "TEXT"),
+        ("confidence", "DOUBLE PRECISION"), ("extractor", "TEXT"),
+    ],
+    "building_substances": [
+        ("building_key", "TEXT"), ("substance", "TEXT"), ("n_pages", "INTEGER"),
+        ("n_readings", "INTEGER"), ("first_date", "DATE"), ("last_date", "DATE"),
+        ("max_value", "DOUBLE PRECISION"), ("unit", "TEXT"), ("any_above_limit", "BOOLEAN"),
+    ],
+    "lab_rollups": [
+        ("lab", "TEXT"), ("n_pages", "INTEGER"), ("buildings", "JSONB"), ("substances", "JSONB"),
+    ],
     "meta": [("key", "TEXT"), ("value", "TEXT")],
 }
-BOOL_COLUMNS = {"held_locally", "image_ready", "cross", "has_test"}
+BOOL_COLUMNS = {"held_locally", "image_ready", "cross", "has_test", "any_above_limit"}
 PRIMARY_KEYS = {
     "documents": ["doc"], "pages": ["doc", "page"], "snapshots": ["date"], "entities": ["id"],
     "signatories": ["id"], "topics": ["id"], "places": ["id"], "meta": ["key"],
-    "page_text": ["doc", "page"], "building_facts": ["bbl"],
+    "page_text": ["doc", "page"], "building_facts": ["bbl"], "facts": ["id"], "lab_rollups": ["lab"],
 }
 PAGE_TEXT_COLUMNS = [("doc", "TEXT"), ("page", "INTEGER"), ("text", "TEXT"), ("source", "TEXT")]
 
@@ -176,6 +195,12 @@ INDEX_STATEMENTS = [
     # the jsonb `?` containment test is an index lookup instead of a full Seq Scan; matters most as
     # place_pages grows with the corpus (currently ~3.7k rows, target ~10x that).
     'CREATE INDEX place_pages_contaminants_gin ON site_new.place_pages USING GIN (contaminants)',
+    # issue #34 (P4): facts + rollups.
+    'CREATE INDEX facts_building ON site_new.facts(building_key)',
+    'CREATE INDEX facts_substance ON site_new.facts(substance)',
+    'CREATE INDEX facts_doc ON site_new.facts(doc, page)',
+    'CREATE UNIQUE INDEX building_substances_unique ON site_new.building_substances(building_key, substance)',
+    'CREATE INDEX building_substances_substance ON site_new.building_substances(substance)',
 ]
 
 
