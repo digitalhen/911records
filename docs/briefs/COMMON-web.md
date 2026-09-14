@@ -50,3 +50,7 @@ Rules:
   Every merge that changes what a visitor can see or do bumps the version and prepends notes that
   describe USER-FACING changes only, in plain language (see CLAUDE.md); agents put their proposed
   note text in their report and the coordinator writes it at merge.
+- **AI mark (Henry, 09-14).** Controls that invoke the model or lead to a model-written answer carry
+  the `AiMark` sparkle (Ask button, ask-as-question links, suggested questions, follow-ups). Plain
+  search/browse/document links and "machine-extracted" markers never do. This overrides the design
+  brief's blanket ban on sparkle icons for those controls only.
