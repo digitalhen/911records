@@ -52,6 +52,8 @@
 #        (launchd plist: docs/launchd/nyc.911records.refresh.plist, installed per docs/RUNBOOK.md)
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# cron runs with a bare PATH (node/npm/psql live under Homebrew); the first cron run failed with exit 127.
+export PATH="/opt/homebrew/bin:/opt/homebrew/opt/postgresql@16/bin:/usr/local/bin:$PATH"
 # Host service credentials (OpenSearch basic auth for docker-compose.host.yml); gitignored under data/.
 if [ -f data/host.env ]; then set -a; . data/host.env; set +a; fi
 
