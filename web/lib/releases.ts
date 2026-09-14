@@ -16,6 +16,11 @@ export const RELEASES: Release[] = [
     notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
   },
   {
+    version: '0.11.0',
+    date: '2026-09-14',
+    notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
+  },
+  {
     version: '0.10.0',
     date: '2026-09-14',
     notes: ['"What others are reading": notable records picked out, plus what people are actually opening, on the home page and a new /reading page; documents show "Others also read".'],
