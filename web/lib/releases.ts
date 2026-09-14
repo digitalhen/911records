@@ -5,11 +5,21 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.8.1';
+export const APP_VERSION = '0.9.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.9.0',
+    date: '2026-09-14',
+    notes: ['Topic map: a zoomable visual map of subjects across the collection, sized by how many pages are about each one — click a topic to zoom into its sub-topics, then into its documents. Each topic page shows which boxes and agencies it spans.'],
+  },
+  {
+    version: '0.9.0',
+    date: '2026-09-14',
+    notes: ['Topic map: a zoomable visual map of subjects across the collection, sized by how many pages are about each one — click a topic to zoom into its sub-topics, then into its documents. Each topic page shows which boxes and agencies it spans.'],
+  },
   {
     version: '0.8.1',
     date: '2026-09-14',
