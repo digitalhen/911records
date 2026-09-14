@@ -1,9 +1,164 @@
-# 911records.nyc — build plan
+# Plan: ship 911records.nyc
 
-Plan of record, written 2026-09-13 (ET) so work can resume cold after a session reset.
-Owner: Henry. Repo: `github.com/digitalhen/911records` (private), local `~/Code/sept11-docs`.
+Written 2026-09-14 (New York time, late on the 13th). Henry's decisions, given in this session:
+
+- **Scope: everything in the Astra round 2 design** (`design/astra/`): Ask anything, search,
+  document viewer, browse, changes, entities, signatories, topics, related and versions, building
+  map and building pages, case folder, personal-information policy, mobile.
+- **Ask uses Haiku, and only when OpenSearch cannot answer on its own.** Model it on Prospect's
+  Ask (`~/Code/prospect/docs/CHAT-AGENT.md`): one constrained call that emits a plan, retrieval done
+  deterministically, rows never pass through the model unless an answer must be written.
+- **Serve from here, HA like prospect.nyc.** The mirror and the pipeline stay on StudioMac. The app
+  runs on BOTH Dokploy instances (StudioMac .51 and MonsterMac .52) behind the one Cloudflare
+  tunnel, and Dokploy auto-deploys from `main`. Derived data lives in the central Postgres
+  (database `sept11` on .51:5433, standby on .52:5433; roles `sept11` rw and `sept11_ro`,
+  credentials in StudioMac's `~/.pgpass`). Files (PDFs, page images, word boxes) and OpenSearch are
+  served from StudioMac's host Docker on the LAN IP, the way Prospect's central Postgres is.
+- **Run it like prospect.nyc**: scheduled refresh on StudioMac, build-then-swap for derived data,
+  a health endpoint, one PR per change once live.
+- **PII: serve the City's records as-is and keep pulling updates from the City.** No redaction of
+  our own for v1. The report form, the removal handling and the policy page stay, but the policy
+  says what we actually do.
+- **Live as soon as possible**, fully deployed, with SEO.
+- Operator: **Cleartext Labs** (footer, about, privacy, JSON-LD publisher). Independent; not affiliated with the City.
+- Ads: AdSense, one labelled unit per page below the content, never inside a document or an
+  answer (publisher `ca-pub-9961054735948902`, unit `4391479569`). `ads.txt` and `/privacy` carry over.
+- Sub-agents on cheaper models; Codex (`codex exec`, gpt-6-astra) for the large porting jobs.
+
+## Architecture
+
+```
+StudioMac host (.51)                                  Dokploy VMs on .51 AND .52 (HA, one tunnel)
+----------------------------------------------------  -------------------------------------------
+data/pdf, data/text (+boxes), data/pages (webp)       app (Next.js 15, standalone), env only:
+docker-compose.host.yml on the host's Docker:           DATABASE_URL → .51:5433 (writes, runtime tables)
+  files  nginx  192.168.200.51:8911 (/files/pdf,        DATABASE_READ_URL → .52:5433 (reads)
+         /files/page, /files/text, /ollama proxy)       OPENSEARCH_URL → 192.168.200.51:9200 (auth)
+  opensearch 2.19  192.168.200.51:9200, security on     FILES_URL → 192.168.200.51:8911
+central Postgres sept11: schema site (derived,          OLLAMA_URL → files service /ollama proxy
+  build-then-swap) + schema app (answers, reports)     ANTHROPIC_API_KEY, ASK_MODEL, caps, GIT_SHA
+scripts/refresh_daily.sh (launchd 03:30): enumerate →
+  diff → download → extract/render/OCR/embed/entities →
+  build_site_db → load_site_pg → opensearch index
+```
+
+- **Read data** comes from two places only: OpenSearch (search, facets, per-document page lists,
+  entity fields) and Postgres schema `site` (catalog, pages and page text, changes, entities,
+  roles, related, topics, places), read through the standby. The pipeline builds
+  `data/site/site.sqlite` locally, then `load_site_pg.py` loads it into schema `site_new` and swaps
+  schemas in one transaction (build-then-swap, Prospect's rule).
+- **Write data** (answers with permalinks, PII reports, saved-search alerts) goes to schema `app`
+  on the primary.
+- **Files.** PDFs, page images and word boxes are served by the `files` nginx on StudioMac's host
+  Docker, reached through Next rewrites at `/files/…`; both app replicas point at it.
+- **Vectors at query time.** The app embeds queries with nomic-embed-text through the files
+  service's `/ollama/` proxy to Ollama on StudioMac, the same model the pipeline uses.
+- **Ask.** `lib/ask/route.ts` decides without a model: a Bates number opens the document; a
+  short keyword string runs a search. Anything else goes to Haiku once for a `AskPlan`
+  (`kind: search | question | refuse`, terms, filters). Retrieval is OpenSearch hybrid. Only
+  `question` makes a second Haiku call, given ≤12 page excerpts with their Bates page ids, and
+  must return sentences each with citations; the app drops any sentence whose citations are not
+  in the retrieved set, and renders "not established" and follow-ups. `refuse` covers attempts to
+  identify redacted or private people. Env: `ANTHROPIC_API_KEY`, `ASK_MODEL` (default
+  `claude-haiku-4-5`), `ASK_DAILY_USD_CAP`, per-IP rate limit. With no key, Ask degrades to search.
+
+## URL scheme (stable; citations depend on it)
+
+| Path | What |
+|---|---|
+| `/` | Ask + search, collection summary, recent changes |
+| `/search?q=&agency=&box=&contaminant=…` | results with facets and snippets |
+| `/ask?q=` → `/a/<id>` | answer, permalinked with citations frozen |
+| `/doc/<bates_start>` and `/doc/<bates_start>/p/<n>` | document viewer; page image beside OCR text |
+| `/page/<bates_page>` | redirect to the document and page that carries that Bates stamp |
+| `/browse`, `/browse/<agency>/<volume>/<box>/<folder>` | physical order |
+| `/changes`, `/changes/<date>` | snapshot history: added, removed, changed |
+| `/entities`, `/entity/<type>/<slug>` | labs, agencies, contractors, substances, addresses |
+| `/signatory/<slug>` | people in official capacity only, role on a record |
+| `/topics`, `/topics/<id>` | topic map |
+| `/doc/<bates_start>/versions` | near-duplicates and copies |
+| `/map`, `/building/<bin>` | buildings and tests |
+| `/case` | case folder, browser-local |
+| `/personal-information`, `/privacy`, `/about`, `/ads.txt`, `/robots.txt`, `/sitemap.xml` | |
+| `/api/health` | build sha, index counts, site.sqlite mtime, last refresh |
+
+## Schema `site` (contract between pipeline and app; built as `data/site/site.sqlite`, loaded to Postgres)
+
+```
+documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
+          first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
+          pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url)
+pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
+snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
+changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
+entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date)
+entity_pages(entity_id, doc, page, role, confidence)
+signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
+signatory_pages(id, doc, page, action, confidence)
+related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
+topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   doc_topics(doc, topic, prob)
+places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
+place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
+page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
+meta(key PK, value)                                     built_at, snapshot_date, counts
+```
+
+Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
+one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.
+Page images: `data/pages/<agency>/<volume>/<bates>/<n>.webp` (about 110 dpi) and `<n>.t.webp`
+(thumbnail). OCR we run ourselves is marked `ocr_source = 'ours'` and shown as such.
+
+## Workstreams
+
+| Id | Work | Owner | Depends on |
+|---|---|---|---|
+| A1 | Pipeline: `render_pages.mjs` (pdftoppm → webp + thumb, incremental), `-bbox-layout` word boxes in `extract_text.mjs`, `ocr_pages.py` (tesseract for `empty` pages, text + boxes), `loop.sh` runs them | Codex | — |
+| A2 | Pipeline: `build_site_db.py` (schema above, build-then-swap), `opensearch.py` gains `image_ready`, `ocr_source`, doc-level fields, basic-auth env, `--host`; `refresh_daily.sh` + launchd plist; `docs/RUNBOOK.md` | Sonnet | A1 file layout |
+| B1 | App foundation: `web/` Next.js 15 + TS, design system ported from `design/astra/style.css`, layout and nav, `lib/siteDb.ts`, `lib/opensearch.ts`, `lib/embed.ts`, search results with facets, document viewer with page image, OCR text, hit highlighting from boxes, Bates redirects, `/files` rewrites, `/api/health`, Dockerfile, `docker-compose.yml` (app, files, opensearch), `robots.txt`, sitemap index | Sonnet | schema above |
+| B2 | Home, browse, changes, personal-information, privacy, about, mobile frames | Codex | B1 |
+| B3 | Ask: router, Haiku plan, hybrid retrieval, cited answer, refusal, permalinks, spend cap | Sonnet | B1 |
+| B4 | Entities, signatory, topics, related panel on document, versions | Codex | B1, A2 |
+| B5 | Map (MapLibre + OpenFreeMap tiles + our footprints GeoJSON) and building pages | Codex | B1, A2 |
+| B6 | Case folder (browser-local, export, suggestions), saved-search alerts (copy link, no email in v1), SEO pass (metadata, JSON-LD, canonical, OG, sitemaps for documents, entities, buildings, topics) | Sonnet | B1–B5 |
+| C | Deploy: Dokploy app on `ubuntu-production` replacing the holding page, env, bind mount, OpenSearch credentials, first full index, DNS check, `/api/health` green | main session | A2, B1 |
+| D | QA: design fidelity against `design/astra/`, privacy rules (no private names in entity pages or suggestions), citation check on Ask, mobile | Sonnet, one pass | all |
+
+Sequencing: A1, A2 and B1 start together. B2–B5 start when B1's scaffold is merged, each on its
+own branch and its own routes, never editing shared files (layout, nav, `lib/*`) without saying
+so in the report. B6 and D last. C runs as soon as A2 and B1 exist, with whatever data has been
+mirrored by then; the index refills as the download finishes (about 13 hours from now).
+
+## Deployment steps (C)
+
+1. Host services on StudioMac: `docker compose -f docker-compose.host.yml up -d` (files nginx and
+   OpenSearch with security on, both on 127.0.0.1 and 192.168.200.51 only). Cut the indexer over
+   to basic auth; retire `docker-compose.opensearch.yml`.
+2. Load Postgres: `scripts/refresh_daily.sh --index-only --no-download` (site.sqlite → schema
+   `site` → OpenSearch index). Install the launchd daemon.
+3. Dokploy, both instances (project "Sept11 Records"): a Compose application on this repo,
+   `docker-compose.yml`, watch path `web/**` + `docker-compose.yml` + `Dockerfile`, domains
+   `911records.nyc` and `www` (301), environment per the block above with `REPLICA_NAME` set to
+   `studiomac` / `monstermac` and `GIT_SHA` per Prospect's rule. Then retire the "Holding page"
+   application on both.
+4. Verify on each replica: `/api/health` (commit, replica, db, opensearch, files), `/doc/NYC-WTC_000000001`,
+   `/search?q=asbestos`, `/sitemap.xml`, `www` redirect, `/ads.txt`.
+
+## SEO
+
+Server-rendered document pages with title `<box or folder> · NYC-WTC_… · 9/11 City Records`,
+a description from the first non-empty page, canonical URLs, Open Graph, `Dataset` and
+`DigitalDocument` JSON-LD, breadcrumbs, a sitemap index (documents, entities, buildings, topics,
+changes; page-level URLs stay out of the sitemap), `robots.txt` allowing everything except
+`/ask`, `/a/`, `/case`, `/api/`. Removed documents return 410 with a notice and safe metadata.
+
+## Out of scope for v1
+
+Accounts, email alerts, our own redaction pass, City data joins beyond the building footprints
+(`docs/research/city-data-linkage.md` phases 2–4), and anything outside the City's 9/11 records.
 
 ---
+
+# Carried over from the plan of record (2026-09-13 23:13)
 
 ## 1. What we are building
 
@@ -30,21 +185,6 @@ happen without notice.
 **Tone:** a serious records instrument. Not a memorial trinket and not sensational. The design
 direction is the Astra "records desk" (`design/astra/`).
 
-## 2. Decisions locked (Henry, 2026-09-13)
-
-| Decision | Choice |
-|---|---|
-| Domain | **911records.nyc**. `www` redirects to the apex. Cloudflare DNS + tunnel. |
-| Hosting | Dokploy on **both** StudioMac (.51) and MonsterMac (.52), HA with no affinity, the same pattern as Henry's other sites. |
-| Repo | `digitalhen/911records` (private). Pushes to `main` redeploy the watched paths. |
-| Search | **OpenSearch in production.** Hybrid BM25 + vectors, facets, highlighting and saved-search percolation. |
-| PDFs | **Serve our local mirror**, not links to the City's copies. The City's URL stays alongside as the official citation. |
-| Logo | Revision 2 (`design/logo/`): `mark.svg` + `lockup.svg` for identity, `mark-compact.svg` + `lockup-horizontal.svg` for favicon and header. |
-| Ads | Google AdSense, tasteful: one labelled unit per page below the content, never inside a document or an answer. Publisher `ca-pub-9961054735948902`. |
-| Search UX | One **Ask anything** box that takes a question, keywords or a Bates number, plus entity search. |
-| Discovery | Embeddings, topics, related records "filed elsewhere", near-duplicates, and a building map linked to tests. |
-| People | Officials and professionals are searchable only **as a role on a record** (signed, approved, analyzed, inspected). Private individuals are never surfaced. |
-
 ## 3. Non-negotiable rules
 
 Sources: `docs/research/epstein-explorers.md` and the .nyc policy addendum in
@@ -61,8 +201,8 @@ Sources: `docs/research/epstein-explorers.md` and the .nyc policy addendum in
    - Identity questions ("who is behind this redaction") get a refusal.
 4. **Roles beside names.** Where an official appears, show why: author, recipient, cc, signatory,
    inspector of record.
-5. **A written, visible personal-information policy** with a fast takedown path. Our own PII check
-   runs on top of the City's redactions. The City's redactions fail by composition, e.g. a name
+5. **A written, visible personal-information policy** with a fast takedown path. (Henry, 09-14:
+   v1 serves the City's records as-is; our own PII check is deferred.) The City's redactions fail by composition, e.g. a name
    hidden in one document and shown in another.
 6. **Removed-by-the-City documents are not served publicly.** Removals are most likely PII takedowns.
    - We keep the files privately, as the mirror already does.
@@ -82,118 +222,6 @@ Sources: `docs/research/epstein-explorers.md` and the .nyc policy addendum in
     - ≤1 req/s with a descriptive UA.
     - One export request a day.
     - Stop on 429/403.
-
-## 4. Where things stand at the reset (2026-09-13 ~23:10 ET)
-
-**Live:**
-- **The site:** `https://911records.nyc` serves the **holding page** (`site/holding/`: static nginx,
-  `/privacy`, `/ads.txt`, security headers) from both Dokploy instances.
-  - Dokploy project **"Sept11 Records"**, app **"Holding page"**, on StudioMac and MonsterMac.
-  - Dockerfile build, path `/site/holding`, watch path `site/holding/**`.
-  - Domains `911records.nyc` and `www.911records.nyc`, HTTP port 80. TLS terminates at Cloudflare.
-- **AdSense:**
-  - Site added and verified via ads.txt; review requested, status "Getting ready".
-  - Display unit `4391479569` ("911records.nyc display") is on the holding page.
-  - Check whether the EU consent message exists for the new site (Privacy & messaging).
-
-**Running on StudioMac:**
-- **Mirror download** (`scripts/download.mjs`, owned by teammate `mirror-build`).
-  - Progress file: `data/download.progress.json`. At the reset it stood at 4,787 / 24,436 documents,
-    0.5% of bytes, 0 errors, with an ETA of about 1 pm ET 09-14. Large files come last, so expect
-    longer.
-  - Resumable; the pidfile is `data/download.pid`.
-- **Text/embedding/entity loop** (`scripts/embed/loop.sh 1200`).
-  - Lock: `data/embed/loop.lock`. Log: `data/embed/loop.log`.
-  - Every 20 min it runs `extract_text.mjs --jobs 2`, then `pages.py` (nomic-embed-text via Ollama),
-    then `entities.py` (regex).
-  - At the reset: 4,214 docs with text; pages 3,217 ok / 1,643 empty (image-only) / 14 junk; 2,259
-    role mentions, 353 of them official.
-- **OpenSearch 2.19.2** container `sept11-opensearch`.
-  - Dev only: 127.0.0.1, security plugin off.
-  - The index `sept11-pages-v1` holds only **588** pages and is **not** reindexed automatically.
-- **Ollama** with `nomic-embed-text`. The GLiNER model is installed in `.venv` but untested.
-
-**Built but not productised:**
-- `scripts/embed/`: `related.py` (doc vectors, filed-elsewhere, near-dupes, topics), `search.py`
-  (SQLite hybrid prototype), `places.py` (BIN/BBL/address → buildings, GeoJSON),
-  `entities.py` (labs, contractors, roles).
-- `scripts/search/opensearch.py`: index mapping, bulk indexer, hybrid query.
-- `data/geo/`: lower-Manhattan footprints from NYC Open Data `5zhs-2jue` (4,764 buildings) and
-  `bin_lookup.csv`.
-
-**Design:**
-- Astra round 2 prototype: `design/astra/`, published at
-  `https://claude.ai/code/artifact/c8f2af42-99f4-4109-8843-430d826def18`. The fixtures are fictional:
-  `NYC-WTC_9…` Bates numbers, but invented readings on a real address, so never ship them.
-- Logo: `design/logo/`.
-
-**Research:**
-- `docs/PORTAL-RECON.md`: API, export endpoint, counts.
-- `docs/CONTEXT.md`: the release and outside sources.
-- `docs/research/epstein-explorers.md`: design and privacy lessons.
-- `docs/research/city-data-linkage.md`: BIN/BBL joins, DOB 2001–02 data, reuse of Prospect.
-- `docs/research/domain-names.md`: domains and the .nyc policy.
-
-## 5. Architecture
-
-```
-City portal ──(daily export + polite download)──► StudioMac pipeline (~/Code/sept11-docs)
-                                                   │ catalog snapshots, diff, PDFs, text, OCR,
-                                                   │ embeddings, entities, places, topics
-                                                   ▼
-                          Postgres `sept11` (central .51:5433, replica .52)   ← source of truth
-                          PDF mirror (StudioMac) ──rsync──► MonsterMac copy    ← served files
-                                                   │
-                         build_index ──► OpenSearch node per Dokploy host      ← search/discovery
-                                                   ▼
-             Next.js app (Dokploy, both hosts) ── Claude API (Ask) ── AdSense ── Cloudflare tunnel
-```
-
-- **App.** Next.js (App Router) + TypeScript, the same stack as Prospect. Reuse Prospect's
-  MapLibre setup (`lib/maplibre.ts`, `lib/mapPalette.ts`, `lib/buildings.ts`, the footprint
-  pipeline), its address normalizer (`lib/address/normalize.ts`) and its env/compose discipline.
-  Server components read Postgres and OpenSearch; there is no client-side database access.
-- **Source of truth.** A new database `sept11` on the central Postgres (.51:5433) with the existing
-  read replica (.52). Tables:
-  - `documents`, `pages`
-  - `snapshots`, `changes`
-  - `entities`, `roles`
-  - `places`, `place_pages`
-  - `topics`, `doc_topics`, `related`
-  - `redaction_reports`
-  - `answers` (frozen answers with citations, for permalinks)
-
-  The pipeline writes it and the app only reads. Report submissions go through a narrow API.
-- **Search.** One OpenSearch single-node cluster **per Dokploy host**, the same per-host pattern
-  Prospect chose for Typesense.
-  - Security plugin ON, TLS, internal network only.
-  - Built by the pipeline from Postgres, one document per page: text, vector, facets and
-    officially-acting roles.
-  - Readiness = document-count parity with Postgres. The app falls back to Postgres FTS when a node
-    is not ready.
-  - A percolator index for saved-search alerts (stage 5).
-- **PDFs.**
-  - The canonical mirror is on StudioMac (`data/pdf/…`), rsynced nightly to MonsterMac.
-  - Each Dokploy host mounts it read-only into an nginx sidecar at `/pdf/<Bates>.pdf` with HTTP
-    Range and long cache headers. The browser viewer is pdf.js.
-  - A generated deny-list blocks removed or restricted documents.
-  - Cloudflare caches public PDFs. That allows Cloudflare's CDN terms for large files: check them
-    before launch, or serve PDFs from a subdomain with caching rules.
-- **AI answers.** The server retrieves (hybrid) and calls the Claude API with only the retrieved
-  pages. The model is chosen at build time per the `claude-api` reference.
-  - Output is structured as sentences, each with cited page IDs.
-  - The server drops any sentence whose citations aren't in the retrieved set, and refuses identity
-    questions.
-  - Answers are stored with frozen citations and a permalink.
-  - Rate limits, a monthly cost cap and an API key in the env (both compose files, per Prospect's
-    env rule).
-- **Map.** MapLibre 2D and 3D from Prospect. Lower-Manhattan footprints plus `places` from the
-  pipeline.
-  - Colour shows *what records exist* (lab result / inspection / mention), never a health verdict.
-  - Buildings lost in 2001 need a separate, hand-digitised layer.
-- **Change log.** Daily `enumerate.mjs` → `diff_catalog.mjs` → `download.mjs` (new documents) →
-  extract/OCR/embed/entities → Postgres → reindex. Run by launchd on StudioMac with a status row
-  and alerting.
 
 ## 6. Build stages
 
