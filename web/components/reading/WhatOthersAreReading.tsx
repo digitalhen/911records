@@ -21,9 +21,7 @@ export async function WhatOthersAreReading() {
       <ul>
         {items.map((item) => (
           <li key={item.doc}>
-            <Link className="bates" href={`/doc/${encodeURIComponent(item.doc)}`}>
-              {item.title} ↗
-            </Link>
+            <Link href={`/doc/${encodeURIComponent(item.doc)}`}>{item.title} ↗</Link>
             <p className="small muted">
               {item.why}
               {item.box ? ` · Box ${item.box}` : ''}

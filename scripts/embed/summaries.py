@@ -55,6 +55,14 @@ Budget: --budget-usd (default 30.0, per Henry's cap for the whole corpus). The r
 new API calls once the running cost reaches the cap and reports stopped_on_budget=true; every
 document already resolved (by rule or by an earlier call) is kept.
 
+Clean stop on an account-level usage limit (distinct from --budget-usd above, and from a plain
+network/JSON hiccup, which stays a per-batch retry): if the Anthropic account itself has hit its
+own usage cap (HTTP 400, "You have reached your specified API usage limits..."), the run logs it
+ONCE, stops issuing further calls (every remaining batch resolves instantly to
+title=summary=None), and exits 0 — this is an expected stop condition, not a crash. Rerun the same
+command later (once the cap resets, or with a different key) to resume exactly where it left off,
+via the cache and the output jsonl.
+
 Usage:
   .venv/bin/python scripts/embed/summaries.py [--out data/embed/p5-summaries.jsonl] [--limit N]
                                                [--budget-usd 30] [--workers 6]
@@ -375,12 +383,54 @@ class Cache:
             self._dirty = False
 
 
-def call_model(client, items: list[dict], budget: Budget, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
+class StopSignal:
+    """Set the moment a call fails with a hard, RUN-ENDING error — the Anthropic account hit its
+    own usage-limit cap (HTTP 400, "You have reached your specified API usage limits...", distinct
+    from this script's own --budget-usd and from a transient rate limit) — checked before every
+    subsequent API call so the run stops issuing new requests once this happens, rather than
+    re-attempting a guaranteed-to-fail call for every one of the thousands of remaining batches
+    (observed live, 2026-09-14: the key hit its cap ~7,000 documents in and the run kept hammering
+    the API for the rest of the corpus before being killed by hand). `reason` is logged exactly
+    once; every batch after that resolves instantly to title=summary=None, same as a budget-
+    exhausted batch — never a crash, and main() still exits 0 (this is an expected stop condition,
+    not a bug)."""
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.reason: str | None = None
+        self.lock = threading.Lock()
+
+    def set(self, reason: str) -> None:
+        with self.lock:
+            already_set = self.event.is_set()
+            if not already_set:
+                self.reason = reason
+        if not already_set:
+            print(f"summaries: stopping cleanly — {reason} (resume later: cache and jsonl are intact)", file=sys.stderr)
+        self.event.set()
+
+    def is_set(self) -> bool:
+        return self.event.is_set()
+
+
+def is_usage_limit_error(e: BaseException) -> bool:
+    """True for Anthropic's account-level usage-limit cap specifically — a run-ending condition —
+    never for an ordinary transient error (timeout, 5xx, malformed JSON), which stays a per-batch
+    retry case."""
+    return "usage limit" in str(e).lower()
+
+
+def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
-    response = client.messages.create(
-        model=MODEL, max_tokens=200 * (len(retry_ids) if retry_ids else len(items)) + 200,
-        system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = client.messages.create(
+            model=MODEL, max_tokens=200 * (len(retry_ids) if retry_ids else len(items)) + 200,
+            system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as e:
+        if is_usage_limit_error(e):
+            stop.set(str(e))
+        raise
     text = "".join(b.text for b in response.content if b.type == "text")
     cost = (response.usage.input_tokens * PRICE_IN_PER_MTOK
             + response.usage.output_tokens * PRICE_OUT_PER_MTOK) / 1_000_000
@@ -403,7 +453,7 @@ def clamp_summary(summary: str) -> str:
     return (cut or s[:MAX_SUMMARY_CHARS]) + "…"
 
 
-def process_batch(client, items: list[dict], roles_words: set[str], budget: Budget, cache: Cache) -> list[dict]:
+def process_batch(client, items: list[dict], roles_words: set[str], budget: Budget, cache: Cache, stop: StopSignal) -> list[dict]:
     """items: list of {id, doc, doc_type, folder, box, agency, page_count, excerpt(redacted), hash}.
     Returns one output row per item (doc, title, summary, confidence, model, hash). `items` passed
     in here have already been filtered to exclude cache hits (see main()) — every call in this
@@ -411,14 +461,15 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
     by_id = {it["id"]: it for it in items}
     results: dict[int, dict] = {}
 
-    if budget.exhausted():
+    if budget.exhausted() or stop.is_set():
         return [{"doc": it["doc"], "title": None, "summary": None, "confidence": 0.0, "model": None,
                   "hash": it["hash"]} for it in items]
 
     try:
-        parsed, _cost = call_model(client, items, budget)
+        parsed, _cost = call_model(client, items, budget, stop)
     except Exception as e:
-        print(f"summaries: batch failed ({e}); leaving {len(items)} document(s) unresolved", file=sys.stderr)
+        if not stop.is_set():
+            print(f"summaries: batch failed ({e}); leaving {len(items)} document(s) unresolved", file=sys.stderr)
         parsed = None
 
     violators: set[int] = set()
@@ -450,12 +501,13 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
     # by the model at all, or the whole call failed) gets exactly one retry.
     unresolved = set(by_id.keys()) - set(results.keys())
 
-    if unresolved and not budget.exhausted():
+    if unresolved and not budget.exhausted() and not stop.is_set():
         retry_items = [by_id[i] for i in unresolved]
         try:
-            parsed2, _cost2 = call_model(client, retry_items, budget, retry_ids=unresolved)
+            parsed2, _cost2 = call_model(client, retry_items, budget, stop, retry_ids=unresolved)
         except Exception as e:
-            print(f"summaries: retry batch failed ({e}); leaving {len(unresolved)} document(s) unresolved", file=sys.stderr)
+            if not stop.is_set():
+                print(f"summaries: retry batch failed ({e}); leaving {len(unresolved)} document(s) unresolved", file=sys.stderr)
             parsed2 = None
         if parsed2:
             for row in parsed2:
@@ -583,10 +635,12 @@ def main() -> int:
         batches = [to_process[i: i + BATCH_SIZE] for i in range(0, len(to_process), BATCH_SIZE)]
         write_lock = threading.Lock()
 
+        stop = StopSignal()
+
         def run_one(batch: list[dict]) -> list[dict]:
             for j, it in enumerate(batch):
                 it["id"] = j
-            return process_batch(client, batch, roles_words, budget, cache)
+            return process_batch(client, batch, roles_words, budget, cache, stop)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
             futures = {pool.submit(run_one, b): b for b in batches}
@@ -614,6 +668,14 @@ def main() -> int:
                         }))
                 if budget.exhausted():
                     stopped_on_budget = True
+                if stop.is_set():
+                    # Clean stop (e.g. the Anthropic account's own usage-limit cap, not this
+                    # script's --budget-usd): every batch not yet started resolves to null nearly
+                    # instantly anyway (process_batch's stop.is_set() short-circuit), but cancelling
+                    # what's still queued skips even that pass through the executor.
+                    for other in futures:
+                        if not other.done():
+                            other.cancel()
 
         write_out(out_path, rows)
         cache.save()
@@ -623,7 +685,9 @@ def main() -> int:
         "out": str(out_path), "documents": len(rows), "reused_from_cache": reused,
         "cache_hits": cache_hits, "rule_based": rule_based, "model_calls_documents": model_done,
         "rejected_or_failed": n_rejected, "cost_usd": round(budget.spent, 4),
-        "stopped_on_budget": stopped_on_budget, "seconds": round(time.time() - t0, 1),
+        "stopped_on_budget": stopped_on_budget,
+        "stopped_early_reason": stop.reason if to_process else None,
+        "seconds": round(time.time() - t0, 1),
     }
     print(json.dumps(summary, indent=1))
     return 0

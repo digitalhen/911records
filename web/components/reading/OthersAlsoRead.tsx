@@ -27,9 +27,10 @@ export async function OthersAlsoRead({ doc }: { doc: string }) {
           {rows.map((r) => (
             <article className="result-item" key={r.doc}>
               <Link href={pageHref(r.doc, r.page)}>
-                {r.doc}
+                {r.title || r.doc}
                 {r.box ? ` · Box ${r.box}` : ''}
               </Link>
+              {r.title && <p className="small muted mono">{r.doc}</p>}
               <p className="small muted">{r.reason}</p>
             </article>
           ))}

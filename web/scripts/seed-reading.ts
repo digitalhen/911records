@@ -16,12 +16,16 @@
 //                          most recorded test pages, highest-confidence first
 //
 // Hard rules (COMMON-web.md privacy rules): never a folder cover sheet
-// (documents.doc_type = 'cover_sheet'), and never a document whose folder
-// label reads as a private individual's name rather than a place or
-// organization (lib/reading/nameSafety.ts's TitleCase-pair heuristic, a port
-// of scripts/embed/topics.py's own name-safety check). Each candidate doc is
-// claimed by exactly one group, first-claimed-wins, so no document appears
-// twice.
+// (documents.doc_type = 'cover_sheet'), and never a document whose RESOLVED
+// title — site.documents.title (issue #37's machine-extracted title) when
+// present, else the folder label, else a page-1 OCR first line — reads as a
+// private individual's name, a bare surname, or nothing but the City
+// portal's watermark line (lib/reading/nameSafety.ts's isUnsafeReadingTitle,
+// extending scripts/embed/topics.py's own name-safety check; issue #37
+// follow-up, Henry: "NADLER", "E-mails 2003 M. Gilsenan" and the watermark
+// line itself were surfacing as reading-list titles before this). Each
+// candidate doc is claimed by exactly one group, first-claimed-wins, so no
+// document appears twice.
 //
 // Idempotent: recomputes the whole candidate set every run and replaces
 // app.reading_seeds with it inside one transaction — safe to run repeatedly,
@@ -35,7 +39,7 @@
 // Postgres directly via lib/db.ts, the same helper the app uses.
 import { pool, readPool, query, queryRead, withTransaction } from '../lib/db';
 import { ensureRuntimeSchema } from '../lib/runtimeSchema';
-import { looksLikePersonalName } from '../lib/reading/nameSafety';
+import { isUnsafeReadingTitle } from '../lib/reading/nameSafety';
 
 const REFRESH = process.argv.includes('--refresh');
 
@@ -47,6 +51,25 @@ const GROUP_TARGETS: Record<string, number> = {
 };
 const GROUPS = Object.keys(GROUP_TARGETS);
 
+// Schema-first (docs/briefs/COMMON-web.md, after the topics.title production incident): the 4
+// SELECTs below read site.documents.title BY NAME (not `SELECT *`), so — checked once here rather
+// than risking a bare Postgres "column does not exist" mid-run — they degrade to a literal NULL
+// when the pipeline hasn't rebuilt `site` with the column yet, same as lib/site.ts's
+// documentsHaveTitles() does for the live app.
+let titleColumnChecked = false;
+let titleColumnExists = false;
+async function titleColumn(alias = ''): Promise<string> {
+  if (!titleColumnChecked) {
+    titleColumnChecked = true;
+    const rows = await queryRead<{ exists: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='site' AND table_name='documents' AND column_name='title') AS exists",
+    ).catch(() => []);
+    titleColumnExists = rows[0]?.exists ?? false;
+  }
+  const prefix = alias ? `${alias}.` : '';
+  return titleColumnExists ? `${prefix}title` : 'NULL::text AS title';
+}
+
 interface DocRow {
   doc: string;
   folder: string | null;
@@ -55,6 +78,10 @@ interface DocRow {
   volume: string | null;
   doc_type: string | null;
   status: string | null;
+  /** site.documents.title (issue #37, scripts/embed/summaries.py) — preferred over the raw folder
+   *  label wherever present; null before the pipeline has named this document (schema-first: the
+   *  SELECTs below tolerate the column's absence via titleColumn() above). */
+  title: string | null;
 }
 
 interface Seed {
@@ -65,11 +92,13 @@ interface Seed {
   rank: number;
 }
 
-/** Never a removed document, a cover sheet, or a folder that reads as a private individual's name. */
-function isSeedable(row: Pick<DocRow, 'doc_type' | 'status' | 'folder'>): boolean {
+/** Never a removed document or a cover sheet. (The folder-label personal-name check moved to
+ *  isUnsafeReadingTitle() below, run on the actual RESOLVED title — site.documents.title when
+ *  present, else the folder label, else a page-1 first line — since a bad folder label is no
+ *  longer necessarily what ends up on screen, issue #37 follow-up.) */
+function isSeedable(row: Pick<DocRow, 'doc_type' | 'status'>): boolean {
   if (row.status === 'removed') return false;
   if (row.doc_type === 'cover_sheet') return false;
-  if (looksLikePersonalName(row.folder)) return false;
   return true;
 }
 
@@ -85,10 +114,24 @@ async function firstLine(doc: string): Promise<string | null> {
   return line.length > 90 ? `${line.slice(0, 87)}…` : line;
 }
 
-/** The folder label when present and not empty; otherwise the first non-blank line of page 1's OCR text; otherwise the Bates id. */
-async function titleFor(row: Pick<DocRow, 'doc' | 'folder'>): Promise<string> {
+/** site.documents.title (issue #37's machine-extracted title) when present; otherwise the folder
+ *  label when present and not empty; otherwise the first non-blank line of page 1's OCR text;
+ *  otherwise the Bates id. Callers MUST reject the result with isUnsafeReadingTitle() before using
+ *  it — a folder label or an OCR first line can still read as a private individual's name or as
+ *  nothing but the portal's watermark line. */
+async function titleFor(row: Pick<DocRow, 'doc' | 'folder' | 'title'>): Promise<string> {
+  if (row.title && row.title.trim()) return row.title.trim();
   if (row.folder && row.folder.trim()) return row.folder.trim();
   return (await firstLine(row.doc)) || row.doc;
+}
+
+/** Resolves a candidate's title and rejects it (returns null) if that title is unsafe to show —
+ *  reads as a private individual's name, or is just the portal's watermark line — rather than
+ *  checking the raw folder label alone (issue #37 follow-up: "NADLER", "E-mails 2003 M. Gilsenan"
+ *  and the watermark line itself were surfacing as reading-list titles before this). */
+async function safeTitleFor(row: Pick<DocRow, 'doc' | 'folder' | 'title'>): Promise<string | null> {
+  const title = await titleFor(row);
+  return isUnsafeReadingTitle(title) ? null : title;
 }
 
 function count(seeds: Seed[], group: string): number {
@@ -130,7 +173,7 @@ async function selectSeeds(): Promise<Seed[]> {
   const citedDocIds = [...citeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([doc]) => doc);
   if (citedDocIds.length) {
     const rows = await queryRead<DocRow>(
-      'SELECT doc, folder, box, agency, volume, doc_type, status FROM site.documents WHERE doc = ANY($1::text[])',
+      `SELECT doc, folder, box, agency, volume, doc_type, status, ${await titleColumn()} FROM site.documents WHERE doc = ANY($1::text[])`,
       [citedDocIds],
     );
     const byDoc = new Map(rows.map((r) => [r.doc, r]));
@@ -138,9 +181,11 @@ async function selectSeeds(): Promise<Seed[]> {
     for (const doc of citedDocIds) {
       if (!room('Start here')) break;
       const row = byDoc.get(doc);
-      if (!row || !isSeedable(row) || !claim(doc)) continue;
+      if (!row || !isSeedable(row)) continue;
+      const title = await safeTitleFor(row);
+      if (title === null || !claim(doc)) continue;
       const n = citeCounts.get(doc)!;
-      seeds.push({ doc, title: await titleFor(row), why: `Cited in ${n} Ask answer${n === 1 ? '' : 's'}.`, group: 'Start here', rank: rank++ });
+      seeds.push({ doc, title, why: `Cited in ${n} Ask answer${n === 1 ? '' : 's'}.`, group: 'Start here', rank: rank++ });
     }
   }
 
@@ -154,19 +199,21 @@ async function selectSeeds(): Promise<Seed[]> {
   for (const topic of topics) {
     if (!room('Sampling and results') && !room('What the City knew')) break;
     const candidates = await queryRead<DocRow>(
-      `SELECT d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status
+      `SELECT d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status, ${await titleColumn('d')}
        FROM site.doc_topics dt JOIN site.documents d USING(doc)
        WHERE dt.topic=$1 AND d.doc_type IN ('lab_report','memo_letter')
        ORDER BY dt.prob DESC NULLS LAST LIMIT 8`,
       [topic.id],
     ).catch(() => []);
-    const title = topic.title || topic.label || `Topic ${topic.id}`;
+    const topicTitle = topic.title || topic.label || `Topic ${topic.id}`;
     for (const row of candidates) {
       const group = row.doc_type === 'lab_report' ? 'Sampling and results' : 'What the City knew';
-      if (!room(group) || !isSeedable(row) || !claim(row.doc)) continue;
+      if (!room(group) || !isSeedable(row)) continue;
+      const title = await safeTitleFor(row);
+      if (title === null || !claim(row.doc)) continue;
       const rank = group === 'Sampling and results' ? labRank++ : memoRank++;
       const kind = row.doc_type === 'lab_report' ? 'lab report' : 'memo or letter';
-      seeds.push({ doc: row.doc, title: await titleFor(row), why: `Top-scoring ${kind} in the "${title}" topic.`, group, rank });
+      seeds.push({ doc: row.doc, title, why: `Top-scoring ${kind} in the "${topicTitle}" topic.`, group, rank });
       break; // one document per topic
     }
   }
@@ -181,7 +228,7 @@ async function selectSeeds(): Promise<Seed[]> {
   ];
   if (room('What the City knew')) {
     const memoRows = await queryRead<DocRow & { text: string | null }>(
-      `SELECT d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status, pt.text
+      `SELECT d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status, pt.text, ${await titleColumn('d')}
        FROM site.documents d LEFT JOIN site.page_text pt ON pt.doc=d.doc AND pt.page=1
        WHERE d.doc_type='memo_letter' AND d.status IS DISTINCT FROM 'removed'
          AND (d.folder ~* '(re-?occupanc|liabilit|air quality)' OR pt.text ~* '(re-?occupanc|liabilit|air quality)')
@@ -189,10 +236,12 @@ async function selectSeeds(): Promise<Seed[]> {
     ).catch(() => []);
     for (const row of memoRows) {
       if (!room('What the City knew')) break;
-      if (!isSeedable(row) || !claim(row.doc)) continue;
+      if (!isSeedable(row)) continue;
+      const title = await safeTitleFor(row);
+      if (title === null || !claim(row.doc)) continue;
       const haystack = `${row.folder || ''} ${row.text || ''}`;
       const term = KEY_TERMS.find(([re]) => re.test(haystack))?.[1] || 'these subjects';
-      seeds.push({ doc: row.doc, title: await titleFor(row), why: `Memo or letter mentioning ${term}.`, group: 'What the City knew', rank: memoRank++ });
+      seeds.push({ doc: row.doc, title, why: `Memo or letter mentioning ${term}.`, group: 'What the City knew', rank: memoRank++ });
     }
   }
 
@@ -214,7 +263,7 @@ async function selectSeeds(): Promise<Seed[]> {
   for (const building of buildings) {
     if (!room('Buildings')) break;
     const docs = await queryRead<DocRow & { confidence: number | null }>(
-      `SELECT DISTINCT ON (d.doc) d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status, pp.confidence
+      `SELECT DISTINCT ON (d.doc) d.doc, d.folder, d.box, d.agency, d.volume, d.doc_type, d.status, pp.confidence, ${await titleColumn('d')}
        FROM site.place_pages pp JOIN site.documents d ON d.doc=pp.doc
        WHERE pp.place_id=$1 AND pp.has_test AND d.status IS DISTINCT FROM 'removed'
        ORDER BY d.doc, pp.confidence DESC NULLS LAST`,
@@ -224,11 +273,13 @@ async function selectSeeds(): Promise<Seed[]> {
     let claimedForBuilding = 0;
     for (const row of docs) {
       if (!room('Buildings') || claimedForBuilding >= perBuildingCap) break;
-      if (!isSeedable(row) || !claim(row.doc)) continue;
+      if (!isSeedable(row)) continue;
+      const title = await safeTitleFor(row);
+      if (title === null || !claim(row.doc)) continue;
       claimedForBuilding++;
       seeds.push({
         doc: row.doc,
-        title: await titleFor(row),
+        title,
         why: `Test record for ${building.label} · ${building.n_test_pages} test page${building.n_test_pages === 1 ? '' : 's'} recorded for this building.`,
         group: 'Buildings',
         rank: buildingRank++,
