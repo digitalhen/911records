@@ -167,6 +167,19 @@ export function catalogStats(rows) {
   };
 }
 
+export const QUARANTINE_DROP = 0.05;
+/** Reasons a snapshot must not be trusted (empty = accept). prevStats: the last accepted snapshot's stats. */
+export function quarantineReasons(stats, prevStats) {
+  const reasons = [];
+  if (!stats.documents) reasons.push('zero rows');
+  if (stats.duplicates) reasons.push(`${stats.duplicates} duplicate Bates numbers`);
+  const prevDocs = prevStats?.documents;
+  if (prevDocs && stats.documents < prevDocs * (1 - QUARANTINE_DROP)) {
+    reasons.push(`documents fell ${prevDocs} -> ${stats.documents} (> ${QUARANTINE_DROP * 100}%)`);
+  }
+  return reasons;
+}
+
 const brief = (r) => ({ bates: r.bates_start, volume: r.production_volume, agency: r.agency, source: r.source,
   box_name: r.box_name, pages: r.page_count, pdf_size: r.pdf_size });
 

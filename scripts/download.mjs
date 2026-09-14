@@ -29,6 +29,7 @@ import { dirname, join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { DATA, PortalStop, REPO, makeClient } from './lib/portal.mjs';
+import { listSnapshots, loadSnapshot } from './lib/catalog.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
@@ -55,11 +56,52 @@ async function claimPid() {
   await writeFile(PIDFILE, `${process.pid}\n`);
 }
 
+// A manifest row that is absent from the latest ACCEPTED catalog snapshot (or already marked
+// status "removed" by enumerate.mjs) has been removed from the portal. We keep our copy —
+// never delete — record `removed_from_portal` in its sidecar and in
+// data/removed_from_portal.jsonl (once per document), and never try to fetch it.
+const REMOVED_LEDGER = join(DATA, 'removed_from_portal.jsonl');
+
+async function flagRemovedFromPortal(all) {
+  const latest = (await listSnapshots()).filter((s) => s.summary?.accepted).at(-1) ?? null;
+  const inCatalog = latest ? new Set((await loadSnapshot(latest.path)).rows.map((r) => r.bates_start)) : null;
+  const ledger = new Set((await readFile(REMOVED_LEDGER, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((l) => JSON.parse(l).key));
+  const gone = new Set();
+  for (const r of all) {
+    const absent = r.status === 'removed' || (inCatalog && !inCatalog.has(r.bates_start));
+    const pdfPath = join(REPO, r.local_pdf);
+    const sidecar = await readSidecar(pdfPath);
+    if (!absent) {
+      if (sidecar?.removed_from_portal && !sidecar.removed_from_portal.reappeared_at) {
+        sidecar.removed_from_portal.reappeared_at = latest?.date ?? new Date().toISOString();
+        await writeFile(`${pdfPath}.json`, JSON.stringify(sidecar, null, 2) + '\n');
+        await logLine(`reappeared_on_portal ${r.key}`);
+      }
+      continue;
+    }
+    gone.add(r);
+    const since = r.removed_at ?? latest?.date ?? null;
+    const held = !!(await exists(pdfPath));
+    if (held && sidecar && !sidecar.removed_from_portal) {
+      sidecar.removed_from_portal = { since, catalog_snapshot: latest?.name ?? null, noted_at: new Date().toISOString() };
+      await writeFile(`${pdfPath}.json`, JSON.stringify(sidecar, null, 2) + '\n');
+    }
+    if (!ledger.has(r.key)) {
+      ledger.add(r.key);
+      await appendFile(REMOVED_LEDGER, JSON.stringify({ key: r.key, bates_start: r.bates_start, bates_end: r.bates_end,
+        production_volume: r.production_volume, agency: r.agency, page_count: r.page_count, since,
+        catalog_snapshot: latest?.name ?? null, held_locally: held, noted_at: new Date().toISOString() }) + '\n');
+      await logLine(`removed_from_portal ${r.key} held=${held} since=${since}`);
+    }
+  }
+  return gone;
+}
+
 async function loadManifest() {
   const text = await readFile(join(DATA, 'manifest.jsonl'), 'utf8');
-  // Documents the city removed stay in the manifest (status "removed") so our copies are
-  // flagged, not lost — but they are no longer served, so never try to fetch them.
-  const rows = text.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.status !== 'removed');
+  const all = text.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const gone = await flagRemovedFromPortal(all);
+  const rows = all.filter((r) => !gone.has(r));
   if (ORDER === 'size') rows.sort((a, b) => (a.pdf_size ?? 0) - (b.pdf_size ?? 0));
   return rows;
 }

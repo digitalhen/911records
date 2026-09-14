@@ -10,11 +10,14 @@
 // PII: folder_name is hand-labelled and can contain personal names, so a change to it is
 // reported as a field name only; its values are never printed or written.
 //
+// Writes the full report to data/catalog/diff-<A>-to-<B>.json (or --json path).
+//
 // Usage: node scripts/diff_catalog.mjs [A] [B] [--json out.json] [--list]
+//   A, B: snapshot names ("2026-09-13"), file names, or paths to any export-shaped CSV
 //   --list   print every added/removed/changed Bates number (default: first 50 of each)
 
-import { readFile, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { DATA, REPO } from './lib/portal.mjs';
 import { diffCatalogs, listSnapshots, loadSnapshot } from './lib/catalog.mjs';
 
@@ -44,12 +47,15 @@ for (const r of d.removed) {
   r.held_locally = m ? await stat(join(REPO, m.local_pdf)).then(() => true, () => false) : false;
 }
 
-const report = { old: { path: A.path, sha256: A.sha256 }, new: { path: B.path, sha256: B.sha256 }, ...d };
-if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2) + '\n');
+const report = { old: { path: A.path, sha256: A.sha256 }, new: { path: B.path, sha256: B.sha256 }, generated_at: new Date().toISOString(), ...d };
+const stemOf = (p) => basename(p).replace(/\.csv$/, '');
+const outPath = jsonOut ?? join(DATA, 'catalog', `diff-${stemOf(A.path)}-to-${stemOf(B.path)}.json`);
+await mkdir(dirname(outPath), { recursive: true });
+await writeFile(outPath, JSON.stringify(report, null, 2) + '\n');
 
 const c = d.counts;
 const cap = (xs) => (LIST ? xs : xs.slice(0, 50));
-console.log(`${A.path.split('/').at(-1)} -> ${B.path.split('/').at(-1)}`);
+console.log(`${A.path.split('/').at(-1)} -> ${B.path.split('/').at(-1)}   (full report: ${outPath})`);
 console.log(`documents ${c.old_documents} -> ${c.new_documents} (net ${c.net_documents >= 0 ? '+' : ''}${c.net_documents}), net pages ${c.net_pages}`);
 console.log(`added ${c.added} (${c.pages_added} pages, ${c.bytes_added} B)  removed ${c.removed} (${c.pages_removed} pages, ${c.bytes_removed} B)  changed ${c.changed} (page delta ${c.pages_changed_delta})`);
 for (const [v, x] of Object.entries(d.by_volume)) console.log(`  ${v}: +${x.added} −${x.removed} ~${x.changed}`);

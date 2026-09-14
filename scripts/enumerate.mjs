@@ -30,7 +30,7 @@ import { basename, join } from 'node:path';
 import { DATA, PortalStop, REPO, contentUrl, docStem, flatten, makeClient, search } from './lib/portal.mjs';
 import {
   DIFF_FIELDS, batesNum, catalogStats, diffCatalogs, exportCatalog, listSnapshots, loadSnapshot, nyDate, parseCatalog,
-  saveSnapshot, toCsv, writeSnapshotSummary,
+  quarantineReasons, saveSnapshot, toCsv, writeSnapshotSummary,
 } from './lib/catalog.mjs';
 
 const args = process.argv.slice(2);
@@ -39,7 +39,6 @@ const FORCE_SEARCH = args.includes('--search');
 const NO_FACETS = args.includes('--no-facets');
 const SEED = opt('--seed');
 const SEED_DATE = opt('--date');
-const QUARANTINE_DROP = 0.05;
 const MANIFEST = join(DATA, 'manifest.jsonl');
 
 const client = makeClient({ minGapMs: 600 });
@@ -187,12 +186,7 @@ async function main() {
   const previous = (await listSnapshots()).filter((s) => s.summary?.accepted);
   const snap = await saveSnapshot(text, { date: SEED_DATE, fetchedAt });
   const prev = previous.filter((s) => s.name !== snap.name).at(-1) ?? null;
-  const prevDocs = prev?.summary?.stats?.documents ?? null;
-
-  const reasons = [];
-  if (!rows.length) reasons.push('zero rows');
-  if (stats.duplicates) reasons.push(`${stats.duplicates} duplicate Bates numbers`);
-  if (prevDocs && stats.documents < prevDocs * (1 - QUARANTINE_DROP)) reasons.push(`documents fell ${prevDocs} -> ${stats.documents} (> ${QUARANTINE_DROP * 100}%)`);
+  const reasons = quarantineReasons(stats, prev?.summary?.stats);
   const quarantined = reasons.length > 0;
 
   let diffCounts = null;

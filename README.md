@@ -23,8 +23,9 @@ root.
 | Step | Command | What it does |
 |---|---|---|
 | 1. Catalog | `node scripts/enumerate.mjs` | One `POST` to the catalog export on the Mindbreeze backend host (about 8 MB, about 25 s), plus one facet request to cross-check the counts. The CSV is saved as an **immutable dated snapshot**, `data/catalog/<YYYY-MM-DD>.csv` (New York date), with a `.summary.json` holding sha256, stats, the facet check and the diff against the previous snapshot. The script then rebuilds `data/manifest.jsonl`. If the export fails, it falls back to walking paged search volume by volume, which is also available as `--search`. `--seed <csv> --date D` imports an export captured elsewhere. Exit codes: `0` ok, `2` quarantined or a facet mismatch, `3` stopped by the portal. |
-| 2. Diff | `node scripts/diff_catalog.mjs [A] [B]` | Compares two snapshots by Bates number (default: the two most recent). Reports documents added, removed and changed, page and byte deltas, per-volume counts, and whether we still hold each removed document. `--list` prints every Bates number; `--json out.json` saves the full report. Local only. |
-| 3. Download | `node scripts/download.mjs` | Mirrors every present PDF to `data/pdf/<agency>/<volume>/<bates_start>.pdf`, smallest first. Each file gets a `.pdf.json` sidecar with its ETag, Last-Modified, bytes and sha256. The script is resumable. Options: `--limit N`, `--order size\|manifest`, and `--revalidate`, which sends a conditional GET for every stored ETag to catch re-redactions. |
+| 1b. Snapshot only | `node scripts/snapshot_catalog.mjs` | Makes one export request and writes `data/catalog/<YYYY-MM-DD>.csv` plus `.summary.json` (documents, pages and bytes, per agency, volume and source; quarantine status; diff counts against the previous snapshot). It does not touch the manifest. |
+| 2. Diff | `node scripts/diff_catalog.mjs [A] [B]` | Compares two snapshots by Bates number; with no arguments, the two most recent. A and B can be snapshot names or CSV paths. Reports documents added, removed and changed (size, page count and other fields), page and byte deltas, per-volume counts, and whether we still hold each removed document. Always writes `data/catalog/diff-<A>-to-<B>.json`. `--list` prints every Bates number. Local only. |
+| 3. Download | `node scripts/download.mjs` | Mirrors every present PDF to `data/pdf/<agency>/<volume>/<bates_start>.pdf`, smallest first. Each file gets a `.pdf.json` sidecar with its ETag, Last-Modified, bytes and sha256. The script is resumable. At start, any manifest row absent from the latest accepted snapshot is recorded as `removed_from_portal`, in its sidecar and in `data/removed_from_portal.jsonl`. It is never fetched again and never deleted. Options: `--limit N`, `--order size\|manifest`, and `--revalidate`, which sends a conditional GET for every stored ETag to catch re-redactions. |
 | 4. Verify | `node scripts/verify_pdfs.mjs [--sha]` | Checks every downloaded PDF's size against the catalog's `pdf_size` and its sidecar, and checks the `%PDF-` header (with `--sha`, the content hash too). Counts removed documents we still hold and superseded copies. Writes `data/verify.json` (Bates numbers only). Local only, and safe to run during a download. |
 | 5. Text | `node scripts/extract_text.mjs` | Runs `pdftotext -layout` on every completed PDF. Writes `data/text/<same path>.txt` (pages separated by `\f`) and `.pages.jsonl` (one line per page, with its Bates number). Local only and safe during a download. `--quality N` scores N documents with counts only. Needs poppler (`brew install poppler`). **One runner at a time.** The embedding work currently owns periodic runs. |
 
@@ -45,8 +46,10 @@ Failures are appended to `data/download.errors.jsonl` and retried on the next
 run. The downloader reads the manifest once, at start, so restart it after a
 catalog update to pick up newly added documents.
 
-Daily routine: `enumerate.mjs`, then `diff_catalog.mjs`, then `download.mjs`
-(which finds only new documents), then `verify_pdfs.mjs`.
+**Daily cadence:** snapshot (`enumerate.mjs`, which snapshots and refreshes
+the manifest), then diff (`diff_catalog.mjs`), then download new documents
+(`download.mjs`), then extract text (`extract_text.mjs`). Run
+`verify_pdfs.mjs` whenever you need to confirm the files on disk.
 
 ## The corpus changes, and removals are never deleted
 
@@ -152,6 +155,9 @@ data/samples/, data/sample_fetch/             recon captures
   smaller. The true byte total comes from the sidecars. The downloader treats
   "a sidecar records a finished download of this size" as complete, so these
   rows don't re-download.
-- **Not every PDF has a text layer.** Some are image-only: a different
-  producer, no ABBYY OCR, and zero characters when extracted. Among the first
-  196 extracted, 20 were like this.
+- **Some PDFs have no text layer and will need our own OCR pass.** These are
+  image-only: produced by iTextSharp, with no ABBYY OCR, and they extract to
+  zero characters. The first 196 extracted included 20 (10%), but those were
+  the smallest files and the rate is skewed by that. At 585 extracted the rate
+  was 23 (3.9%). The corpus-wide rate is unknown until the download finishes.
+  `extract_text.mjs --quality` reports the current count.
