@@ -5,11 +5,22 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.13.0';
+export const APP_VERSION = '0.13.1';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.13.1',
+    date: '2026-09-14',
+    notes: [
+      'Building, organisation and official pages show a compact monthly activity chart instead of a long list of dates.',
+      'Cleaner answer pages (inline refresh control, natural-width follow-up links), "what others are reading" as tiles, no stray rules on the home panel, and a topic map that stays inside its box.',
+      'Lab and contractor office addresses outside Manhattan (for example DEP\'s Queens office) no longer appear as buildings on the map.',
+      'More buildings carry present-day details from prospect.nyc, now including landmark and historic-district status.',
+      'Reading lists use document titles, never a bare name or a portal cover page.',
+    ],
+  },
   {
     version: '0.13.0',
     date: '2026-09-14',
