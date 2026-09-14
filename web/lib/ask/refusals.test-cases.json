@@ -78,5 +78,14 @@
 
   { "id": "typo01", "q": "wher inspector signed report", "expect": "question", "note": "typo-tolerant question detector (issue #32): 'wher' (where typo), no '?', <=4 tokens, none exactly flagged — must not fall through to a plain keyword search" },
   { "id": "typo02", "q": "wat agency tested liberty", "expect": "question", "note": "typo-tolerant question detector: 'wat' (what/was typo), no '?', <=4 tokens" },
-  { "id": "typo03", "q": "wil dep retest liberty", "expect": "question", "note": "typo-tolerant question detector: 'wil' (will typo), no '?', <=4 tokens" }
+  { "id": "typo03", "q": "wil dep retest liberty", "expect": "question", "note": "typo-tolerant question detector: 'wil' (will typo), no '?', <=4 tokens" },
+
+  { "id": "lst01", "q": "Which buildings were tested for asbestos?", "expect": "list", "expectListType": "buildings_by_substance", "note": "B21 issue #35 — table of addresses, not a written answer" },
+  { "id": "lst02", "q": "Which labs tested 114 Liberty Street?", "expect": "list", "expectListType": "labs_by_building", "note": "B21 issue #35 — exact phrasing from the brief" },
+  { "id": "lst03", "q": "List buildings with lead results in 2002.", "expect": "list", "expectListType": "buildings_by_substance", "note": "B21 issue #35 — substance + date range" },
+  { "id": "lst04", "q": "Which contractors worked at 1 Centre Street?", "expect": "list", "expectListType": "contractors_by_building", "note": "B21 issue #35 — contractors table for one building" },
+  { "id": "lst05", "q": "List the DEP memos from October 2001.", "expect": "list", "expectListType": "documents_by_type", "note": "B21 issue #35 — doc_type + agency abbreviation + date range" },
+  { "id": "lst06", "q": "Which labs tested for asbestos?", "expect": "list", "expectListType": "labs_by_substance", "note": "B21 issue #35 — labs table, no building named" },
+  { "id": "lst07", "q": "List the substances found at 1 Centre Street.", "expect": "list", "expectListType": "substances_by_building", "note": "B21 issue #35 — substances table for one building" },
+  { "id": "lst08", "q": "Which officials acted as inspector on these records?", "expect": "list", "expectListType": "officials_by_role", "note": "B21 issue #35 — officials-by-role table, official capacity only" }
 ]

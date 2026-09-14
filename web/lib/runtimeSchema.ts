@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS app.ask_spend (
 -- this file. See lib/ask/store.ts's saveAnswer/getAnswerChain.
 ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS parent_id TEXT REFERENCES app.answers(id);
 CREATE INDEX IF NOT EXISTS answers_parent_id_idx ON app.answers (parent_id);
+
+-- B21 (Ask "list" answers, issue #35): a list plan's rows (lib/ask/lists.ts's ListResult),
+-- snapshotted at save time so the permalink stays frozen like a prose answer. NULL for every
+-- ordinary question/refuse/offtopic answer row — 'answer' still carries an (empty) AskAnswer for
+-- those rows so the column stays NOT NULL without a migration.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS list_result JSONB;
 `;
 
 let ensured: Promise<void> | undefined;

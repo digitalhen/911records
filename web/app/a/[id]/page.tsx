@@ -6,6 +6,7 @@ import { SearchBox } from '@/components/SearchBox';
 import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { AnswerBody, PriorTurn, searchFallbackUrl } from '@/components/ask/shared';
+import { ListAnswer } from '@/components/ask/ListAnswer';
 import { getAnswer, getAnswerChain } from '@/lib/ask/store';
 import { socialMeta } from '@/lib/seo/social';
 
@@ -70,7 +71,11 @@ export default async function AnswerPage({ params }: { params: Params }) {
             ))}
           </div>
         )}
-        <AnswerBody q={row.q} answer={row.answer} pages={row.cites} answerId={row.id} />
+        {row.list_result ? (
+          <ListAnswer q={row.q} result={row.list_result} answerId={row.id} />
+        ) : (
+          <AnswerBody q={row.q} answer={row.answer} pages={row.cites} answerId={row.id} />
+        )}
       </main>
       <Footer />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
