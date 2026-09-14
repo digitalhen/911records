@@ -5,9 +5,9 @@
 #
 #   docker compose -f docker-compose.host.yml up -d
 #
-# Both services bind to 127.0.0.1 (for tools running on StudioMac itself,
-# e.g. scripts/search/opensearch.py) AND 192.168.200.51 (the LAN IP, so the
-# two Dokploy replicas — wherever they run — can reach them). Never 0.0.0.0.
+# Both services publish on all interfaces (see the port comments: OrbStack
+# ignores a LAN-IP-specific publish), so StudioMac tools use 127.0.0.1 and the
+# two Dokploy replicas use 192.168.200.51. OpenSearch requires basic auth.
 #
 # ## Cutover from docker-compose.opensearch.yml (dev, security OFF)
 #
@@ -16,9 +16,10 @@
 # file. When it's time to cut the app over to this one instead:
 #   1. `docker compose -f docker-compose.host.yml up -d opensearch` (a new,
 #      separate container/volume — it starts empty).
-#   2. Re-run the indexer against it with basic auth:
-#      `OPENSEARCH_URL=https://127.0.0.1:9200 OPENSEARCH_USER=admin \
-#       OPENSEARCH_PASSWORD=<the password below> NODE_TLS_REJECT_UNAUTHORIZED=0 \
+#   2. Re-run the indexer against it with basic auth (plain HTTP — see
+#      plugins.security.ssl.http.enabled below, no cert to work around):
+#      `OPENSEARCH_URL=http://127.0.0.1:9200 OPENSEARCH_USER=admin \
+#       OPENSEARCH_PASSWORD=<the password below> \
 #       .venv/bin/python scripts/search/opensearch.py setup && ... index`
 #      (scripts/search/opensearch.py doesn't read basic-auth env yet — that's
 #      A2's `--host`/basic-auth env work per docs/PLAN.md's workstream table.)
@@ -37,8 +38,12 @@ services:
       - ./data/text:/data/text:ro
       - ./files/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - '127.0.0.1:8911:8911'
-      - '192.168.200.51:8911:8911'
+      # 0.0.0.0 on purpose: OrbStack does not honour a publish bound to the
+      # host's LAN IP (tested 2026-09-14: 192.168.200.51:8911 answered from
+      # nowhere, not even the host). Publishing on all interfaces is what makes
+      # the LAN IP reachable from MonsterMac's Dokploy replica. The LAN is
+      # private; the data here is the City's public records.
+      - '8911:8911'
     restart: unless-stopped
 
   opensearch:
@@ -48,7 +53,15 @@ services:
       cluster.name: sept11-records
       node.name: sept11-os-1
       # Security plugin ON (unlike docker-compose.opensearch.yml's dev
-      # instance) — this one is reachable from the LAN.
+      # instance) — this one is reachable from the LAN. HTTP-layer TLS is
+      # explicitly OFF: this is a LAN-only service behind no real CA, and a
+      # self-signed demo cert only pushes the problem onto every client
+      # (the app would need NODE_TLS_REJECT_UNAUTHORIZED=0, which quietly
+      # disables cert checking for that whole process). Auth is still
+      # required — basic auth over plain HTTP on a trusted LAN segment.
+      # Internal transport (node-to-node) keeps its demo cert; irrelevant
+      # for a single-node cluster.
+      plugins.security.ssl.http.enabled: 'false'
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:?set the OpenSearch admin password}
       OPENSEARCH_JAVA_OPTS: '-Xms2g -Xmx2g'
       bootstrap.memory_lock: 'true'
@@ -58,8 +71,8 @@ services:
     volumes:
       - opensearch-host-data:/usr/share/opensearch/data
     ports:
-      - '127.0.0.1:9200:9200'
-      - '192.168.200.51:9200:9200'
+      # 0.0.0.0 for the same OrbStack reason as `files`; basic auth is required.
+      - '9200:9200'
     restart: unless-stopped
 
 volumes:

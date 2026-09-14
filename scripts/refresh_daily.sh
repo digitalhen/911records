@@ -39,6 +39,8 @@
 #        (launchd plist: docs/launchd/nyc.911records.refresh.plist, installed per docs/RUNBOOK.md)
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Host service credentials (OpenSearch basic auth for docker-compose.host.yml); gitignored under data/.
+if [ -f data/host.env ]; then set -a; . data/host.env; set +a; fi
 
 LOG=data/refresh.log
 LOCK=data/refresh.lock
