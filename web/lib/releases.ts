@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.9';
+export const APP_VERSION = '0.14.10';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.10',
+    date: '2026-09-14',
+    notes: ['On phones, the map legend (“What the colours mean”) sits below the map instead of floating over it.'],
+  },
   {
     version: '0.14.9',
     date: '2026-09-14',

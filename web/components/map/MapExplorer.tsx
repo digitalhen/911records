@@ -43,9 +43,12 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   // unlike the old phrasing.
   const question=placeLabel?placeQuestion(placeLabel):null;
   const relatedQuestion=suggestions.substance?substanceQuestion(suggestions.substance):null;
-  return <main id="main" className={styles.explorer}>
+  // Phones (map.module.css ≤700px): the floating legend hid map behind the bottom sheet, so it
+  // renders below the map instead (Henry, 2026-09-14) — same content, second placement.
+  const legendBody=<><strong>What the colours mean</strong>{(['test','inspection','mention'] as const).map((k,i)=><span key={k}><i style={{background:COLORS[k]}}/>{['Test candidates on file','Inspection candidates only','Mentioned in the records only'][i]}</span>)}<span><i style={{background:COLORS.ground}}/>No matching indexed records</span><small>Colour describes what the records contain, never safety. Inspection candidates carry an inspection heading or date cue.</small></>;
+  return <><main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>setThreeD(false)} onToggleThreeD={()=>setThreeD(v=>!v)} />
-    <div className={styles.legend} aria-label="Map legend"><strong>What the colours mean</strong>{(['test','inspection','mention'] as const).map((k,i)=><span key={k}><i style={{background:COLORS[k]}}/>{['Test candidates on file','Inspection candidates only','Mentioned in the records only'][i]}</span>)}<span><i style={{background:COLORS.ground}}/>No matching indexed records</span><small>Colour describes what the records contain, never safety. Inspection candidates carry an inspection heading or date cue.</small></div>
+    <div className={styles.legend} aria-label="Map legend">{legendBody}</div>
     <section className={styles.search} aria-label="Ask and search the records">
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
@@ -99,5 +102,6 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       </details>
       <p className={styles.note}>Machine-extracted matches. Select a building to verify its source pages.</p>
     </aside>
-  </main>;
+  </main>
+  <div className={styles.legendBelow} aria-label="Map legend">{legendBody}</div></>;
 }
