@@ -90,6 +90,17 @@ CREATE INDEX IF NOT EXISTS doc_views_day_idx ON app.doc_views (day);
 -- ordinary question/refuse/offtopic answer row — 'answer' still carries an (empty) AskAnswer for
 -- those rows so the column stays NOT NULL without a migration.
 ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS list_result JSONB;
+
+-- B24 ("Refresh this answer", issue "Ask: refresh a frozen answer"): links a refreshed answer
+-- back to the frozen one it replaces (refreshed_from), and forward from the old one to its
+-- replacement (superseded_by), so /a/[id] can show "a newer version exists" / "refreshed from an
+-- earlier answer" without ever mutating the old permalink's own saved content — permalinks never
+-- change. Both self-reference app.answers; ADD COLUMN IF NOT EXISTS keeps this tolerant of an
+-- install where the table already exists without them (COMMON-web.md "schema first, code
+-- second"). See lib/ask/store.ts's saveAnswer/markSuperseded.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS refreshed_from TEXT REFERENCES app.answers(id);
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES app.answers(id);
+CREATE INDEX IF NOT EXISTS answers_refreshed_from_idx ON app.answers (refreshed_from);
 `;
 
 let ensured: Promise<void> | undefined;
