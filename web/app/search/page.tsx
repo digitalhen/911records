@@ -192,9 +192,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         </p>
         {!result.error && !result.noSearchableTerms && !result.noLexicalMatch && q.trim() && (
           <p className="small mb-4">
-            <Link href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
+            <a href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
               Ask this as a question <AiMark /> →
-            </Link>
+            </a>
           </p>
         )}
         {result.error && (
@@ -210,9 +210,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             </p>
             <div className="followup">
               {SUGGESTED_QUESTIONS.slice(0, 3).map((s, i) => (
-                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
+                <a key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
                   {s} <AiMark /> <span>→</span>
-                </Link>
+                </a>
               ))}
             </div>
           </Callout>
@@ -223,9 +223,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               ask it as a question — a cited answer can draw on related wording a literal search would miss.
             </p>
             <div className="followup">
-              <Link className="question-link" href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
+              <a className="question-link" href={`/ask?q=${encodeURIComponent(q)}&mode=question`}>
                 Ask this as a question <AiMark /> <span>→</span>
-              </Link>
+              </a>
             </div>
           </Callout>
         ) : (

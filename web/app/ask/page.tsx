@@ -91,9 +91,9 @@ function OfftopicView({ q }: { q: string }) {
           </div>
           <section className="followup">
             {suggestions.map((s, i) => (
-              <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
+              <a key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
                 {s} <AiMark /> <span>→</span>
-              </Link>
+              </a>
             ))}
           </section>
         </article>
@@ -175,9 +175,9 @@ function InsufficientView({
                 <>
                   <h2>A narrower question these pages might support</h2>
                   {followUps.map((f, i) => (
-                    <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}&mode=question`}>
+                    <a key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}&mode=question`}>
                       {f} <AiMark /> <span>→</span>
-                    </Link>
+                    </a>
                   ))}
                 </>
               )}
