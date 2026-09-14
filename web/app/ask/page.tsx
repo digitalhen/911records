@@ -46,35 +46,6 @@ function AskAgainForm({ q }: { q: string }) {
   );
 }
 
-function RefusalView({ q, reason }: { q: string; reason: string }) {
-  return (
-    <>
-      <Header active="/ask" />
-      <main id="main">
-        <AskAgainForm q={q} />
-        <article className="answer-main summary-rule">
-          <MachineNote />
-          <div className="citation-rule">
-            <h2 className="mb-2">Identity questions are refused</h2>
-            <p>
-              {reason ||
-                'This tool cannot help identify a redacted or private person. You can ask about building conditions, test results, dates, offices and officials’ actions on the records instead.'}
-            </p>
-          </div>
-        </article>
-        <aside className="source-rail source-rail-top">
-          <h2>City 9/11 records only</h2>
-          <p>
-            This service covers the City&apos;s 9/11 records only. No people browser, no co-mention search, no
-            network graph of people. See <Link href="/personal-information">the personal-information policy</Link>.
-          </p>
-          <div className="mt-5"><WhatOthersAreReading /></div>
-        </aside>
-      </main>
-      <Footer />
-    </>
-  );
-}
 
 function OfftopicView({ q }: { q: string }) {
   const suggestions = SUGGESTED_QUESTIONS.slice(0, 3);
@@ -256,9 +227,13 @@ async function renderPlanOutcome(
   planUsage: Record<string, unknown>,
   opts: { parentId?: string; boostPages?: PageRef[]; refreshedFrom?: string } = {},
 ) {
-  if (plan.kind === 'refuse') {
-    return <RefusalView q={q} reason={plan.refuseReason} />;
-  }
+  // 2026-09-14: the planner refused "Who was the contractor hired to clean 114 Liberty Street
+  // apartments?" as an identity question. A question whose answer is an organisation is never
+  // about a private person — the prompt now says so, and this guard catches the planner anyway.
+  // Henry, 2026-09-14 (checked with counsel): the City redacted these records before release, so
+  // there is nothing for an identity question to unmask — Ask answers every question from what
+  // the City published and never refuses. The answer model still never guesses a redacted name.
+  if (plan.kind === 'refuse') plan = { ...plan, kind: 'question' };
 
   if (plan.kind === 'offtopic') {
     return <OfftopicView q={q} />;

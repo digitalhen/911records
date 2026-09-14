@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.13';
+export const APP_VERSION = '0.14.14';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.14',
+    date: '2026-09-14',
+    notes: ['Ask no longer declines “who” questions. The City redacted these records before release, so every question is answered from what the City published; a redacted name is never guessed at.'],
+  },
   {
     version: '0.14.13',
     date: '2026-09-14',
