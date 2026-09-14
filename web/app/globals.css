@@ -2949,3 +2949,28 @@ dialog .mono {
   .button.small, .zoom button, [class*="alpha"] a, .pager a, .pager button, .chips a { min-height: 40px; min-width: 40px; }
   .brand-logo { height: 40px; }
 }
+
+/* Loading skeleton (app/ask/loading.tsx): animated grey placeholders while an answer is written. */
+.skeleton-page { margin-top: 18px; }
+.sk {
+  height: 13px;
+  margin: 9px 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #e6eaec 25%, #f3f5f6 40%, #e6eaec 55%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.5s ease-in-out infinite;
+}
+.sk-input { height: 46px; margin: 0 0 14px; border-radius: 0; }
+.sk-row { display: flex; gap: 26px; margin-bottom: 22px; }
+.sk-tab { width: 130px; height: 12px; }
+.sk-eyebrow { width: 120px; height: 9px; margin-top: 18px; }
+.sk-title { width: 70%; height: 22px; margin: 10px 0 18px; }
+.sk-gap { height: 0; margin: 12px 0; background: none; animation: none; }
+.sk-source { padding: 14px 0; border-bottom: 1px solid var(--line); }
+@keyframes sk-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.sk-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 37px; }
+@media (max-width: 800px) { .sk-layout { grid-template-columns: 1fr; } }

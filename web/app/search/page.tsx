@@ -128,7 +128,19 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     }
   }
 
-  const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
+  let result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
+  // Planner-written facet values ("address=235-247 Greenwich Street", "lab=ATC Associates") often
+  // differ from the index's own spelling; when the filtered search matches nothing, show the
+  // unfiltered results for the same words with a note rather than an empty page (2026-09-14).
+  const droppedFilters: string[] = [];
+  if (!result.error && result.total === 0 && Object.keys(filters).length) {
+    const unfiltered = await search({ q, filters: {}, page, pageSize: PAGE_SIZE, sort });
+    if (!unfiltered.error && unfiltered.total > 0) {
+      for (const key of FILTER_KEYS) if (filters[key]) droppedFilters.push(`${key}: ${filters[key]}`);
+      for (const key of FILTER_KEYS) delete filters[key];
+      result = unfiltered;
+    }
+  }
   // One batched query keyed by doc (docs/briefs/COMMON-web.md-style schema-first lookup, issue
   // #37): Postgres's site.documents.title/summary is the live source of truth, kept fresh on every
   // pipeline refresh; the OpenSearch doc_title on each hit (hit.docTitle) can lag behind an index
@@ -148,6 +160,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         {fallbackNote && (
           <Callout tone="info" role="status" className="mb-4">
             {fallbackNote}
+          </Callout>
+        )}
+        {droppedFilters.length > 0 && (
+          <Callout tone="info" role="status" className="mb-4">
+            No documents matched the filter{droppedFilters.length > 1 ? 's' : ''} {droppedFilters.join(' · ')} exactly, so
+            these are the results for the words alone. Narrow them with the filters on the left.
           </Callout>
         )}
         {q.trim() && !result.error && (
@@ -192,7 +210,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             </p>
             <div className="followup">
               {SUGGESTED_QUESTIONS.slice(0, 3).map((s, i) => (
-                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
+                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
                   {s} <AiMark /> <span>→</span>
                 </Link>
               ))}

@@ -91,7 +91,7 @@ function OfftopicView({ q }: { q: string }) {
           </div>
           <section className="followup">
             {suggestions.map((s, i) => (
-              <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
+              <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}&mode=question`}>
                 {s} <AiMark /> <span>→</span>
               </Link>
             ))}
@@ -175,7 +175,7 @@ function InsufficientView({
                 <>
                   <h2>A narrower question these pages might support</h2>
                   {followUps.map((f, i) => (
-                    <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
+                    <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}&mode=question`}>
                       {f} <AiMark /> <span>→</span>
                     </Link>
                   ))}
@@ -279,8 +279,12 @@ async function renderPlanOutcome(
   if (plan.kind === 'list') {
     const listResult = await runList(plan);
     if (listResult.rows.length === 0) {
-      return <ListEmptyView q={q} title={listResult.title} parentId={opts.parentId} refreshOf={opts.refreshedFrom} />;
-    }
+      // 2026-09-14: "Which labs analysed asbestos samples from 90 West Street?" planned as a
+      // labs_by_building table and matched no structured rows — the reader saw "No rows matched
+      // that table" although the pages exist. Fall through to the written, cited answer instead;
+      // the empty-table view is only for a question with nothing to retrieve either.
+      plan = { ...plan, kind: 'question' };
+    } else {
     const id = await saveAnswer({
       q,
       plan,
@@ -294,6 +298,7 @@ async function renderPlanOutcome(
     });
     if (opts.refreshedFrom) await markSuperseded(opts.refreshedFrom, id);
     redirect(`/a/${id}`);
+    }
   }
 
   // plan.kind === 'question'

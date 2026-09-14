@@ -5,11 +5,22 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.3';
+export const APP_VERSION = '0.14.4';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.4',
+    date: '2026-09-14',
+    notes: [
+      'While an answer is being written, the page shows animated placeholders straight away instead of waiting on the previous page.',
+      'Every suggested and follow-up question now goes to a written, cited answer — never to a bare document search.',
+      'A document search whose address, lab or agency filter matches nothing now shows the results for the words alone, with a note, instead of an empty page.',
+      'A question that would have produced an empty table (for example labs at a building with no structured rows) falls back to a written answer from the pages.',
+      'The map panel’s close button is larger and boxed.',
+    ],
+  },
   {
     version: '0.14.3',
     date: '2026-09-14',
