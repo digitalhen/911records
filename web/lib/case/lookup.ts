@@ -17,13 +17,17 @@ export interface CaseDocMeta {
   official_url: string | null;
   status: string | null;
   removed_at: string | null;
+  /** Plain-language title (issue #37, scripts/embed/summaries.py) — preferred over `folder` as the
+   *  exhibit's display name wherever the case folder shows it, machine-extracted. */
+  title: string | null;
+  summary: string | null;
 }
 
 export async function lookupDocs(docs: string[]): Promise<Record<string, CaseDocMeta>> {
   const unique = [...new Set(docs)].slice(0, 500);
   if (!unique.length) return {};
   const rows = await queryReadSafe<CaseDocMeta>(
-    `SELECT doc, bates_end, folder, box, agency, volume, official_url, status, removed_at
+    `SELECT doc, bates_end, folder, box, agency, volume, official_url, status, removed_at, title, summary
      FROM site.documents WHERE doc = ANY($1::text[])`,
     [unique],
   );

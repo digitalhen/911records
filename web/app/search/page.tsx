@@ -252,10 +252,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     <div>
                       <h2>
                         <Link href={`/doc/${hit.doc}${hit.page > 1 ? `/p/${hit.page}` : ''}`}>
-                          {hit.folder || hit.doc} — page {hit.page}
+                          {hit.docTitle || hit.folder || hit.doc} — page {hit.page}
                         </Link>
                       </h2>
                       <span className="range mono">{hit.batesPage}</span>
+                      {hit.docTitle && <span className="derived-label">Machine-extracted title</span>}
                     </div>
                     {hit.docType && (
                       <span className="derived-label" title="Machine-extracted document type">

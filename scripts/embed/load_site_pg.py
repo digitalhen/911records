@@ -64,6 +64,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("held_locally", "BOOLEAN"), ("pages_ok", "INTEGER"), ("pages_empty", "INTEGER"),
         ("pages_ocr", "INTEGER"), ("topic", "INTEGER"), ("n_related_cross", "INTEGER"),
         ("official_url", "TEXT"), ("doc_type", "TEXT"), ("doc_type_confidence", "DOUBLE PRECISION"),
+        ("title", "TEXT"), ("summary", "TEXT"), ("summary_confidence", "DOUBLE PRECISION"),
     ],
     "pages": [
         ("doc", "TEXT"), ("page", "INTEGER"), ("bates", "TEXT"), ("chars", "INTEGER"),

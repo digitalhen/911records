@@ -17,7 +17,7 @@ export async function generateMetadata({ params, searchParams }: Props) {
 }
 interface Group { label: string | null; documents: number; pages: number }
 interface BoxRow { label: string | null; agency: string | null; volume: string | null; documents: number; pages: number }
-interface Doc { doc: string; bates_end: string | null; page_count: number; status: string; removed_at: DatabaseDate | null }
+interface Doc { doc: string; bates_end: string | null; page_count: number; status: string; removed_at: DatabaseDate | null; title: string | null; summary: string | null }
 
 /** Index-level (no agency/volume/box/folder path chosen) box grouping — the
  *  design's "Collection → Box → Folder" hierarchy (issue #32, item 3). Boxes
@@ -63,7 +63,7 @@ export default async function Browse({ params, searchParams }: Props) {
       queryRead<Group>(`SELECT COUNT(*) AS documents, COALESCE(SUM(page_count),0) AS pages FROM site.documents ${where}`, values),
       queryRead<Group>("SELECT COALESCE(source,'') AS label, COUNT(*) AS documents, COALESCE(SUM(page_count),0) AS pages FROM site.documents GROUP BY COALESCE(source,'') ORDER BY label"),
       atIndex ? Promise.resolve([]) : (path.length < 4 ? queryRead<Group>(`SELECT ${levels[path.length]} AS label, COUNT(*) AS documents, COALESCE(SUM(page_count),0) AS pages FROM site.documents ${where} GROUP BY ${levels[path.length]} ORDER BY ${levels[path.length]} NULLS LAST`, values) : Promise.resolve([])),
-      path.length === 4 ? queryRead<Doc>(`SELECT doc,bates_end,page_count,status,removed_at FROM site.documents ${where} ORDER BY doc LIMIT 101 OFFSET $${values.length+1}`, [...values,(page-1)*100]) : Promise.resolve([]),
+      path.length === 4 ? queryRead<Doc>(`SELECT doc,bates_end,page_count,status,removed_at,title,summary FROM site.documents ${where} ORDER BY doc LIMIT 101 OFFSET $${values.length+1}`, [...values,(page-1)*100]) : Promise.resolve([]),
       atIndex ? boxIndex(source, agencyFilter, volumeFilter) : Promise.resolve([]),
       atIndex ? distinctValues('agency', source) : Promise.resolve([]),
       atIndex ? distinctValues('volume', source) : Promise.resolve([]),
@@ -179,19 +179,18 @@ export default async function Browse({ params, searchParams }: Props) {
                 {docs.slice(0, 100).map((d) => (
                   <div className={styles.row} key={d.doc}>
                     <div>
-                      {d.status === 'removed' ? (
-                        <>
-                          <Link className="bates" href={`/doc/${encodeURIComponent(d.doc)}`}>
-                            {d.doc}
-                            {d.bates_end !== d.doc && d.bates_end ? ` – ${d.bates_end}` : ''} ↗
-                          </Link>
-                          <p className="small muted">Removed by the City{d.removed_at ? ` on ${formatDate(d.removed_at)}` : ' (date not recorded)'}</p>
-                        </>
-                      ) : (
-                        <Link className="bates" href={`/doc/${encodeURIComponent(d.doc)}`}>
+                      <Link className={d.title ? undefined : 'bates'} href={`/doc/${encodeURIComponent(d.doc)}`}>
+                        {d.title || d.doc} ↗
+                      </Link>
+                      {d.title && (
+                        <p className="small muted mono">
                           {d.doc}
-                          {d.bates_end !== d.doc && d.bates_end ? ` – ${d.bates_end}` : ''} ↗
-                        </Link>
+                          {d.bates_end !== d.doc && d.bates_end ? ` – ${d.bates_end}` : ''}
+                        </p>
+                      )}
+                      {d.summary && <p className="small">{d.summary}</p>}
+                      {d.status === 'removed' && (
+                        <p className="small muted">Removed by the City{d.removed_at ? ` on ${formatDate(d.removed_at)}` : ' (date not recorded)'}</p>
                       )}
                     </div>
                     <span className="small muted">{number(d.page_count)} pages</span>

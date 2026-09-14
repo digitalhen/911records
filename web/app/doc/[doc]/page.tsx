@@ -12,7 +12,7 @@ type Query = Promise<SearchParamsInput>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { doc } = await params;
   const row = await getDocument(doc);
-  const label = row?.folder ? `${row.folder} · ${doc}` : doc;
+  const label = row?.title ? `${row.title} · ${doc}` : row?.folder ? `${row.folder} · ${doc}` : doc;
   const description = row
     ? `Bates ${doc}${row.bates_end && row.bates_end !== doc ? `–${row.bates_end}` : ''}, ${row.source || 'NYC Law Department release'}. Mirrored independently; not affiliated with the City of New York.`
     : undefined;
@@ -37,7 +37,8 @@ export default async function DocPage({ params, searchParams }: { params: Params
     '@context': 'https://schema.org',
     '@type': 'DigitalDocument',
     identifier: doc,
-    name: row.folder || doc,
+    name: row.title || row.folder || doc,
+    description: row.summary || undefined,
     url: `${SITE_URL}/doc/${doc}`,
     isPartOf: row.source || undefined,
     dateCreated: row.first_seen || undefined,

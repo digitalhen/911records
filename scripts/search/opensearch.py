@@ -16,6 +16,10 @@ One OpenSearch document per PAGE (id "<bates_start>_p<page>"):
             permit_application|form|photo_log|other), doc_type_confidence (P3, issue #28,
             scripts/embed/doctypes.py's data/embed/p3-doctypes.jsonl; absent when that file hasn't
             classified the document yet)
+  doc_title  the document's plain-language title (P5, issue #37, scripts/embed/summaries.py's
+            data/embed/p5-summaries.jsonl); absent when that file hasn't named the document yet, or
+            named it but produced nothing safe to show. Used as the search-result heading in place
+            of the bare Bates number/folder label when present.
   contaminants[], labs[], contractors[], agencies_mentioned[], dates[] (date), bins[], bbls[],
   addresses[], measurement_units[]
   official_roles[]  "role | title | org" for people acting in an official capacity (official=1)
@@ -119,6 +123,7 @@ MAPPING = {
             "official_roles": {"type": "keyword"}, "official_people": {"type": "keyword"},
             "topic": {"type": "integer"}, "related_filed_elsewhere": {"type": "integer"},
             "doc_type": {"type": "keyword"}, "doc_type_confidence": {"type": "float"},
+            "doc_title": {"type": "keyword", "fields": {"text": {"type": "text", "analyzer": "english"}}},
             "content_hash": {"type": "keyword"},
         },
     },
@@ -224,6 +229,15 @@ def index(limit: int = 0) -> None:
             row = json.loads(line)
             if row.get("doc") and row.get("doc_type") is not None:
                 doc_types[row["doc"]] = (row["doc_type"], row.get("confidence"))
+    doc_titles: dict[str, str] = {}
+    summaries_path = EMB / "p5-summaries.jsonl"
+    if summaries_path.exists():
+        for line in summaries_path.open():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("doc") and row.get("title"):
+                doc_titles[row["doc"]] = row["title"]
 
     existing = {}
     body = {"size": 10000, "_source": ["content_hash"], "query": {"match_all": {}}}
@@ -276,6 +290,9 @@ def index(limit: int = 0) -> None:
             doc_type_row = doc_types.get(doc)
             if doc_type_row:
                 src["doc_type"], src["doc_type_confidence"] = doc_type_row
+            doc_title = doc_titles.get(doc)
+            if doc_title:
+                src["doc_title"] = doc_title
             v = vecs.get((doc, page))
             if v is not None:
                 src["vector"] = [round(float(x), 6) for x in v]
