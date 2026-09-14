@@ -99,3 +99,57 @@ export async function planAsk(question: string): Promise<AskPlanResult> {
   );
   return { plan: plan as AskPlan, model: ASK_MODEL, usage: response.usage };
 }
+
+/**
+ * B17 (follow-up questions, issue #23): the memory-bearing sibling of
+ * planAsk, modeled on ~/Code/prospect's docs/CHAT-AGENT.md "plan-as-memory"
+ * pattern — the model NEVER sees prose conversation history, only the PRIOR
+ * PLAN as JSON, the Bates pages that plan's answer actually cited, and the
+ * new sentence. Same output schema as planAsk (AskPlanSchema): a follow-up
+ * can change `kind` (e.g. "show me the documents instead" -> "search", or a
+ * follow-up that tries to unmask someone -> "refuse" even though the parent
+ * turn was an ordinary "question").
+ */
+const FOLLOW_UP_SYSTEM = `You maintain a retrieval plan across a follow-up question about New York City's released 9/11 records. You are given the PRIOR PLAN as JSON (not a conversation transcript) and a short follow-up sentence from the same person — merge them into ONE plan for the follow-up alone. This is still a records search and citation tool over the City's 9/11 Document Portal release only — nothing else.
+
+kind:
+- "offtopic": the follow-up itself is not about the City's 9/11 records at all — chit-chat, small talk or a question about the assistant, an opinion, or any subject this release has nothing to do with.
+- "refuse": the follow-up tries to identify a redacted or private individual, or asks who lives/lived somewhere, who is behind a redaction, who a blacked-out name is, or anything else that would name or help identify a PRIVATE person — even if the prior plan's kind was "question". Refuse even if phrased indirectly ("reconstruct the name from context").
+- NOT a refusal: a follow-up about a named OFFICIAL ROLE on a record (an inspector of record, a signatory, an agency officer). This only becomes "refuse" if it is instead trying to unmask a redacted or otherwise unnamed person.
+- "search": the follow-up is really asking to BROWSE documents/pages instead of reading a written answer ("show me the documents instead", "just give me the list", "find the underlying pages") — nothing needs a written, synthesized answer anymore.
+- "question": the follow-up has something to STATE an answer to — the default whenever it could be phrased as "what do the records say about ___", including a follow-up that only narrows, redirects or adds to the prior plan (a date, an address, a lab, a different substance).
+
+terms: start from the PRIOR PLAN's terms and keep every one the follow-up doesn't contradict. Add or replace only the terms the follow-up itself introduces (a new substance, address, agency, lab, event) — "switch to 90 West Street" replaces the address term, "what about the lab" adds lab-related terms alongside the ones already there. Never drop a still-relevant prior term just because the follow-up didn't repeat it.
+
+filters — same merge rule, field by field: carry every PRIOR PLAN filter forward unchanged UNLESS the follow-up explicitly narrows, replaces or clears that one field (a narrower date range REPLACES dateFrom/dateTo rather than being added to it; "switch to 90 West Street" replaces address; "what about the lab" sets lab and leaves the rest alone). Never invent a value neither the prior plan nor the follow-up stated.
+
+refuseReason: one short plain sentence, ONLY when kind is "refuse" — say what can be asked instead, never restate the private individual's name or description. Leave '' otherwise.`;
+
+export async function planFollowUp(
+  parentPlan: AskPlan,
+  parentCitedBatesPages: string[],
+  sentence: string,
+): Promise<AskPlanResult> {
+  const userContent =
+    `Prior plan JSON: ${JSON.stringify(parentPlan)}\n` +
+    `Pages the prior answer cited: ${parentCitedBatesPages.length ? parentCitedBatesPages.join(', ') : '(none)'}\n` +
+    `Follow-up: ${sentence}`;
+
+  const response = await anthropic().messages.parse({
+    model: ASK_MODEL,
+    max_tokens: MAX_TOKENS,
+    system: [{ type: 'text', text: FOLLOW_UP_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    // Haiku 4.5 doesn't take `output_config.effort` (400 invalid_request_error).
+    output_config: { format: zodOutputFormat(AskPlanSchema) },
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const plan = response.parsed_output;
+  if (!plan) throw new Error('ask: model returned no parseable follow-up plan');
+  const u = response.usage;
+  console.log(
+    `[ask:plan:followup] ${ASK_MODEL} kind=${plan.kind} in=${u.input_tokens} out=${u.output_tokens}` +
+      ` cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
+  );
+  return { plan: plan as AskPlan, model: ASK_MODEL, usage: response.usage };
+}

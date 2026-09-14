@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS app.ask_spend (
   usd NUMERIC NOT NULL DEFAULT 0,
   calls INTEGER NOT NULL DEFAULT 0
 );
+
+-- B17 (Ask follow-ups, issue #23): threads a follow-up turn to the answer it
+-- was asked from, so /a/<id> can render the whole chain. ALTER ... ADD
+-- COLUMN IF NOT EXISTS keeps this tolerant of an install where app.answers
+-- already exists without the column (COMMON-web.md "schema first, code
+-- second") — safe to run concurrently on every replica, like the rest of
+-- this file. See lib/ask/store.ts's saveAnswer/getAnswerChain.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS parent_id TEXT REFERENCES app.answers(id);
+CREATE INDEX IF NOT EXISTS answers_parent_id_idx ON app.answers (parent_id);
 `;
 
 let ensured: Promise<void> | undefined;
