@@ -42,3 +42,7 @@ Rules:
 - Anything read at build time (next.config rewrites, `NEXT_PUBLIC_*`) is baked into the image by
   Dokploy with no runtime env present. Runtime configuration belongs in route handlers and
   `process.env` reads at request time.
+- **Schema first, code second.** A page that reads a new column/table crashed in production for the
+  minutes between the code deploy and the data load (topics.title, 2026-09-14). Code that reads a
+  new `site.*` column must tolerate its absence for one release (query `information_schema` once,
+  or `SELECT` with a fallback), and the coordinator loads the data before pushing the code.
