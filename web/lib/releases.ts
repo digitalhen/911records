@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.12.0';
+export const APP_VERSION = '0.12.1';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.12.1',
+    date: '2026-09-14',
+    notes: ['The map panel shows the collection title and document counts at the top again, directly above "Start with a question".'],
+  },
   {
     version: '0.12.0',
     date: '2026-09-14',
