@@ -6,3 +6,6 @@ design/astra/.codex-run.log
 design/astra/.codex-last-message.txt
 design/astra/.codex-*
 design/astra-round*-snapshot/
+__pycache__/
+*.pyc
+.DS_Store
