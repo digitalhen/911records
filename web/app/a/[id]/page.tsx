@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -7,8 +8,13 @@ import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { AnswerBody, PriorTurn, searchFallbackUrl } from '@/components/ask/shared';
 import { ListAnswer } from '@/components/ask/ListAnswer';
+import { AiMark, Callout } from '@/components/ui';
 import { getAnswer, getAnswerChain } from '@/lib/ask/store';
 import { socialMeta } from '@/lib/seo/social';
+
+function answerDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +52,13 @@ export default async function AnswerPage({ params }: { params: Params }) {
   const row = chain[chain.length - 1]!;
   const priorTurns = chain.slice(0, -1);
 
+  // B24 ("Refresh this answer"): the newer/older neighbor rows, fetched only
+  // when this row actually points to one — never re-derived, so a broken
+  // pointer (a row somehow deleted) just hides the banner/line rather than
+  // erroring the whole permalink.
+  const newerRow = row.superseded_by ? await getAnswer(row.superseded_by).catch(() => null) : null;
+  const olderRow = row.refreshed_from ? await getAnswer(row.refreshed_from).catch(() => null) : null;
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Question',
@@ -58,12 +71,31 @@ export default async function AnswerPage({ params }: { params: Params }) {
       <Header active="/ask" />
       <CaseBinderBar />
       <main id="main">
+        {newerRow && (
+          <Callout tone="info" className="mb-4">
+            A newer version of this answer exists, written {answerDate(newerRow.created_at)}.{' '}
+            <Link href={`/a/${newerRow.id}`}>Open the newer version →</Link>
+          </Callout>
+        )}
         <SearchBox q={row.q} compact />
         <SearchTabs active="answer" answerHref={`/a/${row.id}`} documentsHref={searchFallbackUrl(row.q)} />
         <p className="small muted mb-4">
           Permanent answer · frozen citations ·{' '}
           {new Date(row.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
+        {olderRow && (
+          <p className="small muted mb-4">
+            Refreshed from an earlier answer ({answerDate(olderRow.created_at)}) →{' '}
+            <Link href={`/a/${olderRow.id}`}>earlier version</Link>
+          </p>
+        )}
+        {!row.superseded_by && (
+          <p className="small muted mb-4">
+            <Link href={`/ask?refresh=${row.id}`} className="question-link">
+              Refresh this answer <AiMark /> <span>→</span>
+            </Link>
+          </p>
+        )}
         {priorTurns.length > 0 && (
           <div className="mb-5">
             {priorTurns.map((turn) => (
