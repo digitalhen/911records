@@ -1,7 +1,9 @@
 import 'server-only';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import footprintJoins from '@/public/geo/joins.json';
 import { queryReadSafe } from '@/lib/db';
+import { buildVersion } from '@/lib/site';
 import { measurementCandidates } from './measurements';
 import { buildingUrl, DEFAULT_FILTERS, month, type BuildingFacts, type Candidate, type MapFilters, type Place, type PlaceFile } from './types';
 
@@ -49,7 +51,7 @@ function safePlace(row: PlaceRow): Place {
     : 'Building address not in the roll';
   return { ...p, label: roll_address || entity_address || regexAddress || fallback };
 }
-export async function getMapPlaces(f: MapFilters = DEFAULT_FILTERS): Promise<Place[]> {
+async function queryMapPlaces(f: MapFilters): Promise<Place[]> {
   const dateFilter = f.from !== 0 || f.to !== 27;
   const rows = await queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active}
     AND ((p.lat IS NOT NULL AND p.lon IS NOT NULL) OR p.id=ANY($7::text[]))
@@ -59,6 +61,22 @@ export async function getMapPlaces(f: MapFilters = DEFAULT_FILTERS): Promise<Pla
     AND ($6='' OR ($6='test' AND pp.has_test) OR ($6='inspection' AND ${inspection}) OR ($6='mention' AND NOT pp.has_test AND NOT ${inspection}))
     GROUP BY p.id ORDER BY n_test_pages DESC,p.id`, [f.substance,dateFilter,`${month(f.from)}-01`,`${month(f.to+1)}-01`,f.only,f.type,footprintIds]);
   return rows.map(safePlace);
+}
+const isDefaultFilters = (f: MapFilters) =>
+  f.substance === DEFAULT_FILTERS.substance && f.from === DEFAULT_FILTERS.from &&
+  f.to === DEFAULT_FILTERS.to && f.type === DEFAULT_FILTERS.type && f.only === DEFAULT_FILTERS.only;
+// Perf (issue #13): the home map's initial (unfiltered) load is the same for every visitor between
+// refreshes — cached, keyed by buildVersion(). Any other filter combination (the /api/map route
+// used by the panel's live filter controls) stays a plain, uncached read — those are per-query and
+// not worth caching individually.
+const cachedDefaultMapPlaces = unstable_cache(
+  async (_v: string) => queryMapPlaces(DEFAULT_FILTERS),
+  ['map-places-default'],
+  { revalidate: 60 },
+);
+export async function getMapPlaces(f: MapFilters = DEFAULT_FILTERS): Promise<Place[]> {
+  if (isDefaultFilters(f)) return cachedDefaultMapPlaces(await buildVersion());
+  return queryMapPlaces(f);
 }
 // Address places have no bbl/bin of their own; when the property-roll canonicaliser matched this
 // address to an entity, that entity carries the bbl/bin. Never used for anything but building facts
@@ -105,7 +123,16 @@ export async function resolveBuildingRedirect(place: Pick<Place, 'kind' | 'key'>
   }
   return null;
 }
-export const getPlaceFile = cache(async (id: string): Promise<PlaceFile | null> => {
+// Perf (issue #13): one building page is the same for every visitor between refreshes — cached,
+// keyed by (buildVersion(), id). The outer React cache() still dedupes repeat calls for the same
+// id within one request (resolveBuildingRedirect above calls this per BIN candidate).
+const cachedPlaceFile = unstable_cache(
+  async (_v: string, id: string) => queryPlaceFile(id),
+  ['map-place-file'],
+  { revalidate: 60 },
+);
+export const getPlaceFile = cache(async (id: string): Promise<PlaceFile | null> => cachedPlaceFile(await buildVersion(), id));
+async function queryPlaceFile(id: string): Promise<PlaceFile | null> {
   const places = await queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active}
     AND (p.id=$1 OR (p.kind='bin' AND p.key=$1)) GROUP BY p.id ORDER BY p.id LIMIT 1`,[id]);
   if (!places[0]) return null;
@@ -127,15 +154,24 @@ export const getPlaceFile = cache(async (id: string): Promise<PlaceFile | null> 
     WHERE ${active} AND ((p.kind='bbl' AND left(p.key,6)=ANY($1::text[])) OR (p.kind='bin' AND p.key=ANY($2::text[])))
     AND p.id<>$3 GROUP BY p.id ORDER BY n_pages DESC LIMIT 12`,[blocks,bins,place.id]) : [];
   return { place, rows, related: related.map(safePlace), facts };
-});
+}
 function strings(v: unknown): string[] { return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; }
+// Perf (issue #13): the "suggested" building/substance for the home map are the same for every
+// visitor between refreshes — cached, keyed by buildVersion().
+const cachedSuggestions = unstable_cache(
+  async (_v: string) => {
+    const [places, substances] = await Promise.all([
+      queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active} AND p.id=(SELECT x.place_id FROM site.place_pages x JOIN site.documents d ON d.doc=x.doc WHERE ${active} AND x.has_test GROUP BY x.place_id ORDER BY count(*) DESC,x.place_id LIMIT 1) GROUP BY p.id`),
+      queryReadSafe<{label: string; doc: string; page: number}>(`SELECT e.label,source.doc,source.page FROM site.entities e JOIN LATERAL (SELECT ep.doc,ep.page FROM site.entity_pages ep JOIN site.documents d ON d.doc=ep.doc WHERE ep.entity_id=e.id AND ${active} ORDER BY ep.doc,ep.page LIMIT 1) source ON true WHERE e.type IN ('contaminant','substance') ORDER BY e.n_pages DESC LIMIT 1`),
+    ]);
+    const p = places[0] ? safePlace(places[0]) : null;
+    return { place: p, substance: substances[0]?.label || null, substanceSource: substances[0] ? {doc:substances[0].doc,page:substances[0].page} : null };
+  },
+  ['map-suggestions'],
+  { revalidate: 60 },
+);
 export async function getSuggestions() {
-  const [places, substances] = await Promise.all([
-    queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active} AND p.id=(SELECT x.place_id FROM site.place_pages x JOIN site.documents d ON d.doc=x.doc WHERE ${active} AND x.has_test GROUP BY x.place_id ORDER BY count(*) DESC,x.place_id LIMIT 1) GROUP BY p.id`),
-    queryReadSafe<{label: string; doc: string; page: number}>(`SELECT e.label,source.doc,source.page FROM site.entities e JOIN LATERAL (SELECT ep.doc,ep.page FROM site.entity_pages ep JOIN site.documents d ON d.doc=ep.doc WHERE ep.entity_id=e.id AND ${active} ORDER BY ep.doc,ep.page LIMIT 1) source ON true WHERE e.type IN ('contaminant','substance') ORDER BY e.n_pages DESC LIMIT 1`),
-  ]);
-  const p = places[0] ? safePlace(places[0]) : null;
-  return { place: p, substance: substances[0]?.label || null, substanceSource: substances[0] ? {doc:substances[0].doc,page:substances[0].page} : null };
+  return cachedSuggestions(await buildVersion());
 }
 export async function getSubstances(): Promise<string[]> {
   const rows = await queryReadSafe<{ substance: string }>(`SELECT DISTINCT value substance FROM site.place_pages pp
