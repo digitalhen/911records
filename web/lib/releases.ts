@@ -5,11 +5,21 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.13.1';
+export const APP_VERSION = '0.14.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.0',
+    date: '2026-09-14',
+    notes: [
+      'Every document in a folder now counts toward the folder\'s building: the map and building pages show whole folders, not just the pages that mention an address (the map went from about 550 to about 900 buildings).',
+      'Every document has a plain-language title and summary, shown in search results, topic and reading lists, related records and comparisons.',
+      'Cover-sheet pages list the records in their folder.',
+      'A proper site icon for browser tabs, bookmarks and home screens.',
+    ],
+  },
   {
     version: '0.13.1',
     date: '2026-09-14',
