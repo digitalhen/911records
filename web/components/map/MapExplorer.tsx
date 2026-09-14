@@ -13,9 +13,9 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   const [places,setPlaces]=useState(initialPlaces),[filters,setFilters]=useState<MapFilters>(DEFAULT_FILTERS);
   const [selected,setSelected]=useState<string|null>(null),[file,setFile]=useState<PlaceFile|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[mapBusy,setMapBusy]=useState(false),[mapError,setMapError]=useState(unavailable);
-  const [threeD,setThreeD]=useState(true),[expanded,setExpanded]=useState(false),[revision,setRevision]=useState(0);
+  const [threeD,setThreeD]=useState(true),[expanded,setExpanded]=useState(false),[revision,setRevision]=useState(0),[panelOpen,setPanelOpen]=useState(true);
   useEffect(()=>{const read=()=>setSelected(new URLSearchParams(location.search).get('place'));read();window.addEventListener('popstate',read);return()=>window.removeEventListener('popstate',read)},[]);
-  function select(id:string|null) {setSelected(id);setExpanded(!!id);const url=new URL(location.href);if(id)url.searchParams.set('place',id);else url.searchParams.delete('place');window.history.pushState({},'',url)}
+  function select(id:string|null) {setSelected(id);setExpanded(!!id);if(id)setPanelOpen(true);const url=new URL(location.href);if(id)url.searchParams.set('place',id);else url.searchParams.delete('place');window.history.pushState({},'',url)}
   useEffect(()=>{
     if(!selected){setFile(null);return}
     const abort=new AbortController();setBusy(true);setFile(null);setError('');
@@ -60,8 +60,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       </div>
       {(suggestions.place || suggestions.substanceSource) && <p className={styles.suggestionNote}>Suggestions are machine-extracted from the records.</p>}
     </section>
-    <aside className={`${styles.panel} ${expanded?styles.expanded:''}`} aria-label="Building records">
+    {!panelOpen && <button className={styles.reopen} onClick={()=>setPanelOpen(true)}>Show records panel</button>}
+    <aside className={`${styles.panel} ${expanded?styles.expanded:''}`} aria-label="Building records" hidden={!panelOpen}>
       <button className={styles.sheetHandle} onClick={()=>setExpanded(v=>!v)} aria-expanded={expanded}>{expanded?'Collapse':'Expand'} records panel</button>
+      <button className={styles.close} onClick={()=>setPanelOpen(false)} aria-label="Close the records panel" title="Close">×</button>
       {selected ? <>
         <button className={styles.back} onClick={()=>select(null)}>← Collection overview</button>
         {busy && <p role="status">Reading building records…</p>}
