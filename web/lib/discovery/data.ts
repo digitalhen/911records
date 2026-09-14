@@ -9,7 +9,12 @@ export interface Source { doc: string; page: number; confidence: number | null }
 export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
 export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; dates: unknown }
-export interface Topic extends Source { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown }
+export interface Topic extends Source { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null }
+/** Human-readable title when a name-safe one was generated (site.topics.title, P2); otherwise the
+ * term-list label, falling back further to a generic "Topic N". Never renders raw terms as a title. */
+export function topicTitle(t: Topic): string {
+  return t.title || t.label || `Topic ${t.id}`;
+}
 
 // Only non-person entity types may enter HTML, suggestions, metadata or sitemaps.
 export async function suggestEntities(q: string): Promise<Entity[]> {
@@ -54,7 +59,7 @@ export const getOccurrences = cache(async (id: string, signatory = false): Promi
     FROM site.${table} ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
     WHERE ep.${key}=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY ep.doc,ep.page,role`, [id]);
 });
-export const getTopics = cache(async () => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,NULL::real AS confidence FROM site.topics t
+export const getTopics = cache(async () => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
   JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN site.pages p USING(doc) WHERE dt.topic=t.id AND d.status IS DISTINCT FROM 'removed'
     ORDER BY dt.prob DESC NULLS LAST,dt.doc,p.page LIMIT 1) s ON true ORDER BY t.size_pages DESC,t.id`));

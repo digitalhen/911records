@@ -98,6 +98,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "topics": [
         ("id", "INTEGER"), ("parent", "INTEGER"), ("label", "TEXT"), ("size_docs", "INTEGER"),
         ("size_pages", "INTEGER"), ("terms", "JSONB"), ("boxes", "JSONB"), ("agencies", "JSONB"),
+        ("title", "TEXT"), ("description", "TEXT"), ("name_confidence", "DOUBLE PRECISION"),
     ],
     "doc_topics": [("doc", "TEXT"), ("topic", "INTEGER"), ("prob", "DOUBLE PRECISION")],
     "places": [
