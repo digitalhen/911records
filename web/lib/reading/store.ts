@@ -14,6 +14,8 @@
 // via queryReadSafe, like the rest of the discovery layer.
 import 'server-only';
 import { query, queryReadSafe, isUndefinedTableError } from '@/lib/db';
+import { documentsHaveTitles } from '@/lib/site';
+import { isUnsafeReadingTitle } from '@/lib/reading/nameSafety';
 
 async function queryAppSafe<T = Record<string, unknown>>(text: string, params: readonly unknown[] = []): Promise<T[]> {
   try {
@@ -41,7 +43,16 @@ export interface ReadingItem {
 // count is added on top so a document that is genuinely being read can rise
 // above the editorial order once traffic exists. With near-zero traffic
 // (a fresh seed) this reduces to plain rank order, which is the point.
-const SELECT = `SELECT rs.doc, rs.title, rs.why, rs."group" AS "group", rs.rank,
+//
+// title (issue #37 follow-up): prefers the LIVE site.documents.title over the seed's own stored
+// `rs.title` (a snapshot taken when web/scripts/seed-reading.ts last ran, itself already title-
+// preferring and name-safety-checked — see that script) — falls back to rs.title so a document the
+// summaries pipeline hasn't named yet still shows seed-reading's own safe resolved title rather
+// than nothing. Reading d.title BY NAME (not `SELECT *`) is schema-first gated the same way
+// lib/site.ts's other callers are, via documentsHaveTitles() — see that function's comment.
+async function selectSql(): Promise<string> {
+  const titleCol = (await documentsHaveTitles()) ? 'COALESCE(d.title, rs.title)' : 'rs.title';
+  return `SELECT rs.doc, ${titleCol} AS title, rs.why, rs."group" AS "group", rs.rank,
     d.box, d.agency, d.folder, COALESCE(v.views7, 0)::int AS views7,
     (COALESCE(v.views7, 0) + GREATEST(0, 200 - rs.rank)) AS blended
   FROM app.reading_seeds rs
@@ -50,15 +61,28 @@ const SELECT = `SELECT rs.doc, rs.title, rs.why, rs."group" AS "group", rs.rank,
     SELECT doc, SUM(views)::int AS views7 FROM app.doc_views
     WHERE day >= CURRENT_DATE - INTERVAL '7 days' GROUP BY doc
   ) v ON v.doc = rs.doc`;
+}
+
+// Defense in depth (issue #37 follow-up, Henry): web/scripts/seed-reading.ts already refuses to
+// WRITE a seed whose resolved title is unsafe, but an existing app.reading_seeds row seeded before
+// that fix (or before a reseed picks up a since-improved site.documents.title) must not render its
+// old bad title either — filtered here too, at read time, rather than waiting on an operational
+// reseed. A filtered-out row simply disappears from the list (never replaced with a fallback that
+// might itself be unsafe).
+function safeReadingItems(rows: ReadingItem[]): ReadingItem[] {
+  return rows.filter((r) => !isUnsafeReadingTitle(r.title));
+}
 
 /** Top N seeds overall, blended rank first — the home panel's "What others are reading". */
 export async function topReading(limit = 8): Promise<ReadingItem[]> {
-  return queryAppSafe<ReadingItem>(`${SELECT} ORDER BY blended DESC, rs.rank ASC, rs.doc LIMIT $1`, [limit]);
+  // Over-fetch a little since the safety filter can drop rows below `limit`.
+  const rows = await queryAppSafe<ReadingItem>(`${await selectSql()} ORDER BY blended DESC, rs.rank ASC, rs.doc LIMIT $1`, [limit * 2]);
+  return safeReadingItems(rows).slice(0, limit);
 }
 
 /** All seeded groups, in the fixed editorial group order, each blended-ranked — /reading. */
 export async function readingGroups(): Promise<Record<string, ReadingItem[]>> {
-  const rows = await queryAppSafe<ReadingItem>(`${SELECT} ORDER BY blended DESC, rs.rank ASC, rs.doc`);
+  const rows = safeReadingItems(await queryAppSafe<ReadingItem>(`${await selectSql()} ORDER BY blended DESC, rs.rank ASC, rs.doc`));
   const groups: Record<string, ReadingItem[]> = {};
   for (const row of rows) {
     (groups[row.group] ??= []).push(row);
@@ -71,6 +95,9 @@ export interface AlsoRead {
   page: number;
   box: string | null;
   folder: string | null;
+  /** site.documents.title (issue #37 follow-up) — null before the pipeline has named this
+   *  document, or before the column exists at all (documentsHaveTitles() gate below). */
+  title: string | null;
   reason: string;
 }
 
@@ -84,19 +111,24 @@ export interface AlsoRead {
  * also found useful" signal, not a citation-validated claim.
  */
 export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]> {
+  // Schema-first (issue #37 follow-up): d.title read by name, gated like every other explicit
+  // site.documents.title reference in this codebase — see documentsHaveTitles()'s comment.
+  const hasTitles = await documentsHaveTitles();
+  const titleSelect = (alias: string) => (hasTitles ? `${alias}.title` : 'NULL::text') + ' AS title';
+  const titleGroupBy = (alias: string) => (hasTitles ? `, ${alias}.title` : '');
   const [coCited, neighbours, related] = await Promise.all([
-    queryAppSafe<{ doc: string; page: number; box: string | null; folder: string | null; n: number }>(
-      `SELECT d.doc, p.page, d.box, d.folder, COUNT(*)::int AS n
+    queryAppSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null; n: number }>(
+      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}, COUNT(*)::int AS n
        FROM app.answers a
        JOIN LATERAL jsonb_array_elements(a.cites) c1 ON (c1->>'doc') = $1
        JOIN LATERAL jsonb_array_elements(a.cites) c2 ON (c2->>'doc') <> $1
        JOIN site.documents d ON d.doc = (c2->>'doc') AND d.status IS DISTINCT FROM 'removed'
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d.doc ORDER BY page LIMIT 1) p ON true
-       GROUP BY d.doc, p.page, d.box, d.folder ORDER BY n DESC, d.doc LIMIT $2`,
+       GROUP BY d.doc, p.page, d.box, d.folder${titleGroupBy('d')} ORDER BY n DESC, d.doc LIMIT $2`,
       [doc, limit],
     ),
-    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null }>(
-      `SELECT d2.doc, p.page, d2.box, d2.folder
+    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null }>(
+      `SELECT d2.doc, p.page, d2.box, d2.folder, ${titleSelect('d2')}
        FROM site.documents d1 JOIN site.documents d2
          ON d2.agency = d1.agency AND d2.volume = d1.volume AND d2.box = d1.box
         AND d2.folder = d1.folder AND d2.doc <> d1.doc
@@ -105,8 +137,8 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
        ORDER BY d2.doc LIMIT $2`,
       [doc, limit],
     ),
-    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null }>(
-      `SELECT d.doc, p.page, d.box, d.folder
+    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null }>(
+      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}
        FROM site.related r JOIN site.documents d ON d.doc = r.other
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d.doc ORDER BY page LIMIT 1) p ON true
        WHERE r.doc = $1 AND r.other <> r.doc AND d.status IS DISTINCT FROM 'removed'
@@ -115,15 +147,18 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
     ),
   ]).catch(() => [[], [], []] as const);
 
+  // Same defense-in-depth as topReading()/readingGroups() above: never surface an unsafe title
+  // (a name, or the portal watermark), even a live site.documents.title, on this strip.
+  const safeTitle = (t: string | null) => (t && !isUnsafeReadingTitle(t) ? t : null);
   const byDoc = new Map<string, AlsoRead>();
   for (const row of coCited) {
-    if (!byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, reason: 'Cited alongside this record in an Ask answer' });
+    if (!byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Cited alongside this record in an Ask answer' });
   }
   for (const row of neighbours) {
-    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, reason: 'Filed in the same folder' });
+    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Filed in the same folder' });
   }
   for (const row of related) {
-    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, reason: 'Similar indexed content' });
+    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Similar indexed content' });
   }
   return [...byDoc.values()].slice(0, limit);
 }
