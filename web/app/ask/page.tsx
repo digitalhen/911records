@@ -282,7 +282,10 @@ async function renderPlanOutcome(
   const placeBoost = await placePagesForQuestion(plan.filters, q, plan.terms);
   const boost: PageRef[] = [];
   const seenBates = new Set<string>();
-  for (const ref of [...(opts.boostPages ?? []), ...placeBoost.refs]) {
+  // Building-scoped hits for THIS question go first: on a follow-up the parent's cited pages can
+  // fill every retrieval slot on their own (12 of 12 on 2026-09-14), pushing out the pages that
+  // actually answer the new question.
+  for (const ref of [...placeBoost.refs, ...(opts.boostPages ?? [])]) {
     if (seenBates.has(ref.batesPage)) continue;
     seenBates.add(ref.batesPage);
     boost.push(ref);
