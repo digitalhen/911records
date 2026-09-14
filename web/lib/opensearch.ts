@@ -336,8 +336,9 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     if (!embed.reachable) semanticError = embed.error || 'Ollama unreachable';
   }
 
-  const textQuery = withCoverSheetPenalty(
+  const textQuery = withCoverSheetHandling(
     strippedQuery ? { multi_match: { query: strippedQuery, fields: MULTI_MATCH_FIELDS } } : { match_all: {} },
+    includeCoverSheets,
   );
 
   let queryBody: Record<string, unknown>;
@@ -345,7 +346,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   if (strippedQuery && vector) {
     queryBody = {
       hybrid: {
-        queries: [textQuery, withCoverSheetPenalty({ knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } })],
+        queries: [textQuery, withCoverSheetHandling({ knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } }, includeCoverSheets)],
         // Required by OpenSearch whenever `from` > 0 for a hybrid query —
         // how many hits per shard the normalization pipeline keeps around to
         // support pagination. The index is single-shard (scripts/search/
@@ -405,7 +406,11 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
     for (const f of FACET_FIELDS) {
       facets[f] = (res.aggregations?.[f]?.buckets ?? []).map((b) => ({ key: b.key, count: b.doc_count }));
     }
-    return { hits, total: res.hits.total.value, tookMs: res.took, facets, semantic, semanticError, noLexicalMatch };
+    // Keyword-only count (see countCoverSheets), so it's skipped whenever cover sheets are already
+    // shown (nothing hidden to count) — kept out of the critical path, best-effort like every other
+    // discovery-layer count in this codebase.
+    const hiddenCoverSheets = includeCoverSheets ? 0 : await countCoverSheets(strippedQuery, filterClauses);
+    return { hits, total: res.hits.total.value, tookMs: res.took, facets, semantic, semanticError, noLexicalMatch, hiddenCoverSheets };
   } catch (err) {
     return {
       hits: [],

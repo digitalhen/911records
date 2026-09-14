@@ -12,6 +12,7 @@ import { getPageBoxes } from '@/lib/boxes';
 import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
 import { RelatedRecords } from '@/components/discovery/RelatedRecords';
 import { MoreLikePage } from '@/components/discovery/MoreLikePage';
+import { folderRecords, FolderRecordsList } from '@/components/discovery/FolderRecords';
 import BuildingsForDoc from '@/components/map/BuildingsForDoc';
 import { OthersAlsoRead } from '@/components/reading/OthersAlsoRead';
 import { ViewBeacon } from '@/components/reading/ViewBeacon';
@@ -87,12 +88,13 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
   const removed = docRow.status === 'removed';
 
   const isCoverSheet = !removed && docRow.doc_type === 'cover_sheet';
-  const [pageText, boxes, indexedFacts, sitePage, coverSheet] = await Promise.all([
+  const [pageText, boxes, indexedFacts, sitePage, coverSheet, folderDocs] = await Promise.all([
     getPageText(doc, page),
     getPageBoxes(agency, volume, doc, page),
     getIndexedPage(doc, page),
     getSitePage(doc, page),
     isCoverSheet ? coverSheetLinks(docRow, doc) : Promise.resolve(null),
+    isCoverSheet ? folderRecords(docRow) : Promise.resolve([]),
   ]);
 
   // The files service has no listing endpoint, so "does this page have a
@@ -136,7 +138,12 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
         )}
 
         {coverSheet && (
-          <div className="note">
+          // Henry, 2026-09-14: no gap before the "Document / N pages" header below — .note (only
+          // used here) never got a bottom margin the way .removed-note above already has
+          // (margin-bottom: 24px in globals.css). globals.css is a shared file this brief can't
+          // edit (docs/briefs/COMMON-web.md); matching that value inline here rather than waiting
+          // on a coordinator patch. Worth folding into .note itself later — see web/NOTES-B27.md.
+          <div className="note" style={{ marginBottom: 'var(--space-6)' }}>
             <h3>Folder cover sheet — the folder&apos;s records follow</h3>
             <p>
               This single page is a City-portal property lookup sheet (address, Block/Lot, BIN), not the folder&apos;s
@@ -160,6 +167,14 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                 </>
               )}
             </p>
+            {folderDocs.length > 0 && (
+              <>
+                <p className="small muted" style={{ marginTop: 'var(--space-4)' }}>
+                  The rest of this folder, Bates order:
+                </p>
+                <FolderRecordsList records={folderDocs} folderLabel={docRow.folder} />
+              </>
+            )}
           </div>
         )}
 

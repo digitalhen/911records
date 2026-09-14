@@ -63,7 +63,7 @@ async function selectSql(): Promise<string> {
     d.box, d.agency, d.folder, COALESCE(v.views7, 0)::int AS views7,
     (COALESCE(v.views7, 0) + GREATEST(0, 200 - rs.rank)) AS blended
   FROM app.reading_seeds rs
-  JOIN site.documents d ON d.doc = rs.doc AND d.status IS DISTINCT FROM 'removed'
+  JOIN site.documents d ON d.doc = rs.doc AND d.status IS DISTINCT FROM 'removed' AND d.doc_type IS DISTINCT FROM 'cover_sheet'
   LEFT JOIN (
     SELECT doc, SUM(views)::int AS views7 FROM app.doc_views
     WHERE day >= CURRENT_DATE - INTERVAL '7 days' GROUP BY doc
@@ -131,7 +131,7 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
        FROM app.answers a
        JOIN LATERAL jsonb_array_elements(a.cites) c1 ON (c1->>'doc') = $1
        JOIN LATERAL jsonb_array_elements(a.cites) c2 ON (c2->>'doc') <> $1
-       JOIN site.documents d ON d.doc = (c2->>'doc') AND d.status IS DISTINCT FROM 'removed'
+       JOIN site.documents d ON d.doc = (c2->>'doc') AND d.status IS DISTINCT FROM 'removed' AND d.doc_type IS DISTINCT FROM 'cover_sheet'
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d.doc ORDER BY page LIMIT 1) p ON true
        GROUP BY d.doc, p.page, d.box, d.folder${titleGroupBy('d')} ORDER BY n DESC, d.doc LIMIT $2`,
       [doc, limit],
@@ -142,7 +142,7 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
          ON d2.agency = d1.agency AND d2.volume = d1.volume AND d2.box = d1.box
         AND d2.folder = d1.folder AND d2.doc <> d1.doc
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d2.doc ORDER BY page LIMIT 1) p ON true
-       WHERE d1.doc = $1 AND d1.folder IS NOT NULL AND d2.status IS DISTINCT FROM 'removed'
+       WHERE d1.doc = $1 AND d1.folder IS NOT NULL AND d2.status IS DISTINCT FROM 'removed' AND d2.doc_type IS DISTINCT FROM 'cover_sheet'
        ORDER BY d2.doc LIMIT $2`,
       [doc, limit],
     ),
@@ -150,7 +150,7 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
       `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}, ${summarySelect('d')}
        FROM site.related r JOIN site.documents d ON d.doc = r.other
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d.doc ORDER BY page LIMIT 1) p ON true
-       WHERE r.doc = $1 AND r.other <> r.doc AND d.status IS DISTINCT FROM 'removed'
+       WHERE r.doc = $1 AND r.other <> r.doc AND d.status IS DISTINCT FROM 'removed' AND d.doc_type IS DISTINCT FROM 'cover_sheet'
        ORDER BY r.rank ASC NULLS LAST, r.score DESC LIMIT $2`,
       [doc, limit],
     ),

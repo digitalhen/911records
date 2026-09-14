@@ -5,11 +5,20 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.8';
+export const APP_VERSION = '0.14.9';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.9',
+    date: '2026-09-14',
+    notes: [
+      'Document titles and one-line summaries now appear everywhere a record is listed: building pages, the map record table, the changes log, entity and case-folder pages, and the sources behind every answer.',
+      'Folder cover sheets are hidden from search results, topics, related records and reading tiles by default; a “Folder cover sheets” filter on the search page brings them back.',
+      'A cover-sheet page now lists the rest of its folder in Bates order, with titles, document types and page counts.',
+    ],
+  },
   {
     version: '0.14.8',
     date: '2026-09-14',

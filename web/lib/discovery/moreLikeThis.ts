@@ -28,9 +28,11 @@ export async function moreLikeThis(doc:string,page:number):Promise<{hits:MoreLik
   // site.documents.title/summary reference — see that function's comment in lib/site.ts.
   const withTitles=await documentsHaveTitles();
   const titleCols=withTitles?'d.title,d.summary,':'NULL::text AS title,NULL::text AS summary,';
+  // Cover sheets (issue #28) are excluded here too, like every other discovery-layer list — a
+  // folder cover sheet has no content of its own to be "more like" anything.
   const visible=await queryReadSafe<{doc:string;page:number;box:string|null;title:string|null;summary:string|null}>(`SELECT p.doc,p.page,d.box,${titleCols}
     FROM site.pages p JOIN site.documents d USING(doc)
-    WHERE p.doc=ANY($1::text[]) AND d.status IS DISTINCT FROM 'removed'`,[[...new Set(hits.map(h=>h.doc))]]);
+    WHERE p.doc=ANY($1::text[]) AND d.status IS DISTINCT FROM 'removed' AND d.doc_type IS DISTINCT FROM 'cover_sheet'`,[[...new Set(hits.map(h=>h.doc))]]);
   const byKey=new Map(visible.map(v=>[`${v.doc}:${v.page}`,v]));
   return {hits:hits.flatMap(h=>{const v=byKey.get(`${h.doc}:${h.page}`);return v?[{...h,box:v.box,title:v.title,summary:v.summary}]:[];}).slice(0,6),unavailable:false};
  }catch{return {hits:[],unavailable:true};}
