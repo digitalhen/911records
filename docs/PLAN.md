@@ -43,7 +43,7 @@ design system + /styleguide, AI marks, canonical addresses (Prospect roll gazett
 resort), building facts "provided by prospect.nyc", cover sheets and document types, verified
 suggestions, performance pass, QA eval set (62 cases).
 
-**Pipeline on StudioMac:** download (running), loop every 20 min (extract, render, OCR, embed,
+**Pipeline on StudioMac:** download FINISHED 2026-09-14 ~06:30 ET (24,436 PDFs verified: 24,301 exact, 135 larger than the catalog says, 0 bad), loop every 20 min (extract, render, OCR, embed,
 entities + canonicalise + LLM), daily refresh at 03:30 via cron (snapshot → diff → download →
 discovery stages → doctypes → site.sqlite → Postgres schema swap → OpenSearch index → suggestions
 check). Host services: files nginx :8911 and OpenSearch :9200 (auth) under the OrbStack docker
