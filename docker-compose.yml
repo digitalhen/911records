@@ -1,0 +1,90 @@
+# 911records.nyc production stack for Dokploy (docs/PLAN.md "Architecture" /
+# "Deployment steps (C)"). Three services: `app` (this Next.js app), `files`
+# (nginx serving PDFs and page images straight off the read-only data bind
+# mount) and `opensearch` (search + facets, security plugin ON since 9200 is
+# published for the host-side indexer per the plan).
+#
+# The bind mount is the same tree on StudioMac that scripts/refresh_daily.sh
+# (workstream A2) builds: data/pdf, data/text, data/pages, data/site,
+# data/embed. Override DATA_HOST_DIR for a different host path.
+services:
+  app:
+    build:
+      context: ./web
+      dockerfile: ../Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://911records.nyc}
+        # The commit this image was built from, reported by /api/health.
+        # `:-` and never `:?` — a build with none set must still deploy and
+        # report `"commit": null` rather than a guessed value.
+        GIT_SHA: ${GIT_SHA:-}
+    environment:
+      DATA_DIR: /data
+      FILES_URL: http://files:8911
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
+      OPENSEARCH_USER: ${OPENSEARCH_USER:-admin}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:?set the OpenSearch admin password (same as OPENSEARCH_INITIAL_ADMIN_PASSWORD below)}
+      # The opensearch service below runs with its security plugin on and
+      # its bundled demo TLS certs (self-signed) — fine for traffic that
+      # never leaves this compose network, but it means the app's fetch()
+      # calls need to skip certificate verification. Revisit with a real
+      # internal CA before this composes' network is anything other than a
+      # single-host Docker bridge (tracked as an open item for workstream C).
+      NODE_TLS_REJECT_UNAUTHORIZED: '0'
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASK_MODEL: ${ASK_MODEL:-claude-haiku-4-5}
+      ASK_DAILY_USD_CAP: ${ASK_DAILY_USD_CAP:-}
+      GIT_SHA: ${GIT_SHA:-}
+    volumes:
+      - ${DATA_HOST_DIR:-/mnt/mac/Users/henry/Code/sept11-docs/data}:/data:ro
+      # Runtime writes (answer permalinks, PII reports, saved-search alerts —
+      # workstreams B3/B6): a Docker volume, not the read-only data mount.
+      - site-runtime:/var/lib/site
+    depends_on:
+      - files
+      - opensearch
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    expose:
+      - '3000'
+
+  files:
+    image: nginx:1.27-alpine
+    volumes:
+      - ${DATA_HOST_DIR:-/mnt/mac/Users/henry/Code/sept11-docs/data}:/data:ro
+      - ./files/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./files/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    entrypoint: ['/bin/sh', '/docker-entrypoint.sh']
+    restart: unless-stopped
+    expose:
+      - '8911'
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.2
+    environment:
+      discovery.type: single-node
+      cluster.name: sept11-records
+      node.name: sept11-os-1
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:?set the OpenSearch admin password}
+      OPENSEARCH_JAVA_OPTS: '-Xms2g -Xmx2g'
+      bootstrap.memory_lock: 'true'
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      # Published (not just exposed) so the host's refresh_daily.sh /
+      # scripts/search/opensearch.py can index from StudioMac.
+      - '9200:9200'
+    restart: unless-stopped
+
+volumes:
+  site-runtime: {}
+  opensearch-data: {}
