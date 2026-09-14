@@ -1,0 +1,149 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.01313889,
+          40.71208333
+        ]
+      },
+      "properties": {
+        "name": "1 World Trade Center (North Tower)",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/1_World_Trade_Center_(1970%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "North Tower, 1970-2001, destroyed 9/11. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.01305556,
+          40.71094444
+        ]
+      },
+      "properties": {
+        "name": "2 World Trade Center (South Tower)",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/2_World_Trade_Center_(1971%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "South Tower, 1971-2001, destroyed 9/11. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.01402778,
+          40.71138889
+        ]
+      },
+      "properties": {
+        "name": "3 World Trade Center (Marriott World Trade Center)",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/Marriott_World_Trade_Center",
+        "as_of": "2001-09-11",
+        "note": "22-story hotel, 1981-2001, destroyed 9/11 (crushed by tower collapses). Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.0125,
+          40.71055556
+        ]
+      },
+      "properties": {
+        "name": "4 World Trade Center",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/4_World_Trade_Center_(1975%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "9-story building, 1975-2001; badly damaged 9/11, remains demolished by early 2002. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.01138889,
+          40.71194444
+        ]
+      },
+      "properties": {
+        "name": "5 World Trade Center",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/5_World_Trade_Center_(1972%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "9-story building, 1972-2001; burned/damaged 9/11, demolished by Jan 2002 (Wikidata P576). Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.01333333,
+          40.71277778
+        ]
+      },
+      "properties": {
+        "name": "6 World Trade Center (U.S. Customs House)",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/6_World_Trade_Center_(1974%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "8-story U.S. Customs House, 1974-2001; badly damaged 9/11, demolished by Dec 2001. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.0119,
+          40.7133
+        ]
+      },
+      "properties": {
+        "name": "7 World Trade Center (original)",
+        "kind": "building",
+        "source": "https://en.wikipedia.org/wiki/7_World_Trade_Center_(1987%E2%80%932001)",
+        "as_of": "2001-09-11",
+        "note": "47-story building, 1987-2001; collapsed 5:20pm 9/11 (fire, not impact). Rebuilt 2002-2006 on a near-identical footprint at 250 Greenwich St -- cross-checked here against the CURRENT Building Footprints layer (data.cityofnewyork.us 5zhs-2jue, BIN 1086510, ~15m from this point), which corroborates this coordinate. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.0125,
+          40.71166667
+        ]
+      },
+      "properties": {
+        "name": "Austin J. Tobin Plaza",
+        "kind": "site",
+        "source": "https://en.wikipedia.org/wiki/Austin_J._Tobin_Plaza",
+        "as_of": "2001-09-11",
+        "note": "The WTC's 5-acre elevated plaza between the towers, 1966-2001; destroyed 9/11. Included as the closest sourced stand-in for a 'plaza/superblock' feature -- no official 2001 WTC site or superblock BOUNDARY polygon was found (see docs/research/ground-zero-gis.md); left out per instructions rather than invented. Point only, not a footprint polygon: no official NYC/federal GIS source carries pre-2001 WTC building geometry (verified \u2014 see docs/research/ground-zero-gis.md). Coordinate is Wikipedia's infobox estimate, city-block to building precision (~10-100m), not survey-grade.",
+        "licence": "CC0 (Wikidata coordinate statement) / CC BY-SA 4.0 (Wikipedia article text)"
+      }
+    }
+  ]
+}
