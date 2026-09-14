@@ -3,7 +3,7 @@ import { cache } from 'react';
 import footprintJoins from '@/public/geo/joins.json';
 import { queryReadSafe } from '@/lib/db';
 import { measurementCandidates } from './measurements';
-import { DEFAULT_FILTERS, month, type Candidate, type MapFilters, type Place, type PlaceFile } from './types';
+import { buildingUrl, DEFAULT_FILTERS, month, type BuildingFacts, type Candidate, type MapFilters, type Place, type PlaceFile } from './types';
 
 // Only the place schema and non-person entity types are projected. Never expose page text.
 const inspection = `(coalesce(t.text,'') ~* '\\m(inspection report|inspection date|date of inspection|building inspection)\\M')`;
@@ -38,11 +38,57 @@ export async function getMapPlaces(f: MapFilters = DEFAULT_FILTERS): Promise<Pla
     GROUP BY p.id ORDER BY n_test_pages DESC,p.id`, [f.substance,dateFilter,`${month(f.from)}-01`,`${month(f.to+1)}-01`,f.only,f.type,footprintIds]);
   return rows.map(safePlace);
 }
+// Address places have no bbl/bin of their own; when the property-roll canonicaliser matched this
+// address to an entity, that entity carries the bbl/bin. Never used for anything but building facts
+// and the bin-canonicalisation redirect below.
+async function addressLink(key: string): Promise<{ bbl: string | null; bin: string | null } | null> {
+  const rows = await queryReadSafe<{ bbl: string | null; bin: string | null }>(
+    `SELECT bbl,bin FROM site.entities WHERE type='address' AND upper(label)=upper($1) AND (bbl IS NOT NULL OR bin IS NOT NULL) LIMIT 1`,
+    [key]);
+  return rows[0] ?? null;
+}
+export async function getBuildingFacts(place: Pick<Place,'kind'|'key'>): Promise<BuildingFacts | null> {
+  let bbl = place.kind === 'bbl' ? place.key : null;
+  let bin = place.kind === 'bin' ? place.key : null;
+  if (place.kind === 'address') {
+    const link = await addressLink(place.key);
+    bbl = link?.bbl ?? null; bin = link?.bin ?? null;
+  }
+  if (!bbl && !bin) return null;
+  const rows = await queryReadSafe<BuildingFacts>(
+    `SELECT bbl,bin,year_built,num_floors,units_res,units_total,bldg_area,bldg_class,num_bldgs,source
+     FROM site.building_facts WHERE ($1::text IS NOT NULL AND bbl=$1) OR ($2::text IS NOT NULL AND bin=$2) LIMIT 1`,
+    [bbl, bin]);
+  return rows[0] ?? null;
+}
+// Canonicalisation for #25: a bbl:/address: place that has a present-day BIN which itself resolves
+// to an indexed place (source pages exist under that BIN) should redirect there — one URL per
+// building rather than one per identifier kind. Never redirects to a BIN with no records of its own.
+export async function resolveBuildingRedirect(place: Pick<Place, 'kind' | 'key'>): Promise<string | null> {
+  if (place.kind === 'bin') return null;
+  let candidates: string[] = [];
+  if (place.kind === 'bbl') {
+    // A footprint's BIN can span several BBLs (and one BBL can appear under more than one nearby
+    // footprint entry); check every candidate BIN, not just the first, and only redirect to one
+    // that actually resolves (has records of its own).
+    const target = `bbl:${place.key}`;
+    candidates = Object.entries(footprintJoins as Record<string, string[]>).filter(([, ids]) => ids.includes(target)).map(([bin]) => bin);
+  } else if (place.kind === 'address') {
+    const bin = (await addressLink(place.key))?.bin ?? null;
+    if (bin) candidates = [bin];
+  }
+  for (const bin of candidates) {
+    const target = await getPlaceFile(bin);
+    if (target) return target.place.key;
+  }
+  return null;
+}
 export const getPlaceFile = cache(async (id: string): Promise<PlaceFile | null> => {
   const places = await queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active}
     AND (p.id=$1 OR (p.kind='bin' AND p.key=$1)) GROUP BY p.id ORDER BY p.id LIMIT 1`,[id]);
   if (!places[0]) return null;
   const place = safePlace(places[0]);
+  const facts = await getBuildingFacts(place);
   const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,
     pp.has_test,${inspection} inspection,pp.contaminants,pp.units,pp.dates,pp.labs,pp.confidence,t.text
     ${joins} WHERE ${active} AND p.id=$1 ORDER BY dt.first_date NULLS LAST,pp.doc,pp.page`,[place.id]);
@@ -58,7 +104,7 @@ export const getPlaceFile = cache(async (id: string): Promise<PlaceFile | null> 
   const related = blocks.length ? await queryReadSafe<Place>(`SELECT ${columns} ${joins}
     WHERE ${active} AND ((p.kind='bbl' AND left(p.key,6)=ANY($1::text[])) OR (p.kind='bin' AND p.key=ANY($2::text[])))
     AND p.id<>$3 GROUP BY p.id ORDER BY n_pages DESC LIMIT 12`,[blocks,bins,place.id]) : [];
-  return { place, rows, related: related.map(safePlace) };
+  return { place, rows, related: related.map(safePlace), facts };
 });
 function strings(v: unknown): string[] { return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; }
 export async function getSuggestions() {
@@ -78,7 +124,24 @@ export async function buildingsForDoc(doc: string): Promise<Place[]> {
   const rows = await queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active} AND pp.doc=$1 GROUP BY p.id ORDER BY p.label`,[doc]);
   return rows.map(safePlace);
 }
-export async function buildingSitemapEntries() {
-  return queryReadSafe<Pick<Place,'id'|'key'|'kind'>>(`SELECT p.id,p.key,p.kind FROM site.places p WHERE EXISTS
+// Only canonical, resolving URLs (#25): a bbl:/address: place that canonicalises to a BIN is
+// listed under that BIN (deduped against the BIN's own row, if it also has records) instead of
+// under its own identifier.
+export async function buildingSitemapEntries(): Promise<Pick<Place, 'id' | 'key' | 'kind'>[]> {
+  const rows = await queryReadSafe<Pick<Place, 'id' | 'key' | 'kind'>>(`SELECT p.id,p.key,p.kind FROM site.places p WHERE EXISTS
     (SELECT 1 FROM site.place_pages pp JOIN site.documents d ON d.doc=pp.doc WHERE pp.place_id=p.id AND ${active}) ORDER BY p.id`);
+  const seen = new Set<string>();
+  const out: Pick<Place, 'id' | 'key' | 'kind'>[] = [];
+  for (const row of rows) {
+    let entry = row;
+    if (row.kind !== 'bin') {
+      const bin = await resolveBuildingRedirect(row);
+      if (bin) entry = { id: `bin:${bin}`, key: bin, kind: 'bin' };
+    }
+    const url = buildingUrl(entry);
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(entry);
+  }
+  return out;
 }

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { COLORS, DEFAULT_FILTERS, buildingUrl, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
+import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
 import RecordTable from './RecordTable';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -58,6 +58,12 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
           <p>{file.place.n_docs} records · {file.place.n_pages} pages · {file.place.n_test_pages} test candidate pages</p>
           <p className={styles.note}>Machine-extracted building match · confidence {file.place.confidence?.toFixed(2) ?? 'not available'} · <a href={pageUrl(file.place)}>verify source</a></p>
           <a href={buildingUrl(file.place)}>Open building file →</a>
+          {file.facts && <><h3>Building details</h3><dl className={styles.facts}>
+            {file.facts.year_built!=null && <div><dt>Year built</dt><dd>{file.facts.year_built}</dd></div>}
+            {file.facts.num_floors!=null && <div><dt>Floors</dt><dd>{file.facts.num_floors}</dd></div>}
+            {(file.facts.units_res!=null||file.facts.units_total!=null) && <div><dt>Units</dt><dd>{file.facts.units_res??'—'} res / {file.facts.units_total??'—'} total</dd></div>}
+            {file.facts.bldg_class && <div><dt>Class</dt><dd>{decodeBldgClass(file.facts.bldg_class)}</dd></div>}
+          </dl><p className={styles.note}>Present-day data · provided by <a href="https://prospect.nyc">prospect.nyc</a>, not a 2001 description.</p></>}
           <h3>Tests over time</h3><p className={styles.note}>All available pages for this building, independent of the map filters.</p>
           <RecordTable rows={file.rows.filter(r=>r.has_test)} compact/>
           <h3>Other pages / related memos</h3><p className={styles.note}>These pages mention the building; a memo or decision classification is not established.</p>
