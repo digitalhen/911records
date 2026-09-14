@@ -5,12 +5,26 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { CopyLinkButton } from '@/components/CopyLinkButton';
+import { SearchTabs } from '@/components/SearchTabs';
+import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
 import { SUGGESTED_QUESTIONS } from '@/lib/suggestedQuestions';
 import { docTypeLabel } from '@/lib/docTypes';
+
+// issue #32 item 1: /search's fallback note, set by /ask's searchFallbackUrl
+// (lib/ask/shared.tsx) whenever it degrades a question to a plain search
+// instead of answering it — plain-language reasons a visitor can actually
+// use, never internal error text.
+const FALLBACK_NOTES: Record<string, string> = {
+  'ask-unavailable': 'Ask isn’t available on this deployment right now, so your question was searched as keywords instead.',
+  'ask-rate-limited': 'Too many questions were asked too quickly, so this one was searched as keywords instead. Try Ask again in a moment.',
+  'ask-daily-cap': 'Ask has reached its usage limit for today, so your question was searched as keywords instead.',
+  'ask-failed': 'Ask couldn’t process that question just now, so it was searched as keywords instead.',
+  'bates-not-found': 'No document matches that Bates number, so it was searched as keywords instead.',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -115,13 +129,29 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+  const note = getStr(sp, 'note');
+  const fallbackNote = note ? FALLBACK_NOTES[note] : undefined;
 
   return (
     <>
       <Header active="/ask" />
+      <CaseBinderBar />
       <main id="main">
         <SearchBox q={q} compact />
         <CopyLinkButton />
+        {fallbackNote && (
+          <Callout tone="info" role="status" className="mb-4">
+            {fallbackNote}
+          </Callout>
+        )}
+        {q.trim() && !result.error && (
+          <SearchTabs
+            active="documents"
+            answerHref={`/ask?q=${encodeURIComponent(q)}&mode=question`}
+            documentsHref={page > 1 ? searchHref(sp, { page: String(page) }) : searchHref(sp, {})}
+            documentCount={!result.noSearchableTerms && !result.noLexicalMatch ? result.total : undefined}
+          />
+        )}
         <p className="small muted mb-4">
           {result.error
             ? 'Search is temporarily unavailable.'

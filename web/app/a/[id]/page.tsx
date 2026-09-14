@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
-import { AnswerBody, PriorTurn } from '@/components/ask/shared';
+import { SearchTabs } from '@/components/SearchTabs';
+import { CaseBinderBar } from '@/components/case/CaseBinderBar';
+import { AnswerBody, PriorTurn, searchFallbackUrl } from '@/components/ask/shared';
 import { getAnswer, getAnswerChain } from '@/lib/ask/store';
 import { socialMeta } from '@/lib/seo/social';
 
@@ -53,8 +55,10 @@ export default async function AnswerPage({ params }: { params: Params }) {
   return (
     <>
       <Header active="/ask" />
+      <CaseBinderBar />
       <main id="main">
         <SearchBox q={row.q} compact />
+        <SearchTabs active="answer" answerHref={`/a/${row.id}`} documentsHref={searchFallbackUrl(row.q)} />
         <p className="small muted mb-4">
           Permanent answer · frozen citations ·{' '}
           {new Date(row.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}

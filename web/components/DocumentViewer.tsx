@@ -219,7 +219,12 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             </div>
             <div className="document-split">
               <div className="scan-area">
-                <div className="pane-label">Page image</div>
+                {/* --muted (4.04:1) fails WCAG AA 4.5:1 against .scan-area's #e0e5e7 background
+                    (Lighthouse a11y, issue #32 item 6); --muted-2 is the same design system's
+                    darker muted token (5.61:1) and reads as the same gray label style. */}
+                <div className="pane-label" style={{ color: 'var(--muted-2)' }}>
+                  Page image
+                </div>
                 {hasImage ? (
                   <div className="page-image-wrap">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -315,7 +320,12 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                   </span>
                 </p>
               )}
-              {indexedFacts ? (
+              {indexedFacts &&
+              (indexedFacts.dates.length || indexedFacts.addresses.length || indexedFacts.contaminants.length || indexedFacts.labs.length) ? (
+                // Every <dd> here is paired with a preceding <dt> — a lone <dd> with no <dt> (the
+                // prior "nothing extracted" fallback lived inside this same <dl>) is invalid list
+                // structure and was one of the a11y issues Lighthouse flagged on this page
+                // (issue #32, item 6); that fallback is its own <p> below, outside the <dl>.
                 <dl>
                   {indexedFacts.dates.length > 0 && (
                     <>
@@ -341,11 +351,9 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
                       <dd>{indexedFacts.labs.join(', ')}</dd>
                     </>
                   )}
-                  {!indexedFacts.dates.length &&
-                    !indexedFacts.addresses.length &&
-                    !indexedFacts.contaminants.length &&
-                    !indexedFacts.labs.length && <dd>Nothing extracted from this page yet.</dd>}
                 </dl>
+              ) : indexedFacts ? (
+                <p className="small muted">Nothing extracted from this page yet.</p>
               ) : (
                 <p className="small muted">Not indexed yet.</p>
               )}
