@@ -69,7 +69,7 @@ export default async function Browse({ params, searchParams }: Props) {
       atIndex ? distinctValues('volume', source) : Promise.resolve([]),
     ]);
     [total] = results[0]; collections = results[1]; groups = results[2]; docs = results[3]; boxes = results[4]; agencyOptions = results[5]; volumeOptions = results[6];
-  } catch { unavailable = true; }
+  } catch (e) { console.error("[browse] query failed", e); unavailable = true; }
   if (!unavailable && !atIndex && !total?.documents && (raw.length || source !== undefined)) notFound();
   // An index-level agency/volume filter with no matches falls through to the "No boxes match
   // this filter" empty state below rather than a 404 — unlike a path segment (agency/volume/
