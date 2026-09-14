@@ -5,6 +5,7 @@ import { Shell, Extraction, Caveat, Records, Section, metadata } from '@/compone
 import { getPlaceFile } from '@/lib/map/data';
 import { buildingUrl, decodeBldgClass } from '@/lib/map/types';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
+import { MonthHistogram } from '@/components/ui';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic = 'force-dynamic';
 type Params = Promise<{type:string;slug:string}>;
@@ -26,7 +27,6 @@ export default async function EntityPage({params}:{params:Params}) {
   const allMonths=[...new Set(rows.flatMap(r=>months(r.dates)))].sort();
   const activity=allMonths.map(month=>({month,rows:rows.filter(r=>months(r.dates).includes(month))}));
   const unknown=rows.filter(r=>!months(r.dates).length);
-  const max=Math.max(1,...activity.map(a=>new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size));
   const variants=distribution(entity.variants).filter(([spelling])=>spelling.trim().toLowerCase()!==entity.label.trim().toLowerCase());
   const crumbs = breadcrumbJsonLd([
     { name: 'Home', path: '/' },
@@ -38,8 +38,12 @@ export default async function EntityPage({params}:{params:Params}) {
     <div className={styles.stats}><div><a href="#records"><strong>{new Set(rows.map(r=>r.doc)).size}</strong>documents</a><Extraction source={source} confidence={null}/></div><div><a href="#records"><strong>{new Set(rows.map(r=>`${r.doc}:${r.page}`)).size}</strong>source pages</a><Extraction source={source} confidence={null}/></div><div><a href="#where"><strong>{filings.length}</strong>box / folder filings</a><Extraction source={source} confidence={null}/></div></div>
 
     <Section id="overview" title="Overview">
-      <p className="small muted">Distinct page counts by extracted month, not measurements. A page may carry several dates. Coverage is limited to dates on indexed place pages.</p>
-      {activity.length>0&&<svg className={styles.histogram} viewBox={`0 0 640 ${activity.length*32}`} role="img" aria-label="Source pages by extracted month">{activity.map((a,i)=><a key={a.month} href={`#month-${a.month}`} aria-label={`${a.month}: ${new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size} pages`}><text x="0" y={i*32+20} fontSize="12">{a.month}</text><rect x="80" y={i*32+4} width={500*new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size/max} height="23" fill="#dfe7f1"/><text x="600" y={i*32+20} fontSize="12">{new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}</text></a>)}</svg>}
+      <MonthHistogram
+        data={activity.map(a=>({month:a.month,count:new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}))}
+        ariaLabel="Source pages by extracted month"
+        caption="Distinct page counts by extracted month, not measurements."
+        unit="page"
+      />
       {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · source pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
       {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
       {variants.length>0&&<><h3>Also read as</h3><p className="small muted">Alternate spellings machine-read from the scans, folded into this one canonical entity.</p><div className={styles.variants}>{variants.map(([spelling,count])=><span key={spelling}>{spelling} · {count}×</span>)}</div></>}

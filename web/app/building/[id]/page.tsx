@@ -7,7 +7,7 @@ import { buildingUrl, decodeBldgClass, decodeId, pageUrl } from '@/lib/map/types
 import RecordTable from '@/components/map/RecordTable';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { socialMeta } from '@/lib/seo/social';
-import { ButtonLink } from '@/components/ui';
+import { ButtonLink, MonthHistogram } from '@/components/ui';
 import styles from '@/components/map/map.module.css';
 export const dynamic = 'force-dynamic';
 type Props={params:Promise<{id:string}>};
@@ -37,6 +37,9 @@ export default async function BuildingPage({params}:Props) {
   const requestedPath=`/building/${id}`;
   if(path && path!==requestedPath && path!==`/building/${encodeURIComponent(decoded)}`)permanentRedirect(path);
   const {place:p,rows,related,facts}=file;
+  const monthPages=new Map<string,Set<string>>();
+  for(const r of rows) for(const d of r.dates) {const m=d.slice(0,7);if(!monthPages.has(m))monthPages.set(m,new Set());monthPages.get(m)!.add(`${r.doc}:${r.page}`)}
+  const activity=[...monthPages.entries()].map(([month,pages])=>({month,count:pages.size}));
   const groups=new Map<string,Map<string,typeof rows[number]>>();
   for(const row of rows) {const key=`${row.agency||'Agency not recorded'} · Volume ${row.volume||'—'} · Box ${row.box||'—'}`;if(!groups.has(key))groups.set(key,new Map());groups.get(key)!.set(row.doc,row)}
   const crumbs=breadcrumbJsonLd([{name:'Home',path:'/'},{name:'Building map',path:'/map'},{name:p.label,path:buildingUrl(p)}]);
@@ -45,6 +48,9 @@ export default async function BuildingPage({params}:Props) {
     <div className="page-title"><div><div className="eyebrow">Building / all boxes</div><h1>{p.label}</h1><p className="subtitle"></p>
       <p className={styles.note}>Machine-extracted address · confidence {p.confidence?.toFixed(2)??'not available'} · <a href={pageUrl(p)}>verify source page</a></p></div><ButtonLink variant="secondary" href={`/?place=${encodeURIComponent(p.id)}`}>See on map →</ButtonLink></div>
     <div className={styles.stats}><span><strong>{p.n_docs}</strong> records</span><span><strong>{p.n_pages}</strong> source pages</span><span><strong>{p.n_test_pages}</strong> test candidate pages</span><span>{p.first_date||'Date not extracted'} — {p.last_date||'date not extracted'}<small>Machine-extracted date span · <a href="#building-records">verify dated source rows</a></small></span></div>
+    {activity.length>0 && <section className={styles.section} id="building-activity"><h2>Activity by month</h2>
+      <MonthHistogram data={activity} ariaLabel="Source pages by extracted month" caption="Distinct page counts by extracted month, not measurements." unit="page"/>
+    </section>}
     {facts && <section className={styles.section} id="building-details"><h2>Building details</h2>
       <dl className={styles.facts}>
         {facts.year_built!=null && <div><dt>Year built</dt><dd>{facts.year_built}</dd></div>}

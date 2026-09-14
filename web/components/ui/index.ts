@@ -14,3 +14,5 @@ export type { DialogAction } from './Dialog';
 export { Toast, useToast } from './Toast';
 export { EmptyState } from './EmptyState';
 export { AiMark } from './AiMark';
+export { MonthHistogram } from './MonthHistogram';
+export type { MonthCount } from './MonthHistogram';

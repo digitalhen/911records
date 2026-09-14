@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getSignatory, getOccurrences, relatedEntities, formatDate, entityHref, entityLinkHref, months, pageHref, TYPE_LABELS } from '@/lib/discovery/data';
 import { Shell, Extraction, Caveat, Records, Section, metadata } from '@/components/discovery/Shared';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
+import { MonthHistogram } from '@/components/ui';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic='force-dynamic';
 type Params=Promise<{slug:string}>;
@@ -15,7 +16,6 @@ export default async function Signatory({params}:{params:Params}) {
   const allMonths=[...new Set(rows.flatMap(r=>months(r.dates)))].sort();
   const activity=allMonths.map(month=>({month,rows:rows.filter(r=>months(r.dates).includes(month))}));
   const unknown=rows.filter(r=>!months(r.dates).length);
-  const max=Math.max(1,...activity.map(a=>new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size));
   const crumbs=breadcrumbJsonLd([{name:'Home',path:'/'},{name:'Entities',path:'/entities'},{name:'Officials acting on records',path:'/entities/signatory'},{name:row.title||row.name,path:entityHref('signatory',slug)}]);
   return <Shell title={row.name} eyebrow="Role → action → record">
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(crumbs) }} />
@@ -27,8 +27,12 @@ export default async function Signatory({params}:{params:Params}) {
     <Caveat/>
 
     <Section id="overview" title="Overview">
-      <p className="small muted">Distinct page counts by extracted month, not measurements. A page may carry several dates.</p>
-      {activity.length>0&&<svg className={styles.histogram} viewBox={`0 0 640 ${activity.length*32}`} role="img" aria-label="Signature pages by extracted month">{activity.map((a,i)=><a key={a.month} href={`#month-${a.month}`} aria-label={`${a.month}: ${new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size} pages`}><text x="0" y={i*32+20} fontSize="12">{a.month}</text><rect x="80" y={i*32+4} width={500*new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size/max} height="23" fill="#dfe7f1"/><text x="600" y={i*32+20} fontSize="12">{new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}</text></a>)}</svg>}
+      <MonthHistogram
+        data={activity.map(a=>({month:a.month,count:new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}))}
+        ariaLabel="Signature pages by extracted month"
+        caption="Distinct page counts by extracted month, not measurements."
+        unit="page"
+      />
       {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · signature pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
       {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
       <Extraction source={source} confidence={null}/>
