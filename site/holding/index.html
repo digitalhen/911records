@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>9/11 Records</title>
+<meta name="description" content="An independent, searchable explorer of the records New York City released about its response to September 11, 2001. Not affiliated with the City of New York.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23142c3d'/%3E%3Crect x='9' y='7' width='5' height='18' fill='%23fff'/%3E%3Crect x='18' y='7' width='5' height='18' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --ground:#f6f7f7; --paper:#ffffff; --ink:#17232b; --muted:#5a6a73; --line:#cfd6d9;
+  --accent:#214fbb; --rule:#142c3d; --stamp:#3d5260;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ground:#0f171c; --paper:#141f26; --ink:#e6ecef; --muted:#9aabb4; --line:#2a3a44;
+         --accent:#8fb0f2; --rule:#8fa6b6; --stamp:#aebdc6; }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.6 Arial,Helvetica,sans-serif;padding:0 20px}
+a{color:var(--accent);text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.sheet{max-width:760px;margin:0 auto;padding-block:56px 40px}
+.mast{border-top:5px solid var(--rule);padding-top:22px;display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
+.brand{font-size:22px;font-weight:600;letter-spacing:-.6px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:-.2px}
+.status{font-size:12px;color:var(--muted)}
+h1{font-size:clamp(30px,6vw,44px);line-height:1.08;letter-spacing:-1.4px;font-weight:500;margin:56px 0 20px;text-wrap:balance;max-width:16ch}
+.lede{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 40px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 0 40px}
+.facts div{padding:18px 0}
+.facts dt{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);margin:0 0 4px}
+.facts dd{margin:0;font-size:26px;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+.facts dd small{display:block;font-size:12px;letter-spacing:0;color:var(--muted)}
+section{margin:0 0 34px;max-width:65ch}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);font-weight:700;margin:0 0 10px}
+p{margin:0 0 12px}
+ul{margin:0;padding-left:20px}
+li{margin:0 0 6px}
+.stampline{margin:48px 0 0;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.stamp{color:var(--stamp)}
+@media (max-width:480px){.sheet{padding-block:32px 28px} h1{margin-top:36px} .facts dd{font-size:22px}}
+</style>
+</head>
+<body>
+<main class="sheet">
+  <header class="mast">
+    <div class="brand">9/11 Records</div>
+    <div class="status mono">911records.nyc · in preparation</div>
+  </header>
+
+  <h1>The City’s 9/11 records, made searchable.</h1>
+  <p class="lede">On September 8, 2026, New York City released tens of thousands of documents about its response to September 11, 2001 — air and dust testing, building-by-building sampling, inspections and internal memos. This independent project is building a way to search them, read them page by page, and cite them precisely.</p>
+
+  <dl class="facts" aria-label="The release">
+    <div><dt>Documents</dt><dd>24,436<small>PDFs in the release</small></dd></div>
+    <div><dt>Pages</dt><dd>172,537<small>each with a Bates number</small></dd></div>
+    <div><dt>Released</dt><dd>Sept. 8, 2026<small>by the NYC Law Department</small></dd></div>
+  </dl>
+
+  <section>
+    <h2>What it will do</h2>
+    <ul>
+      <li>Search the full text of every page, or ask a question and get an answer that cites the exact pages it came from.</li>
+      <li>Find the records for a building: what was tested there, when, and what the City said about it.</li>
+      <li>Keep track of what the City adds, removes or re-redacts in later releases.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Until then</h2>
+    <p>The documents are available now on the City’s official portal: <a href="https://sept11documents.cityofnewyork.us/" rel="noopener">sept11documents.cityofnewyork.us</a>. The page you cite should always be the City’s own.</p>
+  </section>
+
+  <section>
+    <h2>Personal information</h2>
+    <p>The City redacted personal information before release, and says some may have been missed. This project will not surface the names or personal details of private individuals, and will act quickly on reports. If you find personal information in a City document, you can also report it directly to the City through its portal.</p>
+  </section>
+
+  <footer class="stampline">
+    <span>Independent project. Not affiliated with the City of New York.</span>
+    <span class="stamp mono">NYC-WTC_000000001 – NYC-WTC_000174150</span>
+  </footer>
+</main>
+</body>
+</html>
