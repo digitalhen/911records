@@ -109,7 +109,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <Header active="/search" />
+      <Header active="/ask" />
       <main id="main">
         <SearchBox q={q} compact />
         <p className="small muted" style={{ marginBottom: 14 }}>

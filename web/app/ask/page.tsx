@@ -38,7 +38,7 @@ function AskAgainForm({ q }: { q: string }) {
 function RefusalView({ q, reason }: { q: string; reason: string }) {
   return (
     <>
-      <Header active="/search" />
+      <Header active="/ask" />
       <main id="main">
         <AskAgainForm q={q} />
         <article className="answer-main summary-rule">
@@ -80,7 +80,7 @@ function InsufficientView({
 }) {
   return (
     <>
-      <Header active="/search" />
+      <Header active="/ask" />
       <main id="main">
         <AskAgainForm q={q} />
         <div className="answer-grid">

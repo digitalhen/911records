@@ -8,6 +8,9 @@ import { getDocument, getPage as getSitePage, getPageText } from '@/lib/site';
 import { getIndexedPage } from '@/lib/opensearch';
 import { getPageBoxes } from '@/lib/boxes';
 import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
+import { RelatedRecords } from '@/components/discovery/RelatedRecords';
+import { MoreLikePage } from '@/components/discovery/MoreLikePage';
+import BuildingsForDoc from '@/components/map/BuildingsForDoc';
 
 function fmtBytes(n: number | null): string {
   if (!n) return '—';
@@ -63,7 +66,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
 
   return (
     <>
-      <Header active="/search" />
+      <Header active="/ask" />
       <main id="main">
         <div className="bread">
           <Link href="/search">← Document results</Link>
@@ -274,6 +277,17 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             </section>
           </aside>
         </div>
+
+        {!removed && (
+          <>
+            <RelatedRecords doc={doc} />
+            <MoreLikePage doc={doc} page={page} />
+            <BuildingsForDoc doc={doc} />
+            <p className="small">
+              <Link href={`/doc/${encodeURIComponent(doc)}/versions`}>Compare copies and versions →</Link>
+            </p>
+          </>
+        )}
       </main>
       <Footer />
     </>
