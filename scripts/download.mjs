@@ -57,7 +57,9 @@ async function claimPid() {
 
 async function loadManifest() {
   const text = await readFile(join(DATA, 'manifest.jsonl'), 'utf8');
-  const rows = text.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  // Documents the city removed stay in the manifest (status "removed") so our copies are
+  // flagged, not lost — but they are no longer served, so never try to fetch them.
+  const rows = text.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.status !== 'removed');
   if (ORDER === 'size') rows.sort((a, b) => (a.pdf_size ?? 0) - (b.pdf_size ?? 0));
   return rows;
 }

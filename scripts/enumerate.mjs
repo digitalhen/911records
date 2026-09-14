@@ -1,66 +1,82 @@
 #!/usr/bin/env node
-// enumerate.mjs — list every PDF on the 9/11 Document Portal into a manifest.
+// enumerate.mjs — snapshot the portal's catalog and (re)build data/manifest.jsonl from it.
 //
-// Node 20+, no dependencies. Walks the Mindbreeze v2 search API one
-// production_volume at a time with `extension:pdf` (skipping the OCR-markdown
-// twins, and keeping every walk far below the ~30k deep-offset ceiling),
-// dedupes, and reconciles against the facet counts the API itself reports.
+// Node 20+, no dependencies.
 //
-// Output:
-//   data/manifest.jsonl          one line per document, every metadata field + download URL + local paths
-//   data/manifest.summary.json   counts/bytes/pages per agency, volume and source vs the API's facet counts
+// Primary path: ONE POST to the catalog export (scripts/lib/catalog.mjs), stored as an
+// immutable dated snapshot data/catalog/<YYYY-MM-DD>.csv (+ .summary.json). Fallback, if
+// the export fails (or with --search): the paged-search walk, one production_volume at a
+// time with extension:pdf, serialized into the same CSV shape so everything downstream is
+// identical. A 429/403/challenge page never falls back — it stops the run.
 //
-// Politeness: strictly sequential, >= 600 ms between request starts (< 2 req/s),
-// retry with backoff on 5xx, stop on 429/403/non-JSON. See scripts/lib/portal.mjs.
+// Then:
+//   - cross-check counts per volume/agency/source against the search API's facets (1 request);
+//   - QUARANTINE a snapshot with duplicate Bates numbers, zero rows, or > 5% fewer documents
+//     than the last accepted snapshot: it is kept for inspection but the manifest is untouched;
+//   - diff against the last accepted snapshot (counts land in the snapshot summary;
+//     scripts/diff_catalog.mjs prints the detail);
+//   - merge into the manifest. Documents that left the catalog are KEPT with
+//     status "removed" + removed_at (+ held_locally) and are never deleted; first_seen /
+//     last_seen / changed_at are carried across runs.
 //
-// Usage: node scripts/enumerate.mjs            (exit 0 = reconciled, 2 = mismatch, 3 = stopped by portal)
+// Output: data/catalog/<date>.csv + .summary.json, data/manifest.jsonl, data/manifest.summary.json
+//
+// Usage: node scripts/enumerate.mjs [--search] [--no-facets]
+//        node scripts/enumerate.mjs --seed <export.csv> --date YYYY-MM-DD   (import an export captured elsewhere, no export request)
+// Exit: 0 ok, 2 quarantined or facet mismatch, 3 stopped by the portal, 1 error.
 
-import { mkdir, writeFile, rename } from 'node:fs/promises';
-import { join } from 'node:path';
-import { DATA, PortalStop, contentUrl, docStem, flatten, makeClient, search } from './lib/portal.mjs';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { DATA, PortalStop, REPO, contentUrl, docStem, flatten, makeClient, search } from './lib/portal.mjs';
+import {
+  DIFF_FIELDS, batesNum, catalogStats, diffCatalogs, exportCatalog, listSnapshots, loadSnapshot, nyDate, parseCatalog,
+  saveSnapshot, toCsv, writeSnapshotSummary,
+} from './lib/catalog.mjs';
 
-const PAGE = 100;
-const PROPS = ['title', 'extension', 'agency', 'source', 'box_name', 'folder_name', 'production_volume',
-  'production_end', 'page_count', 'pdf_size', 'full_filename', 'related_document', 'mes:key', 'mes:size', 'mes:date'];
-const FACETS = ['production_volume', 'agency', 'source', 'extension'];
+const args = process.argv.slice(2);
+const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+const FORCE_SEARCH = args.includes('--search');
+const NO_FACETS = args.includes('--no-facets');
+const SEED = opt('--seed');
+const SEED_DATE = opt('--date');
+const QUARANTINE_DROP = 0.05;
+const MANIFEST = join(DATA, 'manifest.jsonl');
 
 const client = makeClient({ minGapMs: 600 });
 const t0 = Date.now();
 const say = (m) => console.error(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
+const exists = (p) => stat(p).then(() => true, () => false);
+
+// ---------- paged-search fallback ----------
+
+const PAGE = 100;
+const SEARCH_PROPS = ['title', 'extension', 'agency', 'source', 'box_name', 'folder_name', 'production_volume',
+  'production_end', 'page_count', 'pdf_size', 'mes:key', 'mes:date'];
 
 async function facetCounts(query) {
   const d = await search(client, {
     user: { query: { and: [{ unparsed: query }] } },
     count: 1,
-    facets: FACETS.map((name) => ({ name, count: 1000 })),
+    facets: ['production_volume', 'agency', 'source'].map((name) => ({ name, max_entries: 1000 })),
   });
   const out = {};
   for (const f of d.facets ?? []) {
-    out[f.id] = { truncated: !!f.entries_truncated, incomplete: !!f.incomplete, counts: {} };
+    out[f.id] = { truncated: !!f.entries_truncated, counts: {} };
     for (const e of f.entries ?? []) out[f.id].counts[e.value?.str ?? e.html] = e.count;
   }
   return out;
 }
 
-/** One full offset walk of `extension:pdf AND production_volume:V`. */
 async function walkVolume(volume, into) {
   const base = {
     user: { query: { and: [{ unparsed: 'extension:pdf' }, { unparsed: `production_volume:${volume}` }] } },
-    count: PAGE,
-    max_page_count: 1,
-    properties: PROPS.map((name) => ({ name, formats: ['VALUE'] })),
+    count: PAGE, max_page_count: 1,
+    properties: SEARCH_PROPS.map((name) => ({ name, formats: ['VALUE'] })),
   };
   const first = await search(client, base);
   const qeng = first.resultset?.result_pages?.qeng_ids;
   let rows = (first.resultset?.results ?? []).map(flatten);
-  let seen = 0, added = 0, pages = 1;
-  const take = (batch) => {
-    for (const r of batch) {
-      seen++;
-      const k = r['mes:key'] ?? r.id;
-      if (!into.has(k)) { into.set(k, r); added++; }
-    }
-  };
+  const take = (batch) => { for (const r of batch) { const k = r['mes:key'] ?? r.id; if (!into.has(k)) into.set(k, r); } };
   take(rows);
   for (let start = PAGE; qeng && rows.length === PAGE; start += PAGE) {
     const d = await search(client, {
@@ -68,158 +84,195 @@ async function walkVolume(volume, into) {
       result_pages: { qeng_ids: qeng, pages: [{ starts: [start], counts: [PAGE], page_number: start / PAGE, current_page: true }] },
     });
     rows = (d.resultset?.results ?? []).map(flatten);
-    pages++;
     take(rows);
   }
-  return { seen, added, pages, hadQeng: !!qeng };
 }
 
-function toManifestRow(r, enumeratedAt) {
-  const title = r.title;
-  const batesStart = String(title).replace(/\.pdf$/i, '');
-  const num = (s) => { const m = /(\d+)$/.exec(s ?? ''); return m ? Number(m[1]) : null; };
+async function searchCatalog(facets) {
+  const volumes = Object.keys(facets.production_volume?.counts ?? {}).sort();
+  if (!volumes.length) throw new Error('no production_volume facet values — API shape changed?');
+  const all = new Map();
+  for (const v of volumes) {
+    const expected = facets.production_volume.counts[v];
+    const m = new Map();
+    await walkVolume(v, m);
+    if (m.size < expected) await walkVolume(v, m);
+    say(`search ${v}: ${m.size} distinct (facet ${expected})`);
+    for (const [k, r] of m) all.set(k, r);
+  }
+  return [...all.values()].map((r) => ({
+    mes_key: r['mes:key'], title: r.title, source: r.source, agency: r.agency, box_name: r.box_name, folder_name: r.folder_name,
+    page_count: r.page_count, pdf_size: r.pdf_size, production_volume: r.production_volume, bates_end: r.production_end,
+    related_document: '', index_date: typeof r['mes:date'] === 'number' ? new Date(r['mes:date']).toISOString() : r['mes:date'],
+  }));
+}
+
+// ---------- manifest ----------
+
+function manifestRow(r) {
   const row = {
-    key: `${r.production_volume}/${batesStart}`,
-    title,
-    bates_start: batesStart,
-    bates_end: r.production_end ?? null,
-    bates_pages: num(r.production_end) != null && num(batesStart) != null ? num(r.production_end) - num(batesStart) + 1 : null,
-    page_count: r.page_count != null && r.page_count !== '' ? Number(r.page_count) : null,
-    pdf_size: r.pdf_size != null ? Number(r.pdf_size) : null,
-    production_volume: r.production_volume ?? null,
-    agency: r.agency ?? null,
-    source: r.source ?? null,
-    box_name: r.box_name ?? null,
-    folder_name: r.folder_name ?? null,
-    full_filename: r.full_filename ?? null,
-    related_document: r.related_document ?? null,
-    extension: r.extension ?? null,
-    mes_key: r['mes:key'] ?? null,
-    mes_size: r['mes:size'] ?? null,
-    mes_date: typeof r['mes:date'] === 'number' ? new Date(r['mes:date']).toISOString() : r['mes:date'] ?? null,
-    result_id: r.id,
-    download_url: contentUrl(title),
-    enumerated_at: enumeratedAt,
+    key: `${r.production_volume}/${r.bates_start}`,
+    title: r.title,
+    bates_start: r.bates_start,
+    bates_end: r.bates_end,
+    bates_pages: batesNum(r.bates_end) != null ? batesNum(r.bates_end) - batesNum(r.bates_start) + 1 : null,
+    page_count: r.page_count,
+    pdf_size: r.pdf_size,
+    production_volume: r.production_volume,
+    agency: r.agency,
+    source: r.source,
+    box_name: r.box_name,
+    folder_name: r.folder_name,
+    mes_key: r.mes_key,
+    index_date: r.index_date,
+    download_url: contentUrl(r.title || `${r.bates_start}.pdf`),
   };
-  const stem = docStem(row);
-  row.local_pdf = join('data', 'pdf', `${stem}.pdf`);
-  row.local_text = join('data', 'text', `${stem}.txt`);
+  const s = docStem(row);
+  row.local_pdf = join('data', 'pdf', `${s}.pdf`);
+  row.local_text = join('data', 'text', `${s}.txt`);
   return row;
 }
 
-const tally = (rows, field) => {
-  const out = {};
-  for (const r of rows) {
-    const k = r[field] ?? '(null)';
-    const t = (out[k] ??= { documents: 0, bytes: 0, pages: 0 });
-    t.documents++; t.bytes += r.pdf_size ?? 0; t.pages += r.page_count ?? 0;
+async function readManifest() {
+  const text = await readFile(MANIFEST, 'utf8').catch(() => null);
+  return text ? text.split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+}
+
+function compareFacets(stats, facets) {
+  if (!facets) return null;
+  const out = { mismatches: 0 };
+  for (const [field, statKey] of [['production_volume', 'by_volume'], ['agency', 'by_agency'], ['source', 'by_source']]) {
+    const f = facets[field]?.counts ?? {};
+    const ours = stats[statKey];
+    const keys = [...new Set([...Object.keys(f), ...Object.keys(ours)])].sort();
+    out[field] = Object.fromEntries(keys.map((k) => {
+      const a = ours[k]?.documents ?? 0, b = f[k] ?? 0;
+      if (a !== b) out.mismatches++;
+      return [k, { catalog: a, facet: b, delta: a - b }];
+    }));
   }
   return out;
-};
+}
 
 async function main() {
   await mkdir(DATA, { recursive: true });
-  const enumeratedAt = new Date().toISOString();
+  const fetchedAt = new Date();
+  let text, origin, exportInfo = null;
 
-  say('facets on "*" and on "extension:pdf"');
-  const allFacets = await facetCounts('*');
-  const pdfFacets = await facetCounts('extension:pdf');
-  const volumes = Object.keys(pdfFacets.production_volume?.counts ?? {}).sort();
-  if (!volumes.length) throw new Error('no production_volume facet values — API shape changed?');
-  say(`volumes: ${volumes.map((v) => `${v}=${pdfFacets.production_volume.counts[v]}`).join(' ')}`);
+  const facets = NO_FACETS && !FORCE_SEARCH ? null : await facetCounts('extension:pdf');
 
-  const byKey = new Map();
-  const walks = {};
-  for (const v of volumes) {
-    const expected = pdfFacets.production_volume.counts[v];
-    const volMap = new Map();
-    let w = await walkVolume(v, volMap);
-    say(`${v}: walked ${w.seen} results over ${w.pages} pages, ${volMap.size} distinct (facet ${expected})`);
-    let rewalked = false;
-    if (volMap.size < expected) {
-      rewalked = true;
-      const w2 = await walkVolume(v, volMap);
-      say(`${v}: re-walk added ${w2.added}; now ${volMap.size} distinct (facet ${expected})`);
-      w = { ...w, rewalk: w2 };
+  if (SEED) {
+    text = await readFile(SEED, 'utf8');
+    origin = `seed:${basename(SEED)}`;
+    say(`seeding from ${SEED}`);
+  } else if (!FORCE_SEARCH) {
+    try {
+      say('POST catalog export');
+      const e = await exportCatalog(client);
+      text = e.text; origin = 'export'; exportInfo = { bytes: e.bytes, seconds: e.seconds, content_type: e.contentType };
+      say(`export: ${e.bytes} bytes in ${e.seconds}s`);
+    } catch (err) {
+      if (err instanceof PortalStop) throw err;
+      say(`export failed (${err.message}); falling back to paged search`);
     }
-    walks[v] = { expected, distinct: volMap.size, rewalked, ...w };
-    for (const [k, r] of volMap) byKey.set(k, r);
+  }
+  if (!text) {
+    const rows = await searchCatalog(facets ?? await facetCounts('extension:pdf'));
+    text = toCsv(rows);
+    origin = 'search';
   }
 
-  const rows = [...byKey.values()].map((r) => toManifestRow(r, enumeratedAt))
-    .sort((a, b) => (a.production_volume ?? '').localeCompare(b.production_volume ?? '') || a.bates_start.localeCompare(b.bates_start));
+  const { rows } = parseCatalog(text);
+  const stats = catalogStats(rows);
+  const previous = (await listSnapshots()).filter((s) => s.summary?.accepted);
+  const snap = await saveSnapshot(text, { date: SEED_DATE, fetchedAt });
+  const prev = previous.filter((s) => s.name !== snap.name).at(-1) ?? null;
+  const prevDocs = prev?.summary?.stats?.documents ?? null;
 
-  // Stable-key collisions (title+volume) and non-PDF leakage are both worth failing on.
-  const keyCounts = new Map();
-  for (const r of rows) keyCounts.set(r.key, (keyCounts.get(r.key) ?? 0) + 1);
-  const duplicateKeys = [...keyCounts].filter(([, n]) => n > 1).map(([k, n]) => ({ key: k, n }));
-  const nonPdf = rows.filter((r) => r.extension !== 'pdf').length;
-  const pageMismatch = rows.filter((r) => r.bates_pages != null && r.page_count != null && r.bates_pages !== r.page_count).length;
-  const missingSize = rows.filter((r) => !r.pdf_size).length;
-  // pdf_size is wrong at the small end (54 B declared / 241,635 B served; also
-  // 2-5 KB declared / 1-2 MB served), so sum(pdf_size) is a lower bound. Only
-  // the grossest cases are detectable from metadata; the download sidecars are
-  // the truth. Count what we can so a growing problem is visible.
-  const implausibleSize = rows.filter((r) => r.pdf_size && r.page_count && r.pdf_size / r.page_count < 2000).length;
-  const mesSizeDiffers = rows.filter((r) => typeof r.mes_size === 'number' && r.mes_size !== r.pdf_size).length;
+  const reasons = [];
+  if (!rows.length) reasons.push('zero rows');
+  if (stats.duplicates) reasons.push(`${stats.duplicates} duplicate Bates numbers`);
+  if (prevDocs && stats.documents < prevDocs * (1 - QUARANTINE_DROP)) reasons.push(`documents fell ${prevDocs} -> ${stats.documents} (> ${QUARANTINE_DROP * 100}%)`);
+  const quarantined = reasons.length > 0;
 
-  const tmp = join(DATA, 'manifest.jsonl.tmp');
-  await writeFile(tmp, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  await rename(tmp, join(DATA, 'manifest.jsonl'));
+  let diffCounts = null;
+  if (prev) {
+    const d = diffCatalogs((await loadSnapshot(prev.path)).rows, rows);
+    diffCounts = { against: prev.name, ...d.counts, by_volume: d.by_volume };
+  }
+  const facetCheck = compareFacets(stats, facets);
 
-  const compare = (field) => {
-    const ours = tally(rows, field);
-    const pdf = pdfFacets[field]?.counts ?? {};
-    const all = allFacets[field]?.counts ?? {};
-    const keys = [...new Set([...Object.keys(ours), ...Object.keys(pdf)])].sort();
-    return Object.fromEntries(keys.map((k) => [k, {
-      manifest_documents: ours[k]?.documents ?? 0,
-      facet_pdf: pdf[k] ?? null,
-      facet_all_records_half: all[k] != null ? all[k] / 2 : null,
-      delta_vs_facet_pdf: (ours[k]?.documents ?? 0) - (pdf[k] ?? 0),
-      bytes: ours[k]?.bytes ?? 0,
-      pages: ours[k]?.pages ?? 0,
-    }]));
-  };
+  await writeSnapshotSummary(snap.name, {
+    name: snap.name, sha256: snap.sha256, origin, fetched_at: SEED ? null : fetchedAt.toISOString(), date: snap.date,
+    reused_existing_file: snap.reused, export: exportInfo, accepted: !quarantined, quarantined, quarantine_reasons: reasons,
+    stats, facet_check: facetCheck, diff_vs_previous: diffCounts,
+  });
+  say(`snapshot ${snap.name}${snap.reused ? ' (identical, reused)' : ''} sha256 ${snap.sha256.slice(0, 12)}…: ` +
+    `${stats.documents} docs, ${stats.pages} pages, ${(stats.pdf_bytes / 1e9).toFixed(2)} GB, ${stats.boxes} boxes, ${stats.folders} folders`);
+  if (diffCounts) say(`vs ${prev.name}: +${diffCounts.added} −${diffCounts.removed} ~${diffCounts.changed} (net pages ${diffCounts.net_pages})`);
+  if (facetCheck) say(`facet check: ${facetCheck.mismatches} mismatches`);
 
-  const maxBatesEnd = rows.reduce((m, r) => { const n = Number(/(\d+)$/.exec(r.bates_end ?? '')?.[1] ?? 0); return n > m ? n : m; }, 0);
-  const largest = rows.reduce((m, r) => (r.pdf_size ?? 0) > (m?.pdf_size ?? 0) ? r : m, null);
-  const expectedTotal = Object.values(pdfFacets.extension?.counts ?? {}).length
-    ? pdfFacets.extension.counts.pdf : volumes.reduce((s, v) => s + pdfFacets.production_volume.counts[v], 0);
+  if (quarantined) {
+    say(`QUARANTINED: ${reasons.join('; ')} — manifest NOT rebuilt`);
+    process.exit(2);
+  }
 
-  const summary = {
-    enumerated_at: enumeratedAt,
-    elapsed_seconds: Math.round((Date.now() - t0) / 1000),
-    requests: client.stats,
+  // ---- merge into the manifest ----
+  const old = await readManifest();
+  const oldByBates = new Map(old.map((r) => [r.bates_start, r]));
+  const day = snap.date;
+  const out = [];
+  const recon = { previous_rows: old.length, same_path: 0, path_changed: 0, new: 0, changed: 0, reappeared: 0, newly_removed: 0, still_removed: 0 };
+  const seen = new Set();
+  for (const r of rows) {
+    const m = manifestRow(r);
+    const p = oldByBates.get(r.bates_start);
+    seen.add(r.bates_start);
+    m.status = 'present';
+    m.first_seen = p?.first_seen ?? (p?.enumerated_at ? nyDate(new Date(p.enumerated_at)) : day);
+    m.last_seen = day;
+    m.catalog_snapshot = snap.name;
+    if (!p) recon.new++;
+    else {
+      if (p.local_pdf === m.local_pdf) recon.same_path++; else { recon.path_changed++; m.previous_local_pdf = p.local_pdf; }
+      if (p.status === 'removed') { recon.reappeared++; m.reappeared_at = day; m.previously_removed_at = p.removed_at; }
+      const fields = DIFF_FIELDS.filter((f) => f in p && (p[f] ?? null) !== (m[f] ?? null));
+      if (fields.length) { recon.changed++; m.changed_at = day; m.changed_fields = fields; }
+      else if (p.changed_at) { m.changed_at = p.changed_at; m.changed_fields = p.changed_fields; }
+    }
+    out.push(m);
+  }
+  for (const p of old) {
+    if (seen.has(p.bates_start)) continue;
+    const wasRemoved = p.status === 'removed';
+    wasRemoved ? recon.still_removed++ : recon.newly_removed++;
+    out.push({ ...p, status: 'removed', removed_at: p.removed_at ?? day, held_locally: await exists(join(REPO, p.local_pdf)) });
+  }
+  out.sort((a, b) => (a.production_volume ?? '').localeCompare(b.production_volume ?? '') || a.bates_start.localeCompare(b.bates_start));
+
+  await writeFile(`${MANIFEST}.tmp`, out.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  await rename(`${MANIFEST}.tmp`, MANIFEST);
+
+  const present = out.filter((r) => r.status === 'present');
+  const removed = out.filter((r) => r.status === 'removed');
+  const manifestSummary = {
+    built_at: new Date().toISOString(),
+    catalog_snapshot: snap.name, catalog_sha256: snap.sha256, origin,
     totals: {
-      documents: rows.length,
-      expected_facet_pdf: expectedTotal,
-      expected_recon_2026_09_13: 24436,
-      delta_vs_facet: rows.length - expectedTotal,
-      delta_vs_recon: rows.length - 24436,
-      bytes: rows.reduce((s, r) => s + (r.pdf_size ?? 0), 0),
-      pages: rows.reduce((s, r) => s + (r.page_count ?? 0), 0),
-      max_bates_end: maxBatesEnd,
-      largest_pdf: largest ? { key: largest.key, pdf_size: largest.pdf_size, page_count: largest.page_count } : null,
+      present: present.length, removed: removed.length, removed_held_locally: removed.filter((r) => r.held_locally).length,
+      pages: stats.pages, pdf_bytes: stats.pdf_bytes, max_bates_end: stats.max_bates_end,
+      bates_gaps: stats.bates_gaps, bates_gap_numbers: stats.bates_gap_numbers,
     },
-    checks: { duplicate_keys: duplicateKeys, non_pdf_rows: nonPdf, bates_vs_page_count_mismatch: pageMismatch, missing_pdf_size: missingSize,
-      implausible_pdf_size_under_2kb_per_page: implausibleSize, mes_size_differs_from_pdf_size: mesSizeDiffers },
-    walks,
-    by_agency: compare('agency'),
-    by_volume: compare('production_volume'),
-    by_source: compare('source'),
-    facets_raw: { all: allFacets, pdf: pdfFacets },
+    reconciliation_with_previous_manifest: recon,
+    facet_check: facetCheck,
+    diff_vs_previous_snapshot: diffCounts,
+    stats,
   };
-  await writeFile(join(DATA, 'manifest.summary.json'), JSON.stringify(summary, null, 2) + '\n');
+  await writeFile(join(DATA, 'manifest.summary.json'), JSON.stringify(manifestSummary, null, 2) + '\n');
+  say(`manifest: ${present.length} present, ${removed.length} removed (${manifestSummary.totals.removed_held_locally} held locally); ` +
+    `reconciliation ${JSON.stringify(recon)}; requests ${client.stats.requests}`);
 
-  const gb = (b) => (b / 1e9).toFixed(2);
-  say(`manifest: ${rows.length} documents (facet ${expectedTotal}, recon 24436), ${gb(summary.totals.bytes)} GB, ${summary.totals.pages} pages, max Bates ${maxBatesEnd}`);
-  for (const [a, c] of Object.entries(summary.by_agency)) say(`  ${a}: ${c.manifest_documents} (facet ${c.facet_pdf}, delta ${c.delta_vs_facet_pdf})`);
-  say(`checks: dup keys ${duplicateKeys.length}, non-pdf ${nonPdf}, bates/page mismatch ${pageMismatch}, missing size ${missingSize}; requests ${client.stats.requests}`);
-
-  const bad = rows.length !== expectedTotal || duplicateKeys.length || nonPdf
-    || Object.values(walks).some((w) => w.distinct !== w.expected);
-  process.exit(bad ? 2 : 0);
+  process.exit(facetCheck?.mismatches ? 2 : 0);
 }
 
 main().catch((err) => {
