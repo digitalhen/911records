@@ -31,3 +31,14 @@ Rules:
   `npx tsc --noEmit` and `npm run dev -- -p <your port>` plus `curl` of each route you added.
 - End with a report under 30 lines: routes added, files, what you verified with which URLs,
   anything left undone, and any shared change you need from the coordinator.
+
+## Hard-won rules (added 2026-09-14 after production incidents)
+- **Verify in a real browser, not only curl.** A server-rendered 200 hid a client crash (React #185,
+  an infinite re-render) that took the live home page down. Before reporting, open your routes in
+  Chrome (or a headless browser) and confirm the console has no errors.
+- `useSyncExternalStore` snapshots must be referentially stable while the store is unchanged
+  (cache by the raw string; server snapshot is a module-level constant). Never return a fresh
+  object or array from `getSnapshot`.
+- Anything read at build time (next.config rewrites, `NEXT_PUBLIC_*`) is baked into the image by
+  Dokploy with no runtime env present. Runtime configuration belongs in route handlers and
+  `process.env` reads at request time.
