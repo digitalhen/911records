@@ -420,8 +420,10 @@ def is_usage_limit_error(e: BaseException) -> bool:
     return "usage limit" in str(e).lower()
 
 
-BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK, .claudekey), "cli" (claude -p) or "codex" (codex exec)
+BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK), "cli" (claude -p), "codex" (codex exec) or "ollama" (local)
 CODEX_MODEL = os.environ.get("SUMMARIES_CODEX_MODEL", "gpt-5.3-codex-spark")
+OLLAMA_URL = os.environ.get("SUMMARIES_OLLAMA_URL", "http://127.0.0.1:11434")
+OLLAMA_MODEL = os.environ.get("SUMMARIES_OLLAMA_MODEL", "qwen3.5:35b-a3b")
 
 
 def call_claude_cli(prompt: str) -> str:
@@ -471,8 +473,25 @@ def call_codex_cli(prompt: str) -> str:
     return text
 
 
+def call_ollama(prompt: str) -> str:
+    """Local model on StudioMac (Henry, 2026-09-14: "test some local models on ollama"). Measured on a
+    real 20-document batch: qwen3.5:35b-a3b 28 s / all 20 usable, with dates and lab names in the
+    titles; qwen3.5 (8B) 42 s; qwen2.5:7b 20 s but generic titles; llama3.2 no valid JSON. No quota,
+    no spend — the right backend for the daily refresh's small increments."""
+    import urllib.request
+    body = {"model": OLLAMA_MODEL, "stream": False, "think": False,
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+            "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 3000}}
+    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=900) as resp:
+        data = json.loads(resp.read())
+    return str(data.get("message", {}).get("content", ""))
+
+
 def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
+    if BACKEND == "ollama":
+        return extract_json_array(call_ollama(prompt)), 0.0  # local: no spend
     if BACKEND == "codex":
         try:
             text = call_codex_cli(prompt)
@@ -700,7 +719,7 @@ def main() -> int:
     stopped_on_budget = False
     if to_process:
         client = None
-        if BACKEND not in ("cli", "codex"):
+        if BACKEND not in ("cli", "codex", "ollama"):
             import anthropic  # imported lazily: a run with nothing left to do needs no key/SDK at all
             client = anthropic.Anthropic(api_key=CLAUDE_KEY_FILE.read_text().strip())
 
