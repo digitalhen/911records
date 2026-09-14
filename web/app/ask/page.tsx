@@ -1,3 +1,4 @@
+import { WhatOthersAreReading } from '@/components/reading/WhatOthersAreReading';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -65,6 +66,7 @@ function RefusalView({ q, reason }: { q: string; reason: string }) {
             This service covers the City&apos;s 9/11 records only. No people browser, no co-mention search, no
             network graph of people. See <Link href="/personal-information">the personal-information policy</Link>.
           </p>
+          <div className="mt-5"><WhatOthersAreReading /></div>
         </aside>
       </main>
       <Footer />

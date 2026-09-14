@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AiMark } from '@/components/ui';
 import { ListTable } from './ListTable';
+import { WhatOthersAreReading } from '@/components/reading/WhatOthersAreReading';
 import { FollowUpForm } from './FollowUpForm';
 import { searchFallbackUrl } from './shared';
 import type { ListResult } from '@/lib/ask/lists';
@@ -14,6 +15,7 @@ import type { ListResult } from '@/lib/ask/lists';
  *  "machine-extracted" label, never the sparkle). */
 export function ListAnswer({ q, result, answerId }: { q: string; result: ListResult; answerId: string }) {
   return (
+    <div className="answer-grid">
     <article className="answer-main summary-rule">
       <div className="machine-note">
         <strong>
@@ -37,5 +39,7 @@ export function ListAnswer({ q, result, answerId }: { q: string; result: ListRes
         </Link>
       </section>
     </article>
+    <aside className="source-rail"><WhatOthersAreReading /></aside>
+    </div>
   );
 }
