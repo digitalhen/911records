@@ -1,3 +1,5 @@
+import { AiMark, Button } from '@/components/ui';
+
 /**
  * A plain GET form — no client JS required. One box, one button: submits to
  * /ask, which does the deterministic router.ts dispatch (a Bates number
@@ -21,9 +23,9 @@ export function SearchBox({ q, compact }: { q?: string; compact?: boolean }) {
           placeholder="Ask a question, or type an address, substance or Bates number"
           autoComplete="off"
         />
-        <button className="button primary" type="submit">
-          Ask →
-        </button>
+        <Button variant="primary" type="submit">
+          Ask <AiMark /> →
+        </Button>
       </div>
       <div className="search-help">
         <span>A question gets a cited answer. Keywords, addresses and Bates numbers go straight to the records.</span>

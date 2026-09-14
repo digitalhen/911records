@@ -76,6 +76,13 @@
   --z-peek: 60;
   --z-dialog: 80;
   --z-toast: 100;
+
+  /* Page container — the ONE content width every route shares (main{}
+     below is the mechanism: every route renders a bare <main>, so this
+     applies automatically). Full-bleed pages (only the home map) opt out
+     with their own layout class instead of fighting these. */
+  --content-max: 1440px;
+  --content-gutter: 4vw;
 }
 html {
   scroll-behavior: smooth;
@@ -253,9 +260,9 @@ small,
   color: var(--muted);
 }
 main {
-  max-width: 1440px;
+  max-width: var(--content-max);
   margin: auto;
-  padding: 33px 4vw 66px;
+  padding: 33px var(--content-gutter) 66px;
   min-height: 72vh;
 }
 .bread {
@@ -2083,7 +2090,9 @@ dialog .mono {
   justify-content: space-between;
 }
 .entity-search {
-  max-width: 1000px;
+  /* Henry, 09-14: fill the shared page container (was capped at 1000px and
+     left-aligned inside main's 1440px column — read as "narrow and left of
+     center"). B13's panelGrid is 3 columns and wants the room. */
   position: relative;
 }
 .typeahead {

@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import { SearchBox } from '@/components/SearchBox';
 import { MachineNote, SourceRail, searchFallbackUrl } from '@/components/ask/shared';
 import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { AiMark } from '@/components/ui';
 import { getStr, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { getPageByBates } from '@/lib/site';
@@ -79,13 +80,13 @@ function OfftopicView({ q }: { q: string }) {
         <article className="answer-main summary-rule">
           <MachineNote />
           <div className="citation-rule">
-            <h2 style={{ marginBottom: 8 }}>City records only</h2>
+            <h2 className="mb-2">City records only</h2>
             <p>This tool answers only from the City&apos;s released 9/11 records. Try:</p>
           </div>
           <section className="followup">
             {suggestions.map((s, i) => (
               <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(s)}`}>
-                {s} <span>→</span>
+                {s} <AiMark /> <span>→</span>
               </Link>
             ))}
           </section>
@@ -146,7 +147,7 @@ function InsufficientView({
                 <h2>A narrower question these pages might support</h2>
                 {followUps.map((f, i) => (
                   <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                    {f} <span>→</span>
+                    {f} <AiMark /> <span>→</span>
                   </Link>
                 ))}
               </section>

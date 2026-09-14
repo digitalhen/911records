@@ -37,7 +37,7 @@ function paths(geometry: Geometry): string {
 // since this path can't run fitBounds — check both if either bound changes.
 const SVG_ORIGIN: [number, number] = [15, 898];
 const SVG_BASE_W = 2486, SVG_BASE_H = 2109;
-export default function MapCanvas({ places, threeD, onSelect, onFallback }: { places: Place[]; threeD: boolean; onSelect: (id:string)=>void; onFallback: ()=>void }) {
+export default function MapCanvas({ places, threeD, onSelect, onFallback, onToggleThreeD }: { places: Place[]; threeD: boolean; onSelect: (id:string)=>void; onFallback: ()=>void; onToggleThreeD: ()=>void }) {
   const container = useRef<HTMLDivElement>(null), map = useRef<LibreMap | null>(null);
   const select = useRef(onSelect); select.current = onSelect;
   const fallbackFn = useRef(onFallback); fallbackFn.current=onFallback;
@@ -142,6 +142,14 @@ export default function MapCanvas({ places, threeD, onSelect, onFallback }: { pl
       <button aria-label="Zoom in" onClick={()=>flat?setZoom(z=>Math.min(6,z*1.4)):map.current?.zoomIn()}>+</button>
       <button aria-label="Zoom out" onClick={()=>flat?setZoom(z=>Math.max(0.8,z/1.4)):map.current?.zoomOut()}>−</button>
       <button aria-label="Reset map" onClick={()=>{setZoom(1);setOrigin(SVG_ORIGIN);map.current?.fitBounds(FIT_BOUNDS,{pitch:threeD?PITCH_3D:0,bearing:threeD?BEARING:0,padding:fitPadding(),linear:true,duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:600})}}>↺</button>
+      <button
+        className={styles.toggle3d}
+        aria-label={flat?'3D unavailable — WebGL fallback in use':threeD?'Switch to flat buildings':'Switch to 3D buildings'}
+        aria-pressed={threeD}
+        disabled={flat}
+        title={flat?'Flat map — WebGL unavailable':threeD?'3D on · switch to flat':'Flat · switch to 3D'}
+        onClick={onToggleThreeD}
+      >3D</button>
     </div>
     <div className={styles.mapCredit}>Present-day NYC footprints · {flat?'flat map · ':''}Reference outline approximate. No health verdict.</div>
   </div>;

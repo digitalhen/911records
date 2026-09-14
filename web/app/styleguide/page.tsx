@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { PageShell } from '@/components/info/PageShell';
 import {
+  AiMark,
   Badge,
   Button,
   ButtonLink,
@@ -304,6 +305,35 @@ export default function Styleguide() {
           Dialog is a native <code>&lt;dialog&gt;</code> — see it live on <a href="/case">/case</a> ("Export exhibit list"). Copy is the primary action, download secondary, per BRIEF.md. Toast is a fixed-position status region — also live on{' '}
           <a href="/case">/case</a> after saving a note.
         </p>
+      </section>
+
+      <section className="stack-lg mt-7">
+        <SectionHeading eyebrow="Primitive" title="AiMark" />
+        <Panel>
+          <PanelBody className="stack">
+            <p>
+              Placed only where a control invokes the model or leads to a model-written answer — see "AI mark" in{' '}
+              <code>web/DESIGN.md</code>.
+            </p>
+            <div className="actions">
+              <Button variant="primary">
+                Ask <AiMark /> →
+              </Button>
+            </div>
+            <p className="question-link" style={{ display: 'inline-flex', width: 'auto' }}>
+              Was asbestos found on Liberty Street in October 2001? <AiMark /> <span>→</span>
+            </p>
+            <p className="machine-note">
+              <strong>
+                Machine-written summary <AiMark />
+              </strong>
+              <span>The correct, and only, use next to plain prose.</span>
+            </p>
+            <p className="small muted">
+              Never on plain search/browse/document links, and never on a <Marker /> — those are not model-written.
+            </p>
+          </PanelBody>
+        </Panel>
       </section>
     </PageShell>
   );

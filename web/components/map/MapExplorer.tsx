@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
 import RecordTable from './RecordTable';
+import { AiMark } from '@/components/ui';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import styles from './map.module.css';
 export default function MapExplorer({ initialPlaces, substances, suggestions, homePanel, unavailable }: {
@@ -11,7 +12,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   const [places,setPlaces]=useState(initialPlaces),[filters,setFilters]=useState<MapFilters>(DEFAULT_FILTERS);
   const [selected,setSelected]=useState<string|null>(null),[file,setFile]=useState<PlaceFile|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[mapBusy,setMapBusy]=useState(false),[mapError,setMapError]=useState(unavailable);
-  const [threeD,setThreeD]=useState(true),[fallback,setFallback]=useState(false),[expanded,setExpanded]=useState(false),[revision,setRevision]=useState(0);
+  const [threeD,setThreeD]=useState(true),[expanded,setExpanded]=useState(false),[revision,setRevision]=useState(0);
   useEffect(()=>{const read=()=>setSelected(new URLSearchParams(location.search).get('place'));read();window.addEventListener('popstate',read);return()=>window.removeEventListener('popstate',read)},[]);
   function select(id:string|null) {setSelected(id);setExpanded(!!id);const url=new URL(location.href);if(id)url.searchParams.set('place',id);else url.searchParams.delete('place');window.history.pushState({},'',url)}
   useEffect(()=>{
@@ -36,18 +37,18 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   const question=placeLabel?`What was measured at ${placeLabel} in October 2001?`:null;
   const relatedQuestion=suggestions.substance?`Which buildings have ${suggestions.substance} test records?`:null;
   return <main id="main" className={styles.explorer}>
-    <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>{setFallback(true);setThreeD(false)}} />
+    <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>setThreeD(false)} onToggleThreeD={()=>setThreeD(v=>!v)} />
     <section className={styles.search} aria-label="Ask and search the records">
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
-        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask →</button></div>
+        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask <AiMark /> →</button></div>
       </form>
       <div className={styles.chips}>
         {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}
-        {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question}</a>}
-        {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion}</a>}
+        {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question} <AiMark /></a>}
+        {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion} <AiMark /></a>}
       </div>
       {(suggestions.place || suggestions.substanceSource) && <p className={styles.suggestionNote}>Machine-extracted suggestions{suggestions.place && <> · <a href={pageUrl(suggestions.place)}>building source</a></>}{suggestions.substanceSource && <> · <a href={pageUrl(suggestions.substanceSource)}>substance source</a></>}</p>}
     </section>
@@ -82,7 +83,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
         <label>Through {month(filters.to)}<input type="range" min="0" max="27" value={filters.to} aria-label="End month" onChange={e=>change('to',Math.max(Number(e.target.value),filters.from))}/></label>
         <p className={styles.note}>Full range includes undated pages and dates outside 2001–2003. Moving either slider includes only pages with a candidate date in that range.</p>
         <label className={styles.check}><input type="checkbox" checked={filters.only} onChange={e=>change('only',e.target.checked)}/>Only buildings with results</label>
-        <div className={styles.mode}><button aria-pressed={threeD} disabled={fallback} onClick={()=>setThreeD(v=>!v)}>{fallback?'Flat · WebGL unavailable':threeD?'3D on · switch to flat':'Flat · switch to 3D'}</button><button onClick={()=>setFilters({...DEFAULT_FILTERS})}>Reset filters</button></div>
+        <div className={styles.mode}><button onClick={()=>setFilters({...DEFAULT_FILTERS})}>Reset filters</button></div>
         <p role="status">{mapBusy?'Updating buildings…':mapError?'Building index unavailable.':`${places.length} mapped buildings match.`}{mapError && <button onClick={()=>setRevision(v=>v+1)}>Retry</button>}</p>
         <label>Choose a building<select value={selected && places.some(p=>p.id===selected)?selected:''} onChange={e=>select(e.target.value||null)}><option value="">Select a building…</option>{places.map(p=><option key={p.id} value={p.id}>{p.label} · {p.n_pages} pages</option>)}</select></label>
       </details>

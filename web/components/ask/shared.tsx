@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { CitationLink } from './CitationLink';
 import { pageImagePath } from '@/lib/files';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
-import { ButtonLink } from '@/components/ui';
+import { AiMark, ButtonLink } from '@/components/ui';
 import type { AskAnswer } from '@/lib/ask/answer';
 
 /** A page this answer cited, or was retrieved for — the minimal shape
@@ -42,7 +42,9 @@ export function citationLabel(p: { folder: string | null; box: string | null }):
 export function MachineNote() {
   return (
     <div className="machine-note">
-      <strong>Machine-written summary</strong>
+      <strong>
+        Machine-written summary <AiMark />
+      </strong>
       <span>Verify against the cited pages. This can misread scans and OCR — the page image is the authority.</span>
     </div>
   );
@@ -134,7 +136,7 @@ export function AnswerBody({ q, answer, pages }: { q: string; answer: AskAnswer;
             <h2>Continue from the evidence</h2>
             {answer.followUps.map((f, i) => (
               <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                {f} <span>→</span>
+                {f} <AiMark /> <span>→</span>
               </Link>
             ))}
             <Link className="question-link" href={searchFallbackUrl(q)}>
