@@ -21,6 +21,8 @@ Written 2026-09-14 (New York time, late on the 13th). Henry's decisions, given i
   says what we actually do.
 - **Live as soon as possible**, fully deployed, with SEO.
 - Operator: **Cleartext Labs** (footer, about, privacy, JSON-LD publisher). Independent; not affiliated with the City.
+- Analytics: **Google Analytics 4** (Henry, 09-14), wired like Prospect (`NEXT_PUBLIC_GA_ID` build arg,
+  `lib/analytics.ts`, off when unset), disclosed on /privacy; property created in Chrome.
 - Ads: AdSense, one labelled unit per page below the content, never inside a document or an
   answer (publisher `ca-pub-9961054735948902`, unit `4391479569`). `ads.txt` and `/privacy` carry over.
 - **Home is the map** (Henry, 09-14): `/` opens on a full-viewport map of lower Manhattan, buildings lit
