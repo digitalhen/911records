@@ -43,6 +43,7 @@ while true; do
   log "pages.py: $(.venv/bin/python scripts/embed/pages.py 2>&1 | tail -1)"
   ent=$(.venv/bin/python scripts/embed/entities.py 2>&1 | grep -E '"run"' -A3 | tr -d '\n' | tr -s ' ')
   log "entities.py: $ent"
+  log "canonicalise: $(.venv/bin/python scripts/embed/entities.py --canonicalise 2>&1 | tail -1 | cut -c1-200)"
   status=$(python3 -c "import json;print(json.load(open('data/download.progress.json')).get('status',''))" 2>/dev/null || echo "")
   log "text docs $before -> $after; download status: ${status:-unknown}"
   if [ "$status" = "finished" ] || [ "$status" = "done" ] || [ "$status" = "complete" ]; then

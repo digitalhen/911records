@@ -116,6 +116,7 @@ if ! $INDEX_ONLY; then
     fi
     run_stage pages_py .venv/bin/python scripts/embed/pages.py
     run_stage entities_py .venv/bin/python scripts/embed/entities.py
+    run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise
   fi
 else
   log "--index-only: skipping enumerate/diff/download/loop-cycle stages"
