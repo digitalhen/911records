@@ -31,6 +31,31 @@ Written 2026-09-14 (New York time, late on the 13th). Henry's decisions, given i
   map's side panel, not above the fold.
 - Sub-agents on cheaper models; Codex (`codex exec`, gpt-6-astra) for the large porting jobs.
 
+## Where things stand (2026-09-14, 02:30 ET — after the launch night)
+
+**Live:** https://911records.nyc v0.9.0, served from both Dokploy hosts (studiomac + monstermac) behind
+the Cloudflare tunnel; every push to `main` deploys both. Release history at `/releases`; version in
+the header and `/api/health`. Shipped tonight: search + viewer, 3D map home (land/water, tight frame,
+3D toggle), browse, changes, entities (panels + building-page-shaped detail pages), named topics
+and a treemap, Ask (one control, cited answers, off-topic/refusal, follow-ups with threaded
+permalinks, pending state), case folder, SEO (sitemaps, JSON-LD, social cards, og image), GA4,
+design system + /styleguide, AI marks, canonical addresses (Prospect roll gazetteer + LLM last
+resort), building facts "provided by prospect.nyc", cover sheets and document types, verified
+suggestions, performance pass, QA eval set (62 cases).
+
+**Pipeline on StudioMac:** download (running), loop every 20 min (extract, render, OCR, embed,
+entities + canonicalise + LLM), daily refresh at 03:30 via cron (snapshot → diff → download →
+discovery stages → doctypes → site.sqlite → Postgres schema swap → OpenSearch index → suggestions
+check). Host services: files nginx :8911 and OpenSearch :9200 (auth) under the OrbStack docker
+engine (`docker-compose.host.yml`). Postgres `sept11` on .51 with the .52 standby. Secrets:
+`~/.pgpass`, `data/host.env`, `.claudekey`, Dokploy environments on both hosts (incl. SMTP/mail
+and BETTER_AUTH_SECRET for accounts).
+
+**Open for Henry:** #30 private names as folder labels in a DEP claims box (policy call), #31
+server-side name filter on answer text, #21 accounts (branch B19 in progress, review before merge),
+#17 2001 WTC polygons (none public; points shipped), #14 evidence graph (v1.1), #11 cron
+confirmation after two clean runs, Cloudflare cache rule for /files (web/PERF.md).
+
 ## Architecture
 
 ```
