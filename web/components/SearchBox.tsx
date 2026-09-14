@@ -1,10 +1,11 @@
 /**
- * A plain GET form — no client JS required. Default submit (pressing Enter,
- * or the primary "Ask →" button) goes to /ask, which does the deterministic
- * router.ts dispatch itself (a Bates number opens the document, a short
- * keyword string redirects to /search, anything else asks the model) — so
- * pointing here unconditionally is safe. The "Search →" button overrides
- * with formAction to go straight to /search, skipping Ask entirely.
+ * A plain GET form — no client JS required. One box, one button: submits to
+ * /ask, which does the deterministic router.ts dispatch (a Bates number
+ * opens the document, a keyword string redirects to /search with facets, a
+ * question gets a cited answer, anything off-topic gets a plain note) — so
+ * pointing here unconditionally is safe. Henry, B11: "combine search and ask
+ * into one, like Prospect" — this used to have a second "Search →" button
+ * with formAction="/search"; removed, the router decides now.
  */
 export function SearchBox({ q, compact }: { q?: string; compact?: boolean }) {
   return (
@@ -17,19 +18,15 @@ export function SearchBox({ q, compact }: { q?: string; compact?: boolean }) {
           id="ask"
           name="q"
           defaultValue={q || ''}
-          placeholder="Enter keywords, a Bates number, or a question"
+          placeholder="Ask a question, or type an address, substance or Bates number"
           autoComplete="off"
         />
-        <button className="button" type="submit" formAction="/search">
-          Search →
-        </button>
         <button className="button primary" type="submit">
           Ask →
         </button>
       </div>
       <div className="search-help">
-        <span>Keywords and Bates numbers search the mirrored records directly.</span>
-        <span>Ask a question for a cited answer, when the evidence supports one.</span>
+        <span>A question gets a cited answer. Keywords, addresses and Bates numbers go straight to the records.</span>
       </div>
     </form>
   );

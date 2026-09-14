@@ -15,14 +15,54 @@ export type AskRoute =
 // matches normalizeBates's own tolerance for a partial number.
 const BARE_DIGITS_RE = /^\d{6,9}$/;
 
-const QUESTION_WORD_RE =
-  /^(who|what|when|where|why|how|was|were|is|are|did|does|do|can|could|should|will|would|which|whose)\b/i;
+// Question/auxiliary/pronoun words (team brief, B11): a string carrying any
+// of these is never a bare keyword search, no matter how short — it reads as
+// a question or chit-chat and must go through the planner (which now has a
+// kind: 'offtopic' for the chit-chat case — see lib/ask/plan.ts). This is
+// deliberately broader than scripts/search/opensearch.py's "english" analyzer
+// stopword list used by lib/opensearch.ts's own stripping (item 3 there) —
+// the two lists serve different jobs: this one decides ask-routing, that one
+// decides what survives into a search query.
+const FLAGGED_WORDS = new Set([
+  'do', 'does', 'did', 'is', 'are', 'was', 'were', 'can', 'could', 'should', 'would', 'will',
+  'what', 'who', 'whom', 'why', 'how', 'when', 'where', 'which', 'like', 'you', 'your', 'i', 'me', 'my', 'we',
+]);
+
+/** Strips leading/trailing punctuation so "jesus?" / "DEP's" compare cleanly against FLAGGED_WORDS. */
+function bareWord(token: string): string {
+  return token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '');
+}
+
+// Kept from the original router: a keyword search reads as a short typed
+// phrase, not a sentence. Without this, a long flagged-word-free sentence
+// like "Identify the private individual referenced in this letter." would
+// short-circuit straight to /search and skip the model's refuse check
+// entirely (confirmed by ask:eval — r06/r10 regressed without this).
+const MAX_KEYWORD_TOKENS = 4;
+
+/**
+ * A string is a keyword search only if it's short, has no question/
+ * auxiliary/pronoun word anywhere in it (not just as the first word — "tell
+ * me a joke" and "do you like jesus" both fail this) and has at least one
+ * content term left over. Anything else goes to the planner.
+ */
+function isKeywordQuery(q: string): boolean {
+  if (q.includes('?')) return false;
+  const tokens = q.split(/\s+/).filter(Boolean).map(bareWord).filter(Boolean);
+  if (tokens.length === 0 || tokens.length > MAX_KEYWORD_TOKENS) return false;
+  let hasContentTerm = false;
+  for (const t of tokens) {
+    if (FLAGGED_WORDS.has(t.toLowerCase())) return false;
+    hasContentTerm = true;
+  }
+  return hasContentTerm;
+}
 
 /**
  * Routes a typed Ask query. Order matters: a Bates number always wins (even
  * a 6-9 digit number that also happens to look like a short keyword string),
- * then the short-keyword short-circuit, then everything else goes to the
- * model's plan (lib/ask/plan.ts).
+ * then the keyword short-circuit, then everything else goes to the model's
+ * plan (lib/ask/plan.ts).
  */
 export function routeAsk(raw: string): AskRoute {
   const q = raw.trim();
@@ -32,13 +72,6 @@ export function routeAsk(raw: string): AskRoute {
   if (bates) return { kind: 'bates', bates };
   if (BARE_DIGITS_RE.test(q)) return { kind: 'bates', bates: `NYC-WTC_${q.padStart(9, '0')}` };
 
-  const tokens = q.split(/\s+/).filter(Boolean);
-  const isShort = tokens.length <= 4;
-  const hasQuestionMark = q.includes('?');
-  const startsAsQuestion = QUESTION_WORD_RE.test(q);
-
-  if (isShort && !hasQuestionMark && !startsAsQuestion) {
-    return { kind: 'keyword', q };
-  }
+  if (isKeywordQuery(q)) return { kind: 'keyword', q };
   return { kind: 'model', q };
 }

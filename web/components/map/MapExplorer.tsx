@@ -41,7 +41,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
-        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="An address, substance, Bates number or question" autoComplete="off"/><button type="submit" formAction="/search">Search →</button><button type="submit" formAction="/ask">Ask →</button></div>
+        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask →</button></div>
       </form>
       <div className={styles.chips}>
         {suggestions.place && <a href={buildingUrl(suggestions.place)}>{suggestions.place.label} · most test pages</a>}

@@ -73,7 +73,17 @@ function bestExcerpt(text: string, terms: string[]): string {
 
 export async function retrieveForQuestion(terms: string[], filters: AskFilters): Promise<RetrievedPage[]> {
   const q = [...terms.filter(Boolean), ...softFilterTerms(filters)].join(' ');
-  const result = await search({ q, filters: toSearchFilters(filters), page: 1, pageSize: MAX_RETRIEVED_PAGES });
+  // allowSemanticOnly: this came from the planner's 'question' kind, not a
+  // bare /search box — semantic recall for paraphrased content is wanted
+  // even when the exact terms don't appear verbatim (opensearch.ts's
+  // "no lexical hit" gate is for the box, not for Ask — B11).
+  const result = await search({
+    q,
+    filters: toSearchFilters(filters),
+    page: 1,
+    pageSize: MAX_RETRIEVED_PAGES,
+    allowSemanticOnly: true,
+  });
   if (result.error || !result.hits.length) return [];
 
   const pages = await Promise.all(
