@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { CitationLink } from './CitationLink';
+import { FollowUpForm } from './FollowUpForm';
 import { pageImagePath } from '@/lib/files';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
-import { AiMark, ButtonLink } from '@/components/ui';
+import { AiMark, ButtonLink, Panel, PanelBody } from '@/components/ui';
 import type { AskAnswer } from '@/lib/ask/answer';
 
 /** A page this answer cited, or was retrieved for — the minimal shape
@@ -82,9 +83,43 @@ export function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q: stri
   );
 }
 
+/** One ancestor turn in a follow-up thread (B17, issue #23), rendered
+ *  compactly above the current answer on /a/[id]: the question asked and
+ *  the first sentence of what was answered, linking to that turn's own
+ *  frozen permalink so the thread stays independently shareable turn by
+ *  turn. */
+export function PriorTurn({ id, q, firstSentence }: { id: string; q: string; firstSentence: string }) {
+  return (
+    <Panel className="mb-4">
+      <PanelBody>
+        <p className="small muted mb-2">Earlier in this thread</p>
+        <Link href={`/a/${id}`} className="question-link">
+          <span>
+            {q}
+            {firstSentence ? ` — ${firstSentence}` : ''}
+          </span>
+          <span>→</span>
+        </Link>
+      </PanelBody>
+    </Panel>
+  );
+}
+
 /** The rendered answer body — used both by the live /ask turn and the frozen
- *  /a/[id] permalink, so the two never drift apart. */
-export function AnswerBody({ q, answer, pages }: { q: string; answer: AskAnswer; pages: CiteLike[] }) {
+ *  /a/[id] permalink, so the two never drift apart. `answerId` (B17) is this
+ *  turn's own stored id, so the "Ask a follow-up" box under it can thread a
+ *  new turn on — /a/[id] is the only caller and always has one. */
+export function AnswerBody({
+  q,
+  answer,
+  pages,
+  answerId,
+}: {
+  q: string;
+  answer: AskAnswer;
+  pages: CiteLike[];
+  answerId: string;
+}) {
   const byBates = new Map(pages.map((p) => [p.batesPage, p]));
   const citedPages = [
     ...new Map(answer.sentences.flatMap((s) => s.cites).map((c) => [c, byBates.get(c)])).values(),
@@ -131,19 +166,22 @@ export function AnswerBody({ q, answer, pages }: { q: string; answer: AskAnswer;
             </ul>
           </section>
         )}
-        {answer.followUps.length > 0 && (
-          <section className="followup">
-            <h2>Continue from the evidence</h2>
-            {answer.followUps.map((f, i) => (
-              <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                {f} <AiMark /> <span>→</span>
-              </Link>
-            ))}
-            <Link className="question-link" href={searchFallbackUrl(q)}>
-              See every document result instead <span>→</span>
-            </Link>
-          </section>
-        )}
+        <section className="followup">
+          {answer.followUps.length > 0 && (
+            <>
+              <h2>Continue from the evidence</h2>
+              {answer.followUps.map((f, i) => (
+                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
+                  {f} <AiMark /> <span>→</span>
+                </Link>
+              ))}
+            </>
+          )}
+          <FollowUpForm parentId={answerId} />
+          <Link className="question-link mt-2" href={searchFallbackUrl(q)}>
+            See every document result instead <span>→</span>
+          </Link>
+        </section>
       </article>
       <SourceRail pages={citedPages} q={q} />
     </div>

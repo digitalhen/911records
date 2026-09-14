@@ -13,12 +13,13 @@ import { socialMeta } from '@/lib/seo/social';
 import { getPageByBates } from '@/lib/site';
 import { findExactBates } from '@/lib/opensearch';
 import { routeAsk } from '@/lib/ask/router';
-import { askConfigured, planAsk, type AskPlan } from '@/lib/ask/plan';
-import { retrieveForQuestion, type RetrievedPage } from '@/lib/ask/retrieve';
+import { askConfigured, planAsk, planFollowUp, type AskPlan } from '@/lib/ask/plan';
+import { retrieveForQuestion, type PageRef, type RetrievedPage } from '@/lib/ask/retrieve';
 import { answerQuestion, validateAnswer, validateFollowUps, type AskAnswer } from '@/lib/ask/answer';
 import { underDailyCap, recordSpend, estimateCostUsd } from '@/lib/ask/spend';
 import { allowAskRequest, clientIp } from '@/lib/ask/rateLimit';
-import { saveAnswer } from '@/lib/ask/store';
+import { FollowUpForm } from '@/components/ask/FollowUpForm';
+import { saveAnswer, getAnswer, citedBatesPages } from '@/lib/ask/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,11 +103,16 @@ function InsufficientView({
   pages,
   notEstablished,
   followUps,
+  parentId,
 }: {
   q: string;
   pages: RetrievedPage[];
   notEstablished: string[];
   followUps: string[];
+  /** B17: set when this insufficient turn was itself a follow-up — keeps the
+   *  thread's own follow-up box chained onto the last turn that actually
+   *  saved an answer, since a non-answer never gets its own permalink. */
+  parentId?: string;
 }) {
   return (
     <>
@@ -142,16 +148,19 @@ function InsufficientView({
               A gap in these pages is not proof that a record does not exist elsewhere. This tool does not determine
               medical causation or claim eligibility.
             </p>
-            {followUps.length > 0 && (
-              <section className="followup">
-                <h2>A narrower question these pages might support</h2>
-                {followUps.map((f, i) => (
-                  <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                    {f} <AiMark /> <span>→</span>
-                  </Link>
-                ))}
-              </section>
-            )}
+            <section className="followup">
+              {followUps.length > 0 && (
+                <>
+                  <h2>A narrower question these pages might support</h2>
+                  {followUps.map((f, i) => (
+                    <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
+                      {f} <AiMark /> <span>→</span>
+                    </Link>
+                  ))}
+                </>
+              )}
+              <FollowUpForm parentId={parentId} />
+            </section>
           </article>
           <SourceRail pages={pages} q={q} emptyNote="none supported a citeable sentence for this question" />
         </div>
@@ -161,10 +170,140 @@ function InsufficientView({
   );
 }
 
+/**
+ * The tail shared by a root question and a follow-up merge alike, once a
+ * plan (AskPlan) is in hand: render/redirect on refuse|offtopic|search, else
+ * retrieve → answer → validate → save|insufficient. `opts.parentId` (B17)
+ * is the answer row this plan's turn was asked from, if any — threaded into
+ * the saved row and into InsufficientView's own follow-up box; `opts.boostPages`
+ * is that parent's cited pages, passed to retrieveForQuestion's should-boost.
+ */
+async function renderPlanOutcome(
+  q: string,
+  plan: AskPlan,
+  planUsage: Record<string, unknown>,
+  opts: { parentId?: string; boostPages?: PageRef[] } = {},
+) {
+  if (plan.kind === 'refuse') {
+    return <RefusalView q={q} reason={plan.refuseReason} />;
+  }
+
+  if (plan.kind === 'offtopic') {
+    return <OfftopicView q={q} />;
+  }
+
+  if (plan.kind === 'search') {
+    const params = new URLSearchParams();
+    params.set('q', plan.terms.filter(Boolean).join(' ') || q);
+    if (plan.filters.contaminant) params.set('contaminant', plan.filters.contaminant);
+    if (plan.filters.address) params.set('address', plan.filters.address);
+    if (plan.filters.agency) params.set('agency', plan.filters.agency);
+    if (plan.filters.lab) params.set('lab', plan.filters.lab);
+    const year = plan.filters.dateFrom?.slice(0, 4) || plan.filters.dateTo?.slice(0, 4);
+    if (year) params.set('year', year);
+    redirect(`/search?${params.toString()}`);
+  }
+
+  // plan.kind === 'question'
+  const pages = await retrieveForQuestion(plan.terms.length ? plan.terms : [q], plan.filters, opts.boostPages ?? []);
+  if (pages.length === 0) {
+    return <InsufficientView q={q} pages={[]} notEstablished={[]} followUps={[]} parentId={opts.parentId} />;
+  }
+
+  let answer: AskAnswer;
+  let answerUsage: Record<string, unknown>;
+  let model = 'unknown';
+  try {
+    const result = await answerQuestion(q, pages);
+    answer = result.answer;
+    answerUsage = result.usage as unknown as Record<string, unknown>;
+    model = result.model;
+    void recordSpend(estimateCostUsd(result.usage));
+  } catch (err) {
+    console.error('[ask] answer call failed', err);
+    redirect(searchFallbackUrl(q, 'ask-failed'));
+  }
+
+  const retrievedBatesPages = new Set(pages.map((p) => p.batesPage));
+  const citeValidated = validateAnswer(answer, retrievedBatesPages);
+  // B15: a follow-up the model wrote from the excerpts isn't guaranteed to
+  // match the corpus's own wording — check each against a cheap lexical
+  // search before it's ever rendered or stored, so a follow-up link never
+  // leads to an empty results page (see validateFollowUps's header).
+  const followUps = await validateFollowUps(citeValidated.followUps);
+  const validated = { ...citeValidated, followUps };
+
+  if (validated.sentences.length === 0) {
+    return (
+      <InsufficientView
+        q={q}
+        pages={pages}
+        notEstablished={validated.notEstablished}
+        followUps={validated.followUps}
+        parentId={opts.parentId}
+      />
+    );
+  }
+
+  const id = await saveAnswer({
+    q,
+    plan,
+    answer: validated,
+    pages,
+    model,
+    usage: { plan: planUsage, answer: answerUsage },
+    parentId: opts.parentId ?? null,
+  });
+  redirect(`/a/${id}`);
+}
+
 export default async function AskPage({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   const sp = await searchParams;
   const q = (getStr(sp, 'q') || '').trim();
   if (!q) redirect('/search');
+
+  // B17 (issue #23), "Ask a follow-up": /ask?parent=<answer id>&q=<sentence>.
+  // A follow-up always needs the model — it's meaningless as a Bates/keyword
+  // short-circuit and needs the parent's plan as context — so it skips
+  // routeAsk entirely and goes straight to the merge call (lib/ask/plan.ts's
+  // planFollowUp: PARENT PLAN JSON + parent's cited page ids + this new
+  // sentence, never prose history). An unknown/expired parent id degrades to
+  // an ordinary root question below rather than erroring.
+  const parentId = (getStr(sp, 'parent') || '').trim();
+  if (parentId) {
+    const parentRow = await getAnswer(parentId).catch(() => null);
+    if (parentRow) {
+      if (!askConfigured()) {
+        redirect(searchFallbackUrl(q, 'ask-unavailable'));
+      }
+      const hdrs = await headers();
+      const ip = clientIp(hdrs);
+      if (!allowAskRequest(ip)) {
+        redirect(searchFallbackUrl(q, 'ask-rate-limited'));
+      }
+      if (!(await underDailyCap())) {
+        redirect(searchFallbackUrl(q, 'ask-daily-cap'));
+      }
+
+      const parentCited = citedBatesPages(parentRow);
+      let plan: AskPlan;
+      let planUsage: Record<string, unknown>;
+      try {
+        const result = await planFollowUp(parentRow.plan, parentCited, q);
+        plan = result.plan;
+        planUsage = result.usage as unknown as Record<string, unknown>;
+        void recordSpend(estimateCostUsd(result.usage));
+      } catch (err) {
+        console.error('[ask] follow-up plan call failed', err);
+        redirect(searchFallbackUrl(q, 'ask-failed'));
+      }
+
+      const citedSet = new Set(parentCited);
+      const boostPages = parentRow.cites.filter((c) => citedSet.has(c.batesPage));
+      return renderPlanOutcome(q, plan, planUsage, { parentId: parentRow.id, boostPages });
+    }
+    // Unknown/expired parent id: fall through and treat this as a root question.
+  }
 
   // /search's "Ask this as a question →" link (B11, "combine search and ask
   // into one, like Prospect"): forces the planner even for a string the
@@ -214,68 +353,5 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     redirect(searchFallbackUrl(q, 'ask-failed'));
   }
 
-  if (plan.kind === 'refuse') {
-    return <RefusalView q={q} reason={plan.refuseReason} />;
-  }
-
-  if (plan.kind === 'offtopic') {
-    return <OfftopicView q={q} />;
-  }
-
-  if (plan.kind === 'search') {
-    const params = new URLSearchParams();
-    params.set('q', plan.terms.filter(Boolean).join(' ') || q);
-    if (plan.filters.contaminant) params.set('contaminant', plan.filters.contaminant);
-    if (plan.filters.address) params.set('address', plan.filters.address);
-    if (plan.filters.agency) params.set('agency', plan.filters.agency);
-    if (plan.filters.lab) params.set('lab', plan.filters.lab);
-    const year = plan.filters.dateFrom?.slice(0, 4) || plan.filters.dateTo?.slice(0, 4);
-    if (year) params.set('year', year);
-    redirect(`/search?${params.toString()}`);
-  }
-
-  // plan.kind === 'question'
-  const pages = await retrieveForQuestion(plan.terms.length ? plan.terms : [q], plan.filters);
-  if (pages.length === 0) {
-    return <InsufficientView q={q} pages={[]} notEstablished={[]} followUps={[]} />;
-  }
-
-  let answer: AskAnswer;
-  let answerUsage: Record<string, unknown>;
-  let model = 'unknown';
-  try {
-    const result = await answerQuestion(q, pages);
-    answer = result.answer;
-    answerUsage = result.usage as unknown as Record<string, unknown>;
-    model = result.model;
-    void recordSpend(estimateCostUsd(result.usage));
-  } catch (err) {
-    console.error('[ask] answer call failed', err);
-    redirect(searchFallbackUrl(q, 'ask-failed'));
-  }
-
-  const retrievedBatesPages = new Set(pages.map((p) => p.batesPage));
-  const citeValidated = validateAnswer(answer, retrievedBatesPages);
-  // B15: a follow-up the model wrote from the excerpts isn't guaranteed to
-  // match the corpus's own wording — check each against a cheap lexical
-  // search before it's ever rendered or stored, so a follow-up link never
-  // leads to an empty results page (see validateFollowUps's header).
-  const followUps = await validateFollowUps(citeValidated.followUps);
-  const validated = { ...citeValidated, followUps };
-
-  if (validated.sentences.length === 0) {
-    return (
-      <InsufficientView q={q} pages={pages} notEstablished={validated.notEstablished} followUps={validated.followUps} />
-    );
-  }
-
-  const id = await saveAnswer({
-    q,
-    plan,
-    answer: validated,
-    pages,
-    model,
-    usage: { plan: planUsage, answer: answerUsage },
-  });
-  redirect(`/a/${id}`);
+  return renderPlanOutcome(q, plan, planUsage);
 }

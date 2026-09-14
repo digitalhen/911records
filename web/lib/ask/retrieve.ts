@@ -22,6 +22,20 @@ export interface RetrievedPage {
   score: number;
 }
 
+/** The minimal shape of a page reference needed to boost/backfill it into a
+ *  follow-up's retrieval (B17) — satisfied structurally by both
+ *  RetrievedPage itself and lib/ask/store.ts's StoredCite, with no import
+ *  from store.ts needed (store.ts already imports RetrievedPage from here). */
+export interface PageRef {
+  doc: string;
+  page: number;
+  batesPage: string;
+  agency: string | null;
+  box: string | null;
+  folder: string | null;
+  volume: string | null;
+}
+
 /**
  * AskFilters (model-generated free text) -> opensearch.ts's SearchFilters.
  *
@@ -71,7 +85,22 @@ function bestExcerpt(text: string, terms: string[]): string {
   return text.slice(start, end);
 }
 
-export async function retrieveForQuestion(terms: string[], filters: AskFilters): Promise<RetrievedPage[]> {
+/**
+ * `terms`/`filters` come from the (possibly merged) AskPlan; `boostPages`
+ * (B17, issue #23) is the parent turn's actually-CITED pages on a follow-up
+ * — approximates an OpenSearch "should"-boost for them without touching
+ * lib/opensearch.ts (out of this brief's edit scope, COMMON-web.md): any of
+ * them this turn's own search already surfaced move to the front of the
+ * retrieved set, and any the follow-up's narrower terms didn't surface at
+ * all are backfilled directly by their already-known doc/page, guaranteed a
+ * slot. Still capped at MAX_RETRIEVED_PAGES — a boosted page always wins a
+ * slot over the lowest-ranked fresh hit, never over another boosted one.
+ */
+export async function retrieveForQuestion(
+  terms: string[],
+  filters: AskFilters,
+  boostPages: PageRef[] = [],
+): Promise<RetrievedPage[]> {
   const q = [...terms.filter(Boolean), ...softFilterTerms(filters)].join(' ');
   // allowSemanticOnly: this came from the planner's 'question' kind, not a
   // bare /search box — semantic recall for paraphrased content is wanted
@@ -112,5 +141,35 @@ export async function retrieveForQuestion(terms: string[], filters: AskFilters):
       };
     }),
   );
-  return pages.filter((p): p is RetrievedPage => p !== null);
+  const found = pages.filter((p): p is RetrievedPage => p !== null);
+  if (!boostPages.length) return found;
+
+  const boostBates = new Set(boostPages.map((p) => p.batesPage));
+  const already = new Set(found.map((p) => p.batesPage));
+  const boosted = found.filter((p) => boostBates.has(p.batesPage));
+  const rest = found.filter((p) => !boostBates.has(p.batesPage));
+  const missing = boostPages.filter((p) => !already.has(p.batesPage));
+
+  const backfilled = (
+    await Promise.all(
+      missing.map(async (ref): Promise<RetrievedPage | null> => {
+        const row = await getPageText(ref.doc, ref.page);
+        const text = row?.text?.trim();
+        if (!text) return null; // no OCR text — can't backfill a citeable excerpt
+        return {
+          doc: ref.doc,
+          page: ref.page,
+          batesPage: ref.batesPage,
+          agency: ref.agency,
+          box: ref.box,
+          folder: ref.folder,
+          volume: ref.volume,
+          excerpt: bestExcerpt(text, terms),
+          score: boosted[0]?.score ?? rest[0]?.score ?? 1,
+        };
+      }),
+    )
+  ).filter((p): p is RetrievedPage => p !== null);
+
+  return [...boosted, ...backfilled, ...rest].slice(0, MAX_RETRIEVED_PAGES);
 }
