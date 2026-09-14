@@ -54,9 +54,7 @@ export function CitationLink({
         <span className="source-peek" role="tooltip" style={{ top: pos.top, left: pos.left }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumbSrc} alt={`Page thumbnail, ${batesPage}`} />
-          <span className="small muted" style={{ display: 'block', marginTop: 6 }}>
-            {label}
-          </span>
+          <span className="small muted block mt-2">{label}</span>
         </span>
       )}
     </>

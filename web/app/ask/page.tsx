@@ -31,7 +31,7 @@ function AskAgainForm({ q }: { q: string }) {
   return (
     <>
       <SearchBox q={q} compact />
-      <p className="small muted" style={{ marginBottom: 14 }}>
+      <p className="small muted mb-4">
         Questions get a cited answer built from the mirrored records. Keywords and Bates numbers go straight to
         search.
       </p>
@@ -48,17 +48,14 @@ function RefusalView({ q, reason }: { q: string; reason: string }) {
         <article className="answer-main summary-rule">
           <MachineNote />
           <div className="citation-rule">
-            <h2 style={{ marginBottom: 8 }}>Identity questions are refused</h2>
+            <h2 className="mb-2">Identity questions are refused</h2>
             <p>
               {reason ||
                 'This tool cannot help identify a redacted or private person. You can ask about building conditions, test results, dates, offices and officials’ actions on the records instead.'}
             </p>
           </div>
         </article>
-        <aside
-          className="source-rail"
-          style={{ marginTop: 24, borderLeft: 0, borderTop: '1px solid var(--line)', paddingLeft: 0, paddingTop: 24 }}
-        >
+        <aside className="source-rail source-rail-top">
           <h2>City 9/11 records only</h2>
           <p>
             This service covers the City&apos;s 9/11 records only. No people browser, no co-mention search, no
@@ -112,7 +109,7 @@ function InsufficientView({
                 </ul>
               </section>
             )}
-            <p className="small muted" style={{ marginTop: 24 }}>
+            <p className="small muted mt-6">
               A gap in these pages is not proof that a record does not exist elsewhere. This tool does not determine
               medical causation or claim eligibility.
             </p>

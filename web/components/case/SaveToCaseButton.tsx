@@ -1,6 +1,7 @@
 'use client';
 
 import { useCaseFolder } from '@/lib/case/useCaseFolder';
+import { Button } from '@/components/ui';
 
 export interface SaveablePage {
   doc: string;
@@ -21,9 +22,10 @@ export function SaveToCaseButton({ item, small }: { item: SaveablePage; small?: 
   const saved = has(item.doc, item.page);
 
   return (
-    <button
+    <Button
       type="button"
-      className={`button${small ? ' small' : ''}`}
+      variant="secondary"
+      size={small ? 'small' : 'default'}
       aria-pressed={saved}
       onClick={() => {
         if (saved) remove(item.doc, item.page);
@@ -40,6 +42,6 @@ export function SaveToCaseButton({ item, small }: { item: SaveablePage; small?: 
       }}
     >
       {saved ? 'Saved to case ✓' : 'Save to case'}
-    </button>
+    </Button>
   );
 }

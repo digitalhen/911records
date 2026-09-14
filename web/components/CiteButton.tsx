@@ -1,9 +1,11 @@
 'use client';
 
+import { Button } from '@/components/ui';
+
 export function CiteButton({ citation }: { citation: string }) {
   return (
-    <button
-      className="button primary"
+    <Button
+      variant="primary"
       type="button"
       onClick={async () => {
         try {
@@ -15,6 +17,6 @@ export function CiteButton({ citation }: { citation: string }) {
       }}
     >
       Cite this page ↗
-    </button>
+    </Button>
   );
 }

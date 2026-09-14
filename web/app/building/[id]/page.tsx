@@ -7,6 +7,7 @@ import { buildingUrl, decodeBldgClass, decodeId, pageUrl } from '@/lib/map/types
 import RecordTable from '@/components/map/RecordTable';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { socialMeta } from '@/lib/seo/social';
+import { ButtonLink } from '@/components/ui';
 import styles from '@/components/map/map.module.css';
 export const dynamic = 'force-dynamic';
 type Props={params:Promise<{id:string}>};
@@ -42,7 +43,7 @@ export default async function BuildingPage({params}:Props) {
   return <><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(crumbs)}}/><Header active="/map"/><main id="main" className={styles.building}>
     <div className="bread"><a href="/map">Building map</a><span>/ Building file</span></div>
     <div className="page-title"><div><div className="eyebrow">Building / all boxes</div><h1>{p.label}</h1><p className="subtitle">A building file, never a household profile.</p>
-      <p className={styles.note}>Machine-extracted address · confidence {p.confidence?.toFixed(2)??'not available'} · <a href={pageUrl(p)}>verify source page</a></p></div><a className="button" href={`/?place=${encodeURIComponent(p.id)}`}>See on map →</a></div>
+      <p className={styles.note}>Machine-extracted address · confidence {p.confidence?.toFixed(2)??'not available'} · <a href={pageUrl(p)}>verify source page</a></p></div><ButtonLink variant="secondary" href={`/?place=${encodeURIComponent(p.id)}`}>See on map →</ButtonLink></div>
     <div className={styles.stats}><span><strong>{p.n_docs}</strong> records</span><span><strong>{p.n_pages}</strong> source pages</span><span><strong>{p.n_test_pages}</strong> test candidate pages</span><span>{p.first_date||'Date not extracted'} — {p.last_date||'date not extracted'}<small>Machine-extracted date span · <a href="#building-records">verify dated source rows</a></small></span></div>
     {facts && <section className={styles.section} id="building-details"><h2>Building details</h2>
       <dl className={styles.facts}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui';
 
 /** "Copy link to this search" (docs/PLAN.md B6 Part 2: saved-search alerts
  *  as copy-a-link only — no accounts, no email delivery in v1).
@@ -40,12 +41,12 @@ export function CopyLinkButton({
 }) {
   const { copy, message } = useCopyCurrentLink();
   return (
-    <div style={{ marginTop: 14 }}>
-      <button className="button" type="button" onClick={copy}>
+    <div className="mt-4">
+      <Button variant="secondary" type="button" onClick={copy}>
         {label}
-      </button>
+      </Button>
       {children}
-      <p className="small muted" style={{ marginTop: 6 }} role="status">
+      <p className="small muted mt-2" role="status">
         {message || note || 'Email alerts are not offered yet — copy this link to check back after a new release.'}
       </p>
     </div>
