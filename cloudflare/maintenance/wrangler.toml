@@ -1,0 +1,12 @@
+# Cloudflare Worker in front of 911records.nyc (Henry, 2026-09-14): during a Dokploy deploy the
+# origin's Traefik briefly answers every path with a plain-text "404 page not found"; this Worker
+# turns that (and 5xx / tunnel errors) into a maintenance page that retries on its own. Everything
+# else passes through untouched. Deploy: `npx wrangler deploy` in this directory (OAuth login).
+name = "911records-maintenance"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+routes = [
+  { pattern = "911records.nyc/*", zone_name = "911records.nyc" },
+  { pattern = "www.911records.nyc/*", zone_name = "911records.nyc" },
+]

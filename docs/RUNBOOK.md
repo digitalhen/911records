@@ -214,3 +214,12 @@ being added) — `setup` prefers an in-place mapping update specifically to avoi
 | `PGDATABASE` | `load_site_pg.py` | `sept11` | |
 | *(no password env)* | `load_site_pg.py` | — | Always resolved from `~/.pgpass` by libpq; never set, read, or logged by any script here. |
 | `NEXT_PUBLIC_SITE_URL`, `OLLAMA_URL`, `ANTHROPIC_API_KEY`, `ASK_MODEL`, `ASK_DAILY_USD_CAP`, `GIT_SHA` | the app (`web/`) | — | See `docs/PLAN.md`'s deployment steps; not consumed by the pipeline scripts in this document. |
+
+## Maintenance page during deploys (Cloudflare Worker, 2026-09-14)
+`cloudflare/maintenance/` is a Worker on the `911records.nyc/*` route. It passes every response
+through untouched except Traefik's deploy-time plain-text "404 page not found" and HTML/plain
+5xx or tunnel errors, which become a 503 maintenance page that reloads itself every 15 s.
+Deploy changes with `npx wrangler deploy` in that directory (Wrangler OAuth login as
+digitalhen@gmail.com). The zone is on Cloudflare's Free plan: the Workers free tier allows
+100,000 requests a day, and beyond that Cloudflare answers with its own error page until the
+day resets — upgrade to Workers Paid ($5/month) in the dashboard before a traffic spike.
