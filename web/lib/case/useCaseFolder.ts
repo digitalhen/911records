@@ -9,8 +9,12 @@ import type { CaseItem } from './types';
  *  goes through lib/case/store.ts, which is the only module that knows
  *  where the folder actually lives (localStorage today; account-backed
  *  sync slots in there later without this hook's API changing). */
+const NO_ITEMS: CaseItem[] = [];
+const getItems = () => store.load().items;
+const getServerItems = () => NO_ITEMS;
+
 export function useCaseFolder() {
-  const items = useSyncExternalStore(store.subscribe, () => store.load().items, () => [] as CaseItem[]);
+  const items = useSyncExternalStore(store.subscribe, getItems, getServerItems);
 
   return {
     items,

@@ -40,18 +40,29 @@ export function subscribe(fn: () => void): () => void {
   };
 }
 
-/** Reads the whole case folder. */
+// useSyncExternalStore requires getSnapshot to return the SAME object while the
+// store is unchanged — a fresh JSON.parse per call re-rendered forever (React
+// error #185 took the live home page down on 2026-09-14). Cache by raw string.
+const EMPTY: CaseFolderState = { version: CASE_STORAGE_VERSION, items: [] };
+let cachedRaw: string | null | undefined;
+let cachedState: CaseFolderState = EMPTY;
+
+/** Reads the whole case folder (stable object identity while unchanged). */
 export function load(): CaseFolderState {
-  if (typeof window === 'undefined') return emptyState();
+  if (typeof window === 'undefined') return EMPTY;
+  let raw: string | null = null;
+  try { raw = window.localStorage.getItem(CASE_STORAGE_KEY); } catch { raw = null; }
+  if (raw === cachedRaw) return cachedState;
+  cachedRaw = raw;
   try {
-    const raw = window.localStorage.getItem(CASE_STORAGE_KEY);
-    if (!raw) return emptyState();
+    if (!raw) { cachedState = EMPTY; return cachedState; }
     const parsed = JSON.parse(raw) as Partial<CaseFolderState>;
-    if (parsed?.version !== CASE_STORAGE_VERSION || !Array.isArray(parsed.items)) return emptyState();
-    return { version: CASE_STORAGE_VERSION, items: parsed.items };
+    cachedState = parsed?.version !== CASE_STORAGE_VERSION || !Array.isArray(parsed.items)
+      ? EMPTY : { version: CASE_STORAGE_VERSION, items: parsed.items };
   } catch {
-    return emptyState();
+    cachedState = EMPTY;
   }
+  return cachedState;
 }
 
 /** Writes the whole case folder and notifies same-tab subscribers. */
