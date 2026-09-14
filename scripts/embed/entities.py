@@ -246,51 +246,62 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
 
 
 def migrate_canonical_columns(con: sqlite3.Connection) -> None:
-    """Add mentions.canonical_key/canonical_label/canonical_confidence if missing. Safe to re-run
-    (checks PRAGMA table_info first; SQLite has no ADD COLUMN IF NOT EXISTS)."""
+    """Add mentions.canonical_key/canonical_label/canonical_confidence/canonical_bbl/canonical_bin/
+    canonical_method if missing. Safe to re-run (checks PRAGMA table_info first; SQLite has no ADD
+    COLUMN IF NOT EXISTS). canonical_method IN ('exact','roll','fuzzy','llm') — see canonical.py's
+    canonicalize_addresses()/canonicalize_orgs() docstrings for 'exact'/'roll'/'fuzzy', and
+    canonical_llm.py for the 'llm' last-resort pass (issue #19 follow-up, Henry 2026-09-14)."""
     cols = {r[1] for r in con.execute("PRAGMA table_info(mentions)")}
     for name, decl in (("canonical_key", "TEXT"), ("canonical_label", "TEXT"),
                         ("canonical_confidence", "REAL"), ("canonical_bbl", "TEXT"),
-                        ("canonical_bin", "TEXT")):
+                        ("canonical_bin", "TEXT"), ("canonical_method", "TEXT")):
         if name not in cols:
             con.execute(f"ALTER TABLE mentions ADD COLUMN {name} {decl}")
     con.execute("CREATE INDEX IF NOT EXISTS mentions_canonical ON mentions(canonical_key)")
     con.commit()
 
 
-def canonicalise(con: sqlite3.Connection) -> dict:
+def canonicalise(con: sqlite3.Connection) -> tuple[dict, dict]:
     """Incremental pass: for label in address/lab/contractor, compute canonical_key/label/
-    confidence for every distinct `norm` and fill any mentions row still missing one. Addresses try
-    the Prospect property-roll gazetteer (GAZETTEER_CSV, loaded once here if present — canonical.py
-    itself never touches a database) first, carrying its bbl/bin; anything the roll doesn't cover
-    falls back to entities.py's own mention-frequency counts as a seed gazetteer, same as labs and
-    contractors always do. Only ever WRITES WHERE canonical_key IS NULL, so a re-run never re-scores
-    an already-canonicalised row even if the corpus or the gazetteer has grown since (that
-    re-scoring, if ever wanted, is a deliberate separate pass, not a side effect of running this one
-    again)."""
+    confidence/method for every distinct `norm` and fill any mentions row still missing one.
+    Addresses try the Prospect property-roll gazetteer (GAZETTEER_CSV, loaded once here if present
+    — canonical.py itself never touches a database) first, carrying its bbl/bin; anything the roll
+    doesn't cover falls back to entities.py's own mention-frequency counts as a seed gazetteer, same
+    as labs and contractors always do. Only ever WRITES WHERE canonical_key IS NULL, so a re-run
+    never re-scores an already-canonicalised row even if the corpus or the gazetteer has grown since
+    (that re-scoring, if ever wanted, is a deliberate separate pass, not a side effect of running
+    this one again).
+
+    Returns (stats, mappings) — mappings[label] is the raw `canonical.canonicalize_addresses()` /
+    `canonicalize_orgs()` output, reused by `canonicalise_llm()` (below) so the last-resort LLM pass
+    never recomputes the rule-based tiers."""
     migrate_canonical_columns(con)
     gazetteer = None
     if GAZETTEER_CSV.exists():
         gazetteer = canonical.load_gazetteer(GAZETTEER_CSV)
     stats: dict = {}
+    mappings: dict = {}
     for label in CANONICAL_LABELS:
         counts = dict(con.execute("SELECT norm, count(*) FROM mentions WHERE label=? GROUP BY 1", (label,)))
         before = con.execute("SELECT count(*) FROM mentions WHERE label=? AND canonical_key IS NULL",
                               (label,)).fetchone()[0]
         if label == "address":
             mapping = canonical.canonicalize_addresses(counts, gazetteer=gazetteer)
-            rows = [(ck, cl, cf, bbl, bin_, label, norm) for norm, (ck, cl, cf, bbl, bin_) in mapping.items()]
+            rows = [(ck, cl, cf, bbl, bin_, mth, label, norm)
+                    for norm, (ck, cl, cf, bbl, bin_, mth) in mapping.items()]
             roll_matched = sum(1 for v in mapping.values() if v[3])
             con.executemany(
                 "UPDATE mentions SET canonical_key=?, canonical_label=?, canonical_confidence=?, "
-                "canonical_bbl=?, canonical_bin=? WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
+                "canonical_bbl=?, canonical_bin=?, canonical_method=? "
+                "WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
         else:
             mapping = canonical.canonicalize_orgs(label, counts)
-            rows = [(ck, cl, cf, label, norm) for norm, (ck, cl, cf) in mapping.items()]
+            rows = [(ck, cl, cf, mth, label, norm) for norm, (ck, cl, cf, mth) in mapping.items()]
             roll_matched = None
             con.executemany(
-                "UPDATE mentions SET canonical_key=?, canonical_label=?, canonical_confidence=? "
-                "WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
+                "UPDATE mentions SET canonical_key=?, canonical_label=?, canonical_confidence=?, "
+                "canonical_method=? WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
+        mappings[label] = mapping
         after = con.execute("SELECT count(*) FROM mentions WHERE label=? AND canonical_key IS NULL",
                              (label,)).fetchone()[0]
         stats[label] = {"distinct_raw": len(counts), "distinct_canonical": len(set(v[0] for v in mapping.values())),
@@ -299,7 +310,7 @@ def canonicalise(con: sqlite3.Connection) -> dict:
             stats[label]["roll_matched_raw_spellings"] = roll_matched
             stats[label]["gazetteer_loaded"] = gazetteer is not None
     con.commit()
-    return stats
+    return stats, mappings
 
 
 def main() -> int:
@@ -311,6 +322,10 @@ def main() -> int:
     ap.add_argument("--canonicalise", action="store_true",
                      help="fill mentions.canonical_key/label/confidence for address/lab/contractor "
                           "mentions still missing them, then exit (does not run extraction)")
+    ap.add_argument("--llm", action="store_true",
+                     help="with --canonicalise: also run the LLM last-resort pass (canonical_llm.py, "
+                          "issue #19 follow-up) on whatever the rule-based tiers left isolated")
+    ap.add_argument("--llm-budget-usd", type=float, default=1.0)
     ap.add_argument("--db", default=None, help="override the entities.sqlite path (e.g. for a copy)")
     args = ap.parse_args()
 
@@ -318,8 +333,17 @@ def main() -> int:
     con = connect(db_path)
 
     if args.canonicalise:
-        stats = canonicalise(con)
+        stats, mappings = canonicalise(con)
         print(json.dumps({"canonicalise": stats}, indent=1))
+        if args.llm:
+            import canonical_llm
+            llm_summary = {}
+            for label in CANONICAL_LABELS:
+                updates, usage = canonical_llm.resolve_label(
+                    con, label, mappings[label], budget_usd=args.llm_budget_usd)
+                n = canonical_llm.apply_updates(con, label, updates)
+                llm_summary[label] = {**usage, "rows_updated": n}
+            print(json.dumps({"canonicalise_llm": llm_summary}, indent=1))
         return 0
 
     state = {(d, p): (s, r, g) for d, p, s, r, g in con.execute("SELECT doc,page,text_sha1,regex_done,gliner_done FROM pages")}

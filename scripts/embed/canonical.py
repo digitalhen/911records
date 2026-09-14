@@ -9,7 +9,9 @@ for the before/after report). Nothing here contacts the network.
 
 `canonicalize_addresses(counts)` takes {raw address mention text -> occurrence count} (as already
 captured by entities.py's RE_ADDR/RE_BROADWAY, e.g. "295 Lafayette Street", "295 Lafayatte St.")
-and returns {raw text -> (canonical_key, canonical_label, confidence)}.
+and returns {raw text -> (canonical_key, canonical_label, confidence, bbl, bin, method)} — see
+`canonicalize_addresses()`'s own docstring for `method` ('exact'|'roll'|'fuzzy'; a fourth value,
+'llm', is added only by the separate last-resort pass in `canonical_llm.py`).
 
 Steps:
   1. `normalize_street()` ports Prospect's `lib/address/normalize.ts` `normalizeStreet()` word-for-
@@ -135,6 +137,14 @@ def street_name_of(normalized_street: str) -> str:
     if words and words[-1] in STREET_TYPES:
         words = words[:-1]
     return " ".join(words)
+
+
+def address_name_part(s: str) -> str:
+    """The fuzzy-matched "core" of a full address string ("117 Chambers Street" -> "CHAMBERS") —
+    used by canonical_llm.py's post-hoc sanity check, so an LLM-approved match can be scored on the
+    same basis as a rule-based one regardless of which label ('address') it came from."""
+    house, street = split_house_street(s)
+    return street_name_of(street) if house is not None else ""
 
 
 # ------------------------------------------------------------------------------ edit distance ---
@@ -286,11 +296,19 @@ def _match_tier(a: str, b: str) -> Tuple[int, float] | None:
 
 def canonicalize_addresses(
     counts: Dict[str, int], gazetteer: Dict[str, List[GazEntry]] | None = None
-) -> Dict[str, Tuple[str, str, float, str | None, str | None]]:
+) -> Dict[str, Tuple[str, str, float, str | None, str | None, str]]:
     """{raw address text -> occurrence count} -> {raw address text -> (canonical_key,
-    canonical_label, confidence, bbl_or_None, bin_or_None)}. `counts` should hold every distinct
-    raw spelling seen (already the mentions.norm/text grouping entities.py has); house number and
-    street TYPE are never merged across groups (see module docstring).
+    canonical_label, confidence, bbl_or_None, bin_or_None, method)}. `method` is 'exact' (distance-0
+    match, either against the roll or a frequency seed — including a spelling that stands alone as
+    its own single-member group, which is trivially an exact match to itself), 'roll' (non-exact
+    roll-gazetteer match) or 'fuzzy' (non-exact frequency-seed match, including the 0.5-confidence
+    "seed-only" case). A fourth method, 'llm', is never produced here — see `find_llm_candidates()`
+    and `canonical_llm.py` for the last-resort pass that revises an 'exact' (self-standing) entry
+    into an existing group when the rule-based tiers found nothing.
+
+    `counts` should hold every distinct raw spelling seen (already the mentions.norm/text grouping
+    entities.py has); house number and street TYPE are never merged across groups (see module
+    docstring).
 
     When `gazetteer` (see `load_gazetteer()`) is given, the roll is tried FIRST for every group —
     a match carries the roll's bbl/bin. Anything the roll doesn't cover at that house number falls
@@ -309,7 +327,7 @@ def canonicalize_addresses(
         groups.setdefault(key, {})
         groups[key][sname] = groups[key].get(sname, 0) + n
 
-    out: Dict[str, Tuple[str, str, float, str | None, str | None]] = {}
+    out: Dict[str, Tuple[str, str, float, str | None, str | None, str]] = {}
     for (house, stype), name_counts in groups.items():
         # roll candidates for this exact house number and street type (never across types)
         roll_candidates: List[Tuple[str, str, str | None]] = []
@@ -337,21 +355,23 @@ def canonicalize_addresses(
                 tier, _, g_name, bbl, bin_ = best
                 key = f"address:bbl:{bbl}"
                 label = title_case(f"{house} {g_name} {stype}".strip())
-                out[raw] = (key, label, TIER_CONF[tier], bbl, bin_)
+                conf = TIER_CONF[tier]
+                out[raw] = (key, label, conf, bbl, bin_, "exact" if conf == 1.0 else "roll")
                 continue
 
             if not seed_ok:
                 key = seed_key if sname == seed_name else f"address:{house}-{_slug(sname + ' ' + stype)}"
                 label = seed_label if sname == seed_name else title_case(f"{house} {sname} {stype}".strip())
-                out[raw] = (key, label, 0.5, None, None)
+                out[raw] = (key, label, 0.5, None, None, "fuzzy")
                 continue
             t = _match_tier(sname, seed_name)
             if t is not None:
-                out[raw] = (seed_key, seed_label, TIER_CONF[t[0]], None, None)
+                conf = TIER_CONF[t[0]]
+                out[raw] = (seed_key, seed_label, conf, None, None, "exact" if conf == 1.0 else "fuzzy")
                 continue
             # no roll match and no frequency-seed match within threshold: stands on its own
             own_key = f"address:{house}-{_slug(sname + ' ' + stype)}"
-            out[raw] = (own_key, title_case(f"{house} {sname} {stype}".strip()), 1.0, None, None)
+            out[raw] = (own_key, title_case(f"{house} {sname} {stype}".strip()), 1.0, None, None, "exact")
     return out
 
 
@@ -389,10 +409,20 @@ def normalize_org_suffix(kind: str, raw_norm: str) -> Tuple[str, str]:
     return " ".join(words), suffix
 
 
-def canonicalize_orgs(kind: str, counts: Dict[str, int]) -> Dict[str, Tuple[str, str, float]]:
+def org_name_part(kind: str, s: str) -> str:
+    """The fuzzy-matched "core" of an org string (the remainder before the suffix) — see
+    `address_name_part()`; same purpose, for labs/contractors."""
+    remainder, _ = normalize_org_suffix(kind, s)
+    return remainder
+
+
+def canonicalize_orgs(kind: str, counts: Dict[str, int]) -> Dict[str, Tuple[str, str, float, str]]:
     """Same seed-frequency idea as addresses, but grouped by (kind, canonical suffix) and matched
     on the remainder at a flat Damerau distance <= 1 (no OCR-aware tier for orgs — the spec caps
-    this at one edit)."""
+    this at one edit). Returns {raw -> (canonical_key, canonical_label, confidence, method)}, method
+    'exact' or 'fuzzy' — see `canonicalize_addresses()`'s docstring for what those mean; orgs never
+    get 'roll' (no gazetteer here) and never get 'llm' from this function (see
+    `find_llm_org_candidates()`)."""
     groups: Dict[str, Dict[str, int]] = {}
     parsed: Dict[str, Tuple[str, str]] = {}  # raw -> (suffix, remainder)
     for raw, n in counts.items():
@@ -403,7 +433,7 @@ def canonicalize_orgs(kind: str, counts: Dict[str, int]) -> Dict[str, Tuple[str,
         groups.setdefault(suffix, {})
         groups[suffix][remainder] = groups[suffix].get(remainder, 0) + n
 
-    out: Dict[str, Tuple[str, str, float]] = {}
+    out: Dict[str, Tuple[str, str, float, str]] = {}
     for suffix, rem_counts in groups.items():
         seed_rem, seed_freq = max(rem_counts.items(), key=lambda kv: (kv[1], kv[0]))
         seed_ok = seed_freq >= MIN_SEED_FREQ
@@ -417,15 +447,132 @@ def canonicalize_orgs(kind: str, counts: Dict[str, int]) -> Dict[str, Tuple[str,
             if not seed_ok:
                 key = seed_key if rem == seed_rem else f"{kind}:{_slug(rem + ' ' + suffix)}"
                 label = seed_label if rem == seed_rem else title_case(rem) + (f" {suffix}" if suffix else "")
-                out[raw] = (key, label, 0.5)
+                out[raw] = (key, label, 0.5, "fuzzy")
                 continue
             if rem == seed_rem:
-                out[raw] = (seed_key, seed_label, 1.0)
+                out[raw] = (seed_key, seed_label, 1.0, "exact")
                 continue
             dist = damerau_levenshtein(rem, seed_rem) if min(len(rem), len(seed_rem)) else 99
             if dist <= 1:
-                out[raw] = (seed_key, seed_label, 0.9)
+                out[raw] = (seed_key, seed_label, 0.9, "fuzzy")
                 continue
             own_key = f"{kind}:{_slug(rem + ' ' + suffix)}"
-            out[raw] = (own_key, title_case(rem) + (f" {suffix}" if suffix else ""), 1.0)
+            out[raw] = (own_key, title_case(rem) + (f" {suffix}" if suffix else ""), 1.0, "exact")
+    return out
+
+
+# ---------------------------------------------------------------- LLM last resort (candidates) ---
+# Pure, stdlib, no network — picks out what NEEDS an LLM call and what to ask it. The actual call
+# lives in canonical_llm.py (the ONLY module in this repo that talks to the Anthropic API), which
+# imports these two finders. Kept here because they share canonicalize_*()'s grouping logic and
+# must stay in lock-step with it: a "candidate" is only ever an EXISTING canonical label from this
+# same rule-based pass (a roll street or a frequency seed) — the LLM only ever revises an isolated
+# spelling INTO an existing group, it never creates a new one.
+MAX_LLM_CANDIDATES = 8
+
+
+def find_llm_candidates(
+    mapping: Dict[str, Tuple[str, str, float, str | None, str | None, str]]
+) -> Dict[str, Dict[str, object]]:
+    """{raw -> {"candidates": [canonical_label, ...], "keys": {label: (canonical_key, bbl, bin)}}}
+    for every raw address spelling whose canonical_key (from `mapping`, i.e. already run through
+    `canonicalize_addresses()`) is used by no other raw spelling (it "matched nothing") AND at
+    least one OTHER, ESTABLISHED canonical label exists at the same house number + street type (a
+    roll street, or a frequency seed that already merged >= 2 raw spellings). Candidates are capped
+    at `MAX_LLM_CANDIDATES`, roll-backed ones first, then by how many raw spellings already back
+    them.
+
+    **A candidate must be established — never another isolated, unverified spelling.** Found live
+    while testing this pass: two single-mention "seed-only" entries at the same house+type (neither
+    with any independent corroboration) were offered to each other as candidates, and the model
+    said yes to BOTH directions — one real, uncorrupted spelling ("39-17 Junction Boulevard") got
+    merged INTO the other's garbled form ("39-17 Jwmti Boulevard") while the garbled one merged into
+    the real one's old key, an identity swap with no real winner. Separately, "117 Cedar Street" (a
+    single-mention 0.5-confidence seed, itself unverified) was offered as a candidate for "117
+    Chambers St" and accepted — merging two DIFFERENT real streets. Restricting candidates to
+    roll-backed entries or frequency seeds with >= 2 corroborating raw spellings removes both
+    failure modes: the LLM is only ever asked to match an unverified spelling against something
+    that already has independent evidence behind it."""
+    key_raw_count: Dict[str, int] = {}
+    for v in mapping.values():
+        key_raw_count[v[0]] = key_raw_count.get(v[0], 0) + 1
+
+    group_candidates: Dict[Tuple[str, str], List[Tuple[str, str, str | None, str | None, int]]] = {}
+    seen_keys: set = set()
+    for raw, v in mapping.items():
+        key, label, _, bbl, bin_, _ = v
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        if bbl is None and key_raw_count[key] < 2:
+            continue  # not established: never offered as a merge TARGET for another orphan
+        house, street = split_house_street(raw)
+        if house is None:
+            continue
+        stype = street_type_of(street) or ""
+        group_candidates.setdefault((house, stype), []).append((label, key, bbl, bin_, key_raw_count[key]))
+
+    out: Dict[str, Dict[str, object]] = {}
+    for raw, v in mapping.items():
+        key, label = v[0], v[1]
+        if key_raw_count[key] != 1:
+            continue  # already merged with something by the rule-based pass
+        house, street = split_house_street(raw)
+        if house is None:
+            continue
+        stype = street_type_of(street) or ""
+        pool = [c for c in group_candidates.get((house, stype), []) if c[1] != key]
+        if not pool:
+            continue
+        pool.sort(key=lambda c: (c[2] is None, -c[4]))  # roll-backed (bbl set) first, then frequency
+        top = pool[:MAX_LLM_CANDIDATES]
+        out[raw] = {
+            "candidates": [c[0] for c in top],
+            "keys": {c[0]: (c[1], c[2], c[3]) for c in top},
+        }
+    return out
+
+
+def find_llm_org_candidates(
+    kind: str, mapping: Dict[str, Tuple[str, str, float, str]]
+) -> Dict[str, Dict[str, object]]:
+    """Same idea as `find_llm_candidates()` for labs/contractors: candidates are OTHER, ESTABLISHED
+    canonical labels of the same `kind` that share the remainder's first token (e.g. "TESTWELL ..."
+    spellings are candidates for each other) — labs/contractors have no house number to group by, so
+    the first token of the org name is the grouping key instead. Same "never another orphan" guard
+    as `find_llm_candidates()`: a candidate must already have merged >= 2 raw spellings (orgs have
+    no roll to fall back on, so that is the only kind of established evidence available here)."""
+    key_raw_count: Dict[str, int] = {}
+    for v in mapping.values():
+        key_raw_count[v[0]] = key_raw_count.get(v[0], 0) + 1
+
+    group_candidates: Dict[str, List[Tuple[str, str, int]]] = {}
+    seen_keys: set = set()
+    parsed: Dict[str, str] = {}  # raw -> first token of the remainder
+    for raw, v in mapping.items():
+        key, label = v[0], v[1]
+        remainder, _ = normalize_org_suffix(kind, raw)
+        first = remainder.split()[0] if remainder else ""
+        parsed[raw] = first
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        if key_raw_count[key] < 2:
+            continue  # not established: never offered as a merge TARGET for another orphan
+        group_candidates.setdefault(first, []).append((label, key, key_raw_count[key]))
+
+    out: Dict[str, Dict[str, object]] = {}
+    for raw, v in mapping.items():
+        key, label = v[0], v[1]
+        if key_raw_count[key] != 1:
+            continue
+        first = parsed.get(raw, "")
+        if not first:
+            continue
+        pool = [c for c in group_candidates.get(first, []) if c[1] != key]
+        if not pool:
+            continue
+        pool.sort(key=lambda c: -c[2])
+        top = pool[:MAX_LLM_CANDIDATES]
+        out[raw] = {"candidates": [c[0] for c in top], "keys": {c[0]: (c[1], None, None) for c in top}}
     return out

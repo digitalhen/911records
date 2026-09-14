@@ -97,7 +97,7 @@ documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pd
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
-entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin)
+entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin, method)
 entity_pages(entity_id, doc, page, role, confidence, raw)
 signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
 signatory_pages(id, doc, page, action, confidence)
@@ -135,6 +135,24 @@ tried first and wins when it matches — that match carries the roll's bbl/bin o
 addresses the roll doesn't cover (most of them: the export is nine lower-Manhattan ZIPs, and many
 mentioned addresses — labs, contractor offices — sit well outside that footprint) fall back to
 the mention-frequency seed method alone, with no bbl/bin.
+
+**LLM last resort** (issue #19 follow-up, Henry 2026-09-14): after the rule-based tiers, any
+address/lab/contractor spelling that still stands alone — no rule-based match, but sharing a house
+number+street type (or, for orgs, a first name token) with an ESTABLISHED canonical entity or roll
+entry — goes to `entities.py --canonicalise --llm`, which asks `claude-haiku-4-5-20251001` in
+batches (`scripts/embed/canonical_llm.py`, the only module in this repo that calls the Anthropic
+API; key from `.claudekey`, cached in `data/embed/canonical-llm-cache.json`) whether it's an OCR
+misread of one of up to 8 listed candidates. A merge requires model confidence >= 0.8 **and** a
+post-hoc distance-ratio sanity check (`MAX_LLM_NAME_RATIO`, canonical_llm.py) — added after the
+first live run confidently mis-merged distinct real streets ("Vesey"/"Wall", "Chambers"/"Broad")
+that happened to share a house number; candidates must also already be established (roll-backed or
+merging >=2 raw spellings) so two orphan spellings are never matched against each other. A merge is
+stored at canonical_confidence 0.6 (below every rule-based tier) with canonical_method='llm'.
+
+`mentions.canonical_method` ('exact'|'roll'|'fuzzy'|'llm') and `entities.method` (the STRONGEST
+method among the entity's mentions, same priority order, since an entity's identity is always
+founded by its best-evidence member — an 'llm'-merged variant never demotes an otherwise
+'exact'/'roll' entity) record which tier established each canonicalisation.
 
 Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
 one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.
