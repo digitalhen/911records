@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import Analytics from '@/components/Analytics';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
 
@@ -40,6 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         {children}
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }} />
+        {/* Google Analytics (gtag.js), off unless NEXT_PUBLIC_GA_ID is set —
+            see lib/analytics.ts. */}
+        <Analytics />
       </body>
     </html>
   );

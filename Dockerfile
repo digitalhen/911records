@@ -18,7 +18,22 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_SITE_URL=https://911records.nyc
+# NEXT_PUBLIC_GA_ID's default is deliberately NON-EMPTY, the live measurement
+# id, because for this flag UNSET MUST MEAN UNCHANGED (see ~/Code/prospect's
+# issue #982, the pattern this follows). A `||` fallback in lib/analytics.ts
+# would mean the field an operator types into Dokploy reaches nothing and the
+# tracker can never be turned off; the default lives here instead, so the
+# switch is reachable without being thrown. Empty (or `off`) means no tag at
+# all — see web/lib/analytics.ts.
+#
+# The non-empty default is also why docker-compose.yml passes this one
+# through as the BARE `NEXT_PUBLIC_GA_ID:` form and not `${NEXT_PUBLIC_GA_ID:-}`
+# like NEXT_PUBLIC_SITE_URL above: `:-` renders an explicit empty string that
+# would OVERRIDE this default and silently turn analytics off. See the
+# comment in docker-compose.yml.
+ARG NEXT_PUBLIC_GA_ID=G-7143D6VVVR
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
+    NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID \
     NEXT_TELEMETRY_DISABLED=1
 # Build-time DB access is not required: every page here is force-dynamic, so
 # next build never queries Postgres. A dummy value just keeps `pg` from

@@ -16,6 +16,20 @@ services:
       dockerfile: ../Dockerfile
       args:
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://911records.nyc}
+        # The Google Analytics measurement id, and the off switch for the tag
+        # (modeled on ~/Code/prospect's issue #982). No `:-` here,
+        # deliberately: unlike NEXT_PUBLIC_SITE_URL above, this ARG has a
+        # NON-EMPTY default in the Dockerfile (the live property id), and
+        # `${NEXT_PUBLIC_GA_ID:-}` would render an explicit "" that OVERRIDES
+        # that default — turning analytics off on the next deploy of both
+        # instances. The bare form omits the arg entirely when the variable
+        # is unset, so UNSET MEANS UNCHANGED. To turn analytics off, set this
+        # to `off` (empty also works, but an empty value has to survive the
+        # Dokploy UI, the project .env and compose interpolation, and a layer
+        # that drops it gives back the very defect #982 fixed). `off` and
+        # empty are the only two off-values; anything else is treated as a
+        # measurement id. Both instances or neither, as above.
+        NEXT_PUBLIC_GA_ID:
         # The commit this image was built from, reported by /api/health.
         # `:-` and never `:?` — a build with none set must still deploy and
         # report `"commit": null` rather than a guessed value.
