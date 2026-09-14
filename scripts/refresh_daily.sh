@@ -161,4 +161,15 @@ else
   log "-- suggestions_check FAILED (exit $rc) -- non-fatal, continuing (see the table above in this log)"
 fi
 
+# Stage 9 (B22, "What others are reading", issue #36) — non-fatal, same reasoning and env
+# resolution as suggestions_check above: a stale reading-seed list is worth noticing, not worth
+# failing the day's refresh over.
+log "== seed_reading: npm run seed:reading -- --refresh =="
+if (cd web && DATABASE_URL="$db_url" DATABASE_READ_URL="$db_url" npm run seed:reading -- --refresh) >> "$LOG" 2>&1; then
+  log "-- seed_reading ok --"
+else
+  rc=$?
+  log "-- seed_reading FAILED (exit $rc) -- non-fatal, continuing (see the table above in this log)"
+fi
+
 log "done"

@@ -13,6 +13,8 @@ import { fileExists, pageImagePath, pageImageUrl, pdfPath } from '@/lib/files';
 import { RelatedRecords } from '@/components/discovery/RelatedRecords';
 import { MoreLikePage } from '@/components/discovery/MoreLikePage';
 import BuildingsForDoc from '@/components/map/BuildingsForDoc';
+import { OthersAlsoRead } from '@/components/reading/OthersAlsoRead';
+import { ViewBeacon } from '@/components/reading/ViewBeacon';
 import { Button, ButtonLink } from '@/components/ui';
 import { browseUrl } from '@/lib/info/catalog';
 import { buildingsForDoc, resolveBuildingRedirect } from '@/lib/map/data';
@@ -371,9 +373,11 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
 
         {!removed && (
           <>
+            <ViewBeacon doc={doc} />
             <RelatedRecords doc={doc} />
             <MoreLikePage doc={doc} page={page} />
             <BuildingsForDoc doc={doc} />
+            <OthersAlsoRead doc={doc} />
             <p className="small">
               <Link href={`/doc/${encodeURIComponent(doc)}/versions`}>Compare copies and versions →</Link>
             </p>
