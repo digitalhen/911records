@@ -420,8 +420,43 @@ def is_usage_limit_error(e: BaseException) -> bool:
     return "usage limit" in str(e).lower()
 
 
+BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK, .claudekey) or "cli" (claude -p)
+
+
+def call_claude_cli(prompt: str) -> str:
+    """2026-09-14 (Henry: "switch to doing the summaries in haiku via claude -p"): run the same
+    prompt through the Claude Code CLI in print mode, which bills the subscription rather than the
+    API key and, on the day, answered in ~3 s per batch where the API was crawling. No tools, no
+    session persistence, the same system prompt. The CLI must not inherit an API key or the
+    nested-session marker, or it either bills the key or refuses to start."""
+    import subprocess
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}
+    proc = subprocess.run(
+        ["claude", "-p", "--model", MODEL, "--output-format", "json", "--no-session-persistence",
+         "--tools", "", "--system-prompt", SYSTEM_PROMPT],
+        input=prompt, capture_output=True, text=True, env=env, timeout=240,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p exited {proc.returncode}: {proc.stderr.strip()[:300]}")
+    data = json.loads(proc.stdout)
+    if data.get("is_error"):
+        msg = str(data.get("result", ""))[:300]
+        if "usage limit" in msg.lower() or "rate limit" in msg.lower():
+            raise RuntimeError("usage limit: " + msg)
+        raise RuntimeError("claude -p error: " + msg)
+    return str(data.get("result", ""))
+
+
 def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
+    if BACKEND == "cli":
+        try:
+            text = call_claude_cli(prompt)
+        except RuntimeError as e:
+            if "usage limit" in str(e):
+                stop.set(str(e))
+            raise
+        return extract_json_array(text), 0.0  # subscription-billed: no API spend to count
     try:
         response = client.messages.create(
             model=MODEL, max_tokens=200 * (len(retry_ids) if retry_ids else len(items)) + 200,
@@ -632,8 +667,10 @@ def main() -> int:
     model_done = 0
     stopped_on_budget = False
     if to_process:
-        import anthropic  # imported lazily: a run with nothing left to do needs no key/SDK at all
-        client = anthropic.Anthropic(api_key=CLAUDE_KEY_FILE.read_text().strip())
+        client = None
+        if BACKEND != "cli":
+            import anthropic  # imported lazily: a run with nothing left to do needs no key/SDK at all
+            client = anthropic.Anthropic(api_key=CLAUDE_KEY_FILE.read_text().strip())
 
         batches = [to_process[i: i + BATCH_SIZE] for i in range(0, len(to_process), BATCH_SIZE)]
         write_lock = threading.Lock()
