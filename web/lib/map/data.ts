@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { unstable_cache } from 'next/cache';
+import { cached } from '@/lib/site';
 import footprintJoins from '@/public/geo/joins.json';
 import { queryReadSafe } from '@/lib/db';
 import { buildVersion } from '@/lib/site';
@@ -69,7 +69,7 @@ const isDefaultFilters = (f: MapFilters) =>
 // refreshes — cached, keyed by buildVersion(). Any other filter combination (the /api/map route
 // used by the panel's live filter controls) stays a plain, uncached read — those are per-query and
 // not worth caching individually.
-const cachedDefaultMapPlaces = unstable_cache(
+const cachedDefaultMapPlaces = cached(
   async (_v: string) => queryMapPlaces(DEFAULT_FILTERS),
   ['map-places-default'],
   { revalidate: 60 },
@@ -126,7 +126,7 @@ export async function resolveBuildingRedirect(place: Pick<Place, 'kind' | 'key'>
 // Perf (issue #13): one building page is the same for every visitor between refreshes — cached,
 // keyed by (buildVersion(), id). The outer React cache() still dedupes repeat calls for the same
 // id within one request (resolveBuildingRedirect above calls this per BIN candidate).
-const cachedPlaceFile = unstable_cache(
+const cachedPlaceFile = cached(
   async (_v: string, id: string) => queryPlaceFile(id),
   ['map-place-file'],
   { revalidate: 60 },
@@ -158,7 +158,7 @@ async function queryPlaceFile(id: string): Promise<PlaceFile | null> {
 function strings(v: unknown): string[] { return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; }
 // Perf (issue #13): the "suggested" building/substance for the home map are the same for every
 // visitor between refreshes — cached, keyed by buildVersion().
-const cachedSuggestions = unstable_cache(
+const cachedSuggestions = cached(
   async (_v: string) => {
     const [places, substances] = await Promise.all([
       queryReadSafe<Place>(`SELECT ${columns} ${joins} WHERE ${active} AND p.id=(SELECT x.place_id FROM site.place_pages x JOIN site.documents d ON d.doc=x.doc WHERE ${active} AND x.has_test GROUP BY x.place_id ORDER BY count(*) DESC,x.place_id LIMIT 1) GROUP BY p.id`),

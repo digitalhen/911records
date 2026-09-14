@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, placeQuestion, substanceQuestion, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
 import RecordTable from './RecordTable';
-import { AiMark } from '@/components/ui';
+import { AiMark, Button } from '@/components/ui';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import styles from './map.module.css';
 export default function MapExplorer({ initialPlaces, substances, suggestions, homePanel, unavailable }: {
@@ -49,7 +49,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
-        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask <AiMark /> →</button></div>
+        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><Button variant="primary" type="submit">Ask <AiMark /> →</Button></div>
       <AskPending /></form>
       <div className={styles.chips}>
         {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}

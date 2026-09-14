@@ -1,5 +1,5 @@
 import { cache } from 'react';
-import { unstable_cache } from 'next/cache';
+import { cached } from '@/lib/site';
 import { queryReadSafe } from '@/lib/db';
 import { buildVersion } from '@/lib/site';
 
@@ -62,7 +62,7 @@ async function panelSignatories(limit = 8): Promise<{ rows: PanelRow[]; total: n
 // per-entity LATERAL count) on every visit — cached, keyed by lib/site.ts's buildVersion() so a
 // refresh swap is picked up within ~60s. Rows are already plain JSON (withDates formats dates to
 // strings), so this round-trips through unstable_cache unchanged.
-const cachedPanelGrid = unstable_cache(
+const cachedPanelGrid = cached(
   async (_v: string, limit: number) => {
     const entries = await Promise.all(PANEL_TYPES.map(async type => [type, await panelEntities(type, limit)] as const));
     return Object.fromEntries(entries);
@@ -173,7 +173,7 @@ export async function relatedEntities(pages: Pick<Source,'doc'|'page'>[], exclud
 // request cached (keyed by buildVersion()), wrapped in React's per-request cache() too so the two
 // calls on /topics/[id] (generateMetadata + the page body) never even reach the Next data cache
 // lookup twice in the same request.
-const cachedTopics = unstable_cache(
+const cachedTopics = cached(
   async (_v: string) => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
   LEFT JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN site.pages p USING(doc) WHERE dt.topic=t.id AND d.status IS DISTINCT FROM 'removed'

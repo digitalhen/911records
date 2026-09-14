@@ -10,6 +10,17 @@
 // A2's pipeline is still filling in tables this app doesn't need for day one
 // (entities, signatories, topics, places are read by later workstreams).
 import { unstable_cache } from 'next/cache';
+
+/** unstable_cache that degrades to a direct call outside a Next request context (tsx scripts such
+ *  as the nightly suggestions check, where Next's incremental cache does not exist — it threw
+ *  "Invariant: incrementalCache missing" on 2026-09-14 and broke that check). */
+export function cached<A extends unknown[], R>(fn: (...args: A) => Promise<R>, keys: string[], opts: { revalidate?: number | false; tags?: string[] }): (...args: A) => Promise<R> {
+  const wrapped = unstable_cache(fn, keys, opts);
+  return async (...args: A) => {
+    try { return await wrapped(...args); }
+    catch (e) { if (e instanceof Error && /incrementalCache/.test(e.message)) return fn(...args); throw e; }
+  };
+}
 import { queryRead, queryReadOne, queryReadSafe } from './db';
 import { formatDate, type DatabaseDate } from './dates';
 
@@ -121,7 +132,7 @@ export async function getMeta(): Promise<MetaMap | null> {
 // swap's new site.meta.built_at mints a fresh cache entry right away instead of waiting out a long
 // TTL. Net effect: a swap is visible everywhere within this 60s window, and nothing ever serves a
 // value computed from a built_at older than the one it would report right now.
-const cachedMetaRead = unstable_cache(async () => getMeta(), ['site-meta'], { revalidate: 60 });
+const cachedMetaRead = cached(async () => getMeta(), ['site-meta'], { revalidate: 60 });
 /** built_at (or 'unknown' before the pipeline has written meta) — the cache key for every other
  *  cached read in this module and in lib/discovery/data.ts, lib/map/data.ts. */
 export async function buildVersion(): Promise<string> {
@@ -188,7 +199,7 @@ export async function getNextInFolder(doc: DocumentRow): Promise<{ doc: string }
 // the rendered text between a cold and warm cache). Pre-formatted to the same 'YYYY-MM-DD' string
 // formatDate(Date) already produces, so callers — all of which only ever call formatDate(s.date) —
 // see byte-identical output either way.
-const cachedLatestSnapshot = unstable_cache(
+const cachedLatestSnapshot = cached(
   async (_v: string) => {
     const row = await queryReadOne<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT 1');
     return row ? { ...row, date: formatDate(row.date) } : null;
@@ -200,7 +211,7 @@ export async function getLatestSnapshot(): Promise<SnapshotRow | null> {
   return cachedLatestSnapshot(await buildVersion());
 }
 
-const cachedSnapshots = unstable_cache(
+const cachedSnapshots = cached(
   async (_v: string, limit: number) => {
     const rows = await queryReadSafe<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC LIMIT $1', [limit]);
     return rows.map((r) => ({ ...r, date: formatDate(r.date) }));
@@ -238,7 +249,7 @@ export async function getDocIdsWithDatesPage(offset: number, limit: number): Pro
   return rows.map((r) => ({ doc: r.doc, lastmod: r.lastmod ? formatDate(r.lastmod).slice(0, 10) : null }));
 }
 
-const cachedDocumentCount = unstable_cache(
+const cachedDocumentCount = cached(
   async (_v: string) => {
     const row = await queryReadOne<{ n: string }>('SELECT COUNT(*) AS n FROM site.documents');
     return row ? Number(row.n) : 0;

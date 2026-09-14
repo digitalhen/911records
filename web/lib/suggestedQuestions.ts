@@ -14,11 +14,11 @@ export const SUGGESTED_QUESTION_GROUPS: [string, ...string[]][] = [
   [
     'For families',
     'Was asbestos found at 114 Liberty Street after September 11?',
-    'Can these records connect an illness to a building?',
+    'How were the apartments at 114 Liberty Street cleaned after September 11?',
   ],
   [
     'For legal research',
-    'Find sampling pages by address and Bates number.',
+    'What did DEP say about the asbestos clean-up at 114 Liberty Street?',
     'What do the records say about re-occupancy decisions?',
   ],
 ];

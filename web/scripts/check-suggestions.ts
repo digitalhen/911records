@@ -43,6 +43,7 @@ import { getSuggestions, getPlaceFile } from '../lib/map/data';
 import { buildingUrl, pageUrl, placeQuestion, substanceQuestion } from '../lib/map/types';
 import { getPage } from '../lib/site';
 
+const MIN_SENTENCES = 3; // a suggested question must yield a real answer, not a one-liner
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = join(__dirname, '.suggestions-cache.json');
 const NO_CACHE = process.argv.includes('--no-cache');
@@ -145,6 +146,9 @@ async function checkAsQuestion(q: string): Promise<Outcome> {
   const validated = validateAnswer(answerResult.answer, new Set(pages.map((p) => p.batesPage)));
   if (!validated.sentences.length) {
     return { ok: false, detail: `plan: question — ${pages.length} pages retrieved, 0 sentences survived validation`, costUsd: cost };
+  }
+  if (validated.sentences.length < MIN_SENTENCES) {
+    return { ok: false, detail: `plan: question — only ${validated.sentences.length} sentence(s) survived (need ${MIN_SENTENCES})`, costUsd: cost };
   }
   return {
     ok: true,

@@ -1,5 +1,5 @@
 import 'server-only';
-import { unstable_cache } from 'next/cache';
+import { cached } from '@/lib/site';
 import { queryRead } from '@/lib/db';
 import { buildVersion } from '@/lib/site';
 import { formatDate, type DatabaseDate } from '@/lib/dates';
@@ -13,7 +13,7 @@ export const beforeMirrorNote = 'Known removed before the mirror: the catalog fe
 // pre-formatted to 'YYYY-MM-DD' before it goes into the cache (every caller only ever does
 // formatDate(s.date) with it) so a cache hit renders byte-identical to a cache miss — a raw pg
 // Date would otherwise round-trip through unstable_cache's JSON encoding as a full ISO timestamp.
-const cachedSnapshots = unstable_cache(
+const cachedSnapshots = cached(
   async (_v: string) => {
     const rows = await queryRead<SnapshotRow>('SELECT * FROM site.snapshots ORDER BY date DESC');
     return rows.map((r) => ({ ...r, date: formatDate(r.date) }));
