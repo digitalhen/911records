@@ -15,7 +15,8 @@
     "predev": "node scripts/copy-maplibre-worker.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "ask:eval": "tsx scripts/ask-eval.ts",
-    "suggestions:check": "node --import ./scripts/lib/register-server-only-stub.mjs --import tsx scripts/check-suggestions.ts"
+    "suggestions:check": "node --import ./scripts/lib/register-server-only-stub.mjs --import tsx scripts/check-suggestions.ts",
+    "seed:reading": "tsx scripts/seed-reading.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
