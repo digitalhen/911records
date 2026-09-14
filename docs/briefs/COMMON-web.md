@@ -46,3 +46,6 @@ Rules:
   minutes between the code deploy and the data load (topics.title, 2026-09-14). Code that reads a
   new `site.*` column must tolerate its absence for one release (query `information_schema` once,
   or `SELECT` with a fallback), and the coordinator loads the data before pushing the code.
+- **Versioning (Prospect convention).** `web/lib/releases.ts` holds `APP_VERSION` and `RELEASES`.
+  The coordinator bumps the version and prepends release notes when a user-visible change merges
+  (patch for fixes, minor for features); agents put their proposed note text in their report.
