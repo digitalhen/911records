@@ -3,7 +3,7 @@ import { cache } from 'react';
 import { cached } from '@/lib/site';
 import footprintJoins from '@/public/geo/joins.json';
 import { queryReadSafe } from '@/lib/db';
-import { buildVersion } from '@/lib/site';
+import { buildVersion, documentsHaveTitles } from '@/lib/site';
 import { measurementCandidates } from './measurements';
 import { buildingUrl, DEFAULT_FILTERS, month, type BuildingFacts, type Candidate, type MapFilters, type Place, type PlaceFile } from './types';
 
@@ -138,7 +138,11 @@ async function queryPlaceFile(id: string): Promise<PlaceFile | null> {
   if (!places[0]) return null;
   const place = safePlace(places[0]);
   const facts = await getBuildingFacts(place);
-  const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,
+  // Schema-first (issue #37): d.title is read by name, gated the same way as
+  // lib/discovery/data.ts's topicDocuments()/getOccurrences() — see documentsHaveTitles()'s
+  // comment in lib/site.ts.
+  const titleCol = (await documentsHaveTitles()) ? 'd.title,' : 'NULL::text AS title,';
+  const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,${titleCol}
     pp.has_test,${inspection} inspection,pp.contaminants,pp.units,pp.dates,pp.labs,pp.confidence,t.text
     ${joins} WHERE ${active} AND p.id=$1 ORDER BY dt.first_date NULLS LAST,pp.doc,pp.page`,[place.id]);
   const rows = raw.map(({text, ...r}) => ({ ...r,

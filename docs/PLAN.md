@@ -119,13 +119,22 @@ scripts/refresh_daily.sh (launchd 03:30): enumerate →
 documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
           first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
           pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url,
-          doc_type, doc_type_confidence)
+          doc_type, doc_type_confidence, title, summary, summary_confidence)
           -- doc_type/doc_type_confidence (P3, issue #28, 2026-09-14): a rule-based "what is this
           -- document" label — cover_sheet, lab_report, chain_of_custody, memo_letter,
           -- sign_in_sheet, invoice, permit_application, form, photo_log, other — plus a 0..1
           -- confidence, read from scripts/embed/doctypes.py's data/embed/p3-doctypes.jsonl output
           -- when present, else NULL/NULL (schema-first: absence is tolerated, never required).
           -- Machine-derived; shown labelled "machine-extracted" per the privacy rules.
+          -- title/summary/summary_confidence (P5, issue #37, 2026-09-14): a plain-language title
+          -- (<=10 words, what the record is) and a one-sentence summary (<=180 chars), read from
+          -- scripts/embed/summaries.py's data/embed/p5-summaries.jsonl output when present, else
+          -- NULL/NULL/NULL (schema-first). A cover_sheet's title/summary are rule-based (no model
+          -- call); every other document is named by one claude-haiku-4-5-20251001 call per batch
+          -- of ~10, over doc_type/folder/box/agency/a page excerpt, with the same name-safety
+          -- checks as topics.title (no person's name, ever) before being accepted. Machine-derived;
+          -- shown labelled "machine-extracted" as the document's display name wherever documents
+          -- are listed, with the Bates number secondary.
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared

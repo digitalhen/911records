@@ -40,8 +40,8 @@ export default async function EntityPage({params}:{params:Params}) {
     <Section id="overview" title="Overview">
       <p className="small muted">Distinct page counts by extracted month, not measurements. A page may carry several dates. Coverage is limited to dates on indexed place pages.</p>
       {activity.length>0&&<svg className={styles.histogram} viewBox={`0 0 640 ${activity.length*32}`} role="img" aria-label="Source pages by extracted month">{activity.map((a,i)=><a key={a.month} href={`#month-${a.month}`} aria-label={`${a.month}: ${new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size} pages`}><text x="0" y={i*32+20} fontSize="12">{a.month}</text><rect x="80" y={i*32+4} width={500*new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size/max} height="23" fill="#dfe7f1"/><text x="600" y={i*32+20} fontSize="12">{new Set(a.rows.map(r=>`${r.doc}:${r.page}`)).size}</text></a>)}</svg>}
-      {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · source pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
-      {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
+      {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · source pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
+      {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
       {variants.length>0&&<><h3>Also read as</h3><p className="small muted">Alternate spellings machine-read from the scans, folded into this one canonical entity.</p><div className={styles.variants}>{variants.map(([spelling,count])=><span key={spelling}>{spelling} · {count}×</span>)}</div></>}
       <Extraction source={source} confidence={null}/>
     </Section>
@@ -50,7 +50,7 @@ export default async function EntityPage({params}:{params:Params}) {
 
     <Section id="where" title="Where it appears">
       <p className="small muted">Boxes, folders and agencies this entity's source pages are filed under. Folder labels are omitted to avoid surfacing personal names.</p>
-      {filings.map((key,i)=>{const matches=rows.filter(r=>JSON.stringify([r.agency,r.volume,r.box,r.folder])===key);const r=matches[0]!;return <details key={key}><summary>{r.agency || 'Agency unavailable'} · Box {r.box || 'unavailable'} · Folder {i+1}</summary><p className="small muted">Volume {r.volume || 'unavailable'}.</p>{matches.map(m=><p key={`${m.doc}:${m.page}:${m.role}`}><Link href={pageHref(m.doc,m.page)}>{m.doc} · page {m.page}</Link><Extraction source={m}/></p>)}</details>})}
+      {filings.map((key,i)=>{const matches=rows.filter(r=>JSON.stringify([r.agency,r.volume,r.box,r.folder])===key);const r=matches[0]!;return <details key={key}><summary>{r.agency || 'Agency unavailable'} · Box {r.box || 'unavailable'} · Folder {i+1}</summary><p className="small muted">Volume {r.volume || 'unavailable'}.</p>{matches.map(m=><p key={`${m.doc}:${m.page}:${m.role}`}><Link href={pageHref(m.doc,m.page)}>{m.title || m.doc} · page {m.page}</Link><Extraction source={m}/></p>)}</details>})}
     </Section>
 
     {related.length>0&&<Section id="related" title="Related entities">

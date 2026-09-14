@@ -166,14 +166,22 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
             <div className="eyebrow">
               Document / {pageCount} {pageCount === 1 ? 'page' : 'pages'}
             </div>
-            <h1>{docRow.folder || doc}</h1>
-            <span className="derived-label">Label derived from the City&apos;s folder field. The City does not supply document titles.</span>
+            <h1>{docRow.title || docRow.folder || doc}</h1>
+            {docRow.title ? (
+              <span className="derived-label">
+                Machine-extracted title · confidence {Math.round((docRow.summary_confidence ?? 0) * 100)}%
+              </span>
+            ) : (
+              <span className="derived-label">Label derived from the City&apos;s folder field. The City does not supply document titles.</span>
+            )}
+            {docRow.summary && <p className="subtitle">{docRow.summary}</p>}
             <span className="bates">{batesRange(doc, docRow.bates_end)}</span>
+            {docRow.title && docRow.folder && <p className="small muted">Folder label: &ldquo;{docRow.folder}&rdquo;</p>}
           </div>
           <div className="actions">
             {!removed && (
               <SaveToCaseButton
-                item={{ doc, page, batesPage: bates, label: docRow.folder || doc, box: docRow.box, agency: docRow.agency, volume: docRow.volume }}
+                item={{ doc, page, batesPage: bates, label: docRow.title || docRow.folder || doc, box: docRow.box, agency: docRow.agency, volume: docRow.volume }}
               />
             )}
             <CiteButton citation={citation} />

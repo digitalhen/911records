@@ -9,6 +9,8 @@ export interface Candidate {
   doc: string; page: number; agency: string | null; box: string | null; volume: string | null;
   has_test: boolean; inspection: boolean; contaminants: string[]; units: string[];
   dates: string[]; labs: string[]; confidence: number | null; measurements: string[];
+  /** Plain-language document title (issue #37, scripts/embed/summaries.py), or null. */
+  title: string | null;
 }
 export interface BuildingFacts {
   bbl: string; bin: string | null; year_built: number | null; num_floors: number | null;

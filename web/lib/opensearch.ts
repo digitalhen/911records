@@ -109,6 +109,11 @@ export interface SearchHit {
    *  this page's document — null before that pipeline has run over it, or before the field exists
    *  in the mapping at all. */
   docType: string | null;
+  /** Plain-language document title (issue #37, scripts/embed/summaries.py), when the index has
+   *  named this page's document — null before that pipeline has run over it, before the field
+   *  exists in the mapping at all, or when the document was privacy-rejected with nothing safe to
+   *  show. Used as the result heading in place of the bare folder label/Bates number. */
+  docTitle: string | null;
 }
 
 export interface SearchResult {
@@ -299,7 +304,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   const body: Record<string, unknown> = {
     from,
     size: pageSize,
-    _source: ['doc', 'page', 'bates_page', 'agency', 'source', 'box', 'folder', 'volume', 'ocr_status', 'contaminants', 'doc_type'],
+    _source: ['doc', 'page', 'bates_page', 'agency', 'source', 'box', 'folder', 'volume', 'ocr_status', 'contaminants', 'doc_type', 'doc_title'],
     query: queryBody,
     post_filter: filterClauses.length ? { bool: { filter: filterClauses } } : undefined,
     aggs: Object.fromEntries(FACET_FIELDS.map((f) => [f, { terms: { field: f, size: 15 } }])),
@@ -330,6 +335,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
       score: h._score ?? 0,
       snippetHtml: h.highlight?.text?.[0] ? renderSnippet(h.highlight.text[0]) : null,
       docType: h._source.doc_type ?? null,
+      docTitle: h._source.doc_title ?? null,
     }));
     const facets: Record<string, FacetBucket[]> = {};
     for (const f of FACET_FIELDS) {
@@ -364,6 +370,7 @@ interface OsHit {
     ocr_status?: string;
     contaminants?: string[];
     doc_type?: string;
+    doc_title?: string;
   };
   highlight?: { text?: string[] };
 }
@@ -422,7 +429,7 @@ export async function moreLikePage(doc: string, page: number, size = 4): Promise
   try {
     const res = (await call('POST', `/${INDEX}/_search`, {
       size,
-      _source: ['doc', 'page', 'bates_page', 'agency', 'box', 'folder', 'volume', 'doc_type'],
+      _source: ['doc', 'page', 'bates_page', 'agency', 'box', 'folder', 'volume', 'doc_type', 'doc_title'],
       query: {
         more_like_this: {
           fields: ['text'],
@@ -448,6 +455,7 @@ export async function moreLikePage(doc: string, page: number, size = 4): Promise
         score: h._score ?? 0,
         snippetHtml: null,
         docType: h._source.doc_type ?? null,
+        docTitle: h._source.doc_title ?? null,
       }));
   } catch {
     return [];

@@ -12,8 +12,9 @@ type Query = Promise<SearchParamsInput>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { doc, n } = await params;
   const row = await getDocument(doc);
-  const title = row ? `${row.folder || doc} · page ${n}` : `${doc} p${n}`;
-  const description = row ? `Page ${n} of ${row.folder || doc}, Bates-numbered ${doc}. Mirrored independently; not affiliated with the City of New York.` : undefined;
+  const label = row?.title || row?.folder || doc;
+  const title = row ? `${label} · page ${n}` : `${doc} p${n}`;
+  const description = row ? `Page ${n} of ${label}, Bates-numbered ${doc}. Mirrored independently; not affiliated with the City of New York.` : undefined;
   return {
     // Root layout's title template already appends " · 9/11 City Records".
     title,

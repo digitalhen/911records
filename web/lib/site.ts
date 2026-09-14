@@ -55,6 +55,15 @@ export interface DocumentRow {
    *  Machine-derived; always show it labelled "machine-extracted", never as City metadata. */
   doc_type: string | null;
   doc_type_confidence: number | null;
+  /** Plain-language title (issue #37, scripts/embed/summaries.py) — at most ~10 words, what the
+   *  record is — or null before the pipeline has named this document (or before the column has
+   *  been loaded at all — getDocument's `SELECT *` tolerates the column's absence, schema-first).
+   *  Machine-derived; always shown as the document's display name with the Bates number secondary,
+   *  labelled "machine-extracted". */
+  title: string | null;
+  /** One-sentence summary (<=180 chars) paired with `title`, or null under the same conditions. */
+  summary: string | null;
+  summary_confidence: number | null;
 }
 
 export interface PageRow {
@@ -267,4 +276,26 @@ export async function siteSchemaReady(): Promise<boolean> {
     "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'site' AND table_name = 'documents') AS exists",
   );
   return rows[0]?.exists ?? false;
+}
+
+// Schema-first (docs/briefs/COMMON-web.md's hard-won rule, after the topics.title incident,
+// 2026-09-14): a handful of listing queries elsewhere (topics, entities, related records, case
+// folder, buildings — issue #37) SELECT site.documents.title/summary explicitly by name rather
+// than through `SELECT *`, so — unlike getDocument() above — they would throw Postgres's "column
+// does not exist" (42703) in the window between this code deploying and the pipeline rebuilding
+// `site` with the new columns. Checked once via information_schema and cached like buildVersion()'s
+// other reads, so those call sites can build a fallback query (title/summary omitted) for that
+// window instead of a hard 500.
+const cachedDocumentsHaveTitles = cached(
+  async (_v: string) => {
+    const row = await queryReadOne<{ exists: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='site' AND table_name='documents' AND column_name='title') AS exists",
+    );
+    return row?.exists ?? false;
+  },
+  ['site-documents-have-titles'],
+  { revalidate: 60 },
+);
+export async function documentsHaveTitles(): Promise<boolean> {
+  return cachedDocumentsHaveTitles(await buildVersion());
 }

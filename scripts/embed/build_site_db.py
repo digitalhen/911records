@@ -9,7 +9,7 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
   documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pdf_size, status,
             first_seen, removed_at, reappeared_at, changed_at, changed_fields, held_locally,
             pages_ok, pages_empty, pages_ocr, topic, n_related_cross, official_url,
-            doc_type, doc_type_confidence)
+            doc_type, doc_type_confidence, title, summary, summary_confidence)
   pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
   snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
   changes(date, doc, kind, fields)                       kind IN added|removed|changed|reappeared
@@ -54,6 +54,12 @@ Sources:
                              / doc_type_confidence (issue #28). Optional: a document missing from
                              the file, or the file itself missing, gets NULL/NULL — schema-first,
                              same as every other optional source below.
+  data/embed/p5-summaries.jsonl  scripts/embed/summaries.py's per-document title + one-sentence
+                             summary (issue #37): {doc, title, summary, confidence, model, hash},
+                             one line per document -> documents.title / summary / summary_confidence.
+                             Optional, same schema-first rule as doc_type above: a document missing
+                             from the file (not yet processed, or privacy-rejected with no safe
+                             title/summary produced) gets NULL/NULL/NULL, never a placeholder.
   data/pages/**/pages.json   {pages:n, w:[...], h:[...], dpi, rendered_at} -> image_ready per page
                              (written by A1's render_pages.mjs; may not exist yet — treated as optional)
 
@@ -102,6 +108,7 @@ OUT_PATH = SITE_DIR / "site.sqlite"
 # entities.py's GAZETTEER_CSV, which must point at the same file.
 GAZETTEER_CSV = EMB / "gazetteer-prospect.csv"
 DOCTYPES_JSONL = EMB / "p3-doctypes.jsonl"
+SUMMARIES_JSONL = EMB / "p5-summaries.jsonl"
 
 RE_BATES_NUM = re.compile(r"(\d+)$")
 RE_LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
@@ -541,6 +548,30 @@ def load_doc_types() -> dict[str, tuple[str, float]]:
     return out
 
 
+def load_summaries() -> dict[str, tuple[str, str | None, float | None]]:
+    """doc -> (title, summary, confidence) from scripts/embed/summaries.py's output (issue #37).
+    Optional: the file may not have been built yet, and any document missing from it — not yet
+    processed, or privacy-rejected with nothing safe to show — gets NULL/NULL/NULL, same schema-
+    first rule as load_doc_types() above. A row with a title but no summary (should not normally
+    happen, but tolerated) keeps the title; a row with neither is skipped entirely."""
+    out: dict[str, tuple[str, str | None, float | None]] = {}
+    if not SUMMARIES_JSONL.exists():
+        return out
+    with SUMMARIES_JSONL.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            doc = row.get("doc")
+            if doc and row.get("title"):
+                out[doc] = (row["title"], row.get("summary"), row.get("confidence"))
+    return out
+
+
 # --------------------------------------------------------------- build ------
 
 SCHEMA = """
@@ -548,7 +579,8 @@ CREATE TABLE documents(
   doc TEXT PRIMARY KEY, bates_end TEXT, agency TEXT, source TEXT, volume TEXT, box TEXT, folder TEXT,
   page_count INT, pdf_size INT, status TEXT, first_seen TEXT, removed_at TEXT, reappeared_at TEXT,
   changed_at TEXT, changed_fields TEXT, held_locally INT, pages_ok INT, pages_empty INT, pages_ocr INT,
-  topic INT, n_related_cross INT, official_url TEXT, doc_type TEXT, doc_type_confidence REAL
+  topic INT, n_related_cross INT, official_url TEXT, doc_type TEXT, doc_type_confidence REAL,
+  title TEXT, summary TEXT, summary_confidence REAL
 );
 CREATE TABLE pages(
   doc TEXT, page INT, bates TEXT, chars INT, ocr_status TEXT, ocr_source TEXT, image_ready INT,
@@ -654,6 +686,7 @@ def main() -> int:
     places_rows, place_pages_rows = load_places()
     building_facts_rows = load_building_facts()
     doc_types = load_doc_types()
+    summaries = load_summaries()
     snapshots_rows = load_snapshots()
     changes_rows = load_changes(manifest_by_doc)
 
@@ -668,6 +701,7 @@ def main() -> int:
         held = (REPO / r["local_pdf"]).exists() if r.get("local_pdf") else False
         counts = status_counts.get(doc, {})
         doc_type, doc_type_confidence = doc_types.get(doc, (None, None))
+        title, summary, summary_confidence = summaries.get(doc, (None, None, None))
         doc_rows.append((
             doc, r.get("bates_end"), r.get("agency"), r.get("source"), r.get("production_volume"),
             r.get("box_name"), r.get("folder_name"), r.get("page_count"), r.get("pdf_size"), r.get("status"),
@@ -676,7 +710,7 @@ def main() -> int:
             1 if held else 0,
             counts.get("ok", 0), counts.get("empty", 0), counts.get("ocr", 0),
             topic_of_doc.get(doc), cross_of_doc.get(doc, 0), r.get("download_url"),
-            doc_type, doc_type_confidence,
+            doc_type, doc_type_confidence, title, summary, summary_confidence,
         ))
         n_rendered = image_ready_counts.get(doc, 0)
         start_n = bates_num(doc)
@@ -691,7 +725,7 @@ def main() -> int:
             pages_rows.append((doc, p, bates, st["chars"] if st else None, ocr_status, ocr_source,
                                 1 if p <= n_rendered else 0))
 
-    con.executemany("INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", doc_rows)
+    con.executemany("INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", doc_rows)
     con.executemany("INSERT INTO pages VALUES (?,?,?,?,?,?,?)", pages_rows)
     con.executemany("INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?)",
                      [(s["date"], s["documents"], s["pages"], s["bytes"], s["added"], s["removed"], s["changed"],
@@ -715,7 +749,7 @@ def main() -> int:
         "signatories": len(signatories_rows), "signatory_pages": len(signatory_pages_rows),
         "related": len(related_rows), "near_dupes": len(near_dupes_rows), "topics": len(topics_rows),
         "doc_topics": len(doc_topics_rows), "places": len(places_rows), "place_pages": len(place_pages_rows),
-        "building_facts": len(building_facts_rows),
+        "building_facts": len(building_facts_rows), "documents_with_title": sum(1 for d in doc_rows if d[24]),
     }
     latest_snapshot = snapshots_rows[-1]["date"] if snapshots_rows else None
     meta_rows = [

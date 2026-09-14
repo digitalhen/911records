@@ -165,13 +165,15 @@ export function CaseFolderApp() {
                     <div className="exhibit-no">{String(i + 1).padStart(2, '0')}</div>
                     <div>
                       <h2>
-                        <Link href={docHref(item.doc, item.page)}>{item.label || item.doc}</Link>
+                        <Link href={docHref(item.doc, item.page)}>{m?.title || item.label || item.doc}</Link>
                       </h2>
                       <Link href={docHref(item.doc, item.page)} className="mono">
                         {batesRange(item.doc, m?.bates_end)} ↗
                       </Link>
+                      {m?.summary && <p className="small">{m.summary}</p>}
                       <p>
-                        {item.box ? `Box ${item.box} · ` : ''}Label derived from the City&apos;s folder field
+                        {item.box ? `Box ${item.box} · ` : ''}
+                        {m?.title ? 'Machine-extracted title' : "Label derived from the City's folder field"}
                         {removed ? ' · removed by the City' : ''}
                       </p>
                       <label htmlFor={`case-note-${i}`}>Your note</label>
@@ -256,7 +258,7 @@ export function CaseFolderApp() {
                 return (
                   <div key={`${s.doc}:${s.page}`}>
                     <Link className="question-link" href={docHref(s.doc, s.page)}>
-                      {m?.folder || s.doc} · page {s.page} <span>{s.score.toFixed(2)}</span>
+                      {m?.title || m?.folder || s.doc} · page {s.page} <span>{s.score.toFixed(2)}</span>
                     </Link>
                     <p className="small muted">
                       {s.reason} <Link href={docHref(s.doc, s.page)}>{batesRange(s.doc, m?.bates_end)} ↗</Link>

@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { cached } from '@/lib/site';
 import { queryReadSafe } from '@/lib/db';
-import { buildVersion } from '@/lib/site';
+import { buildVersion, documentsHaveTitles } from '@/lib/site';
 
 export const ENTITY_TYPES = ['lab', 'agency', 'contractor', 'substance', 'address'] as const;
 export const TYPE_LABELS: Record<string, string> = { lab: 'Labs', agency: 'Agencies & offices', contractor: 'Contractors', substance: 'Substances', address: 'Addresses & buildings', signatory: 'Officials acting on records' };
@@ -12,7 +12,7 @@ export const entityHref = (type: string, slug: string) => type === 'signatory' ?
 export interface Source { doc: string; page: number; confidence: number | null }
 export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bin?: string | null; bbl?: string | null; variants?: unknown }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
-export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; dates: unknown }
+export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; title: string | null; dates: unknown }
 // Not `extends Source`: a parent/rollup topic (no direct site.doc_topics rows — see getTopics)
 // has no doc/page of its own, unlike every other Source-bearing row in this file.
 export interface Topic { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null; doc: string | null; page: number | null; confidence: number | null }
@@ -146,7 +146,8 @@ export const getOccurrences = cache(async (id: string, signatory = false): Promi
   const table = signatory ? 'signatory_pages' : 'entity_pages';
   const key = signatory ? 'id' : 'entity_id';
   const role = signatory ? 'action' : 'role';
-  return queryReadSafe<Occurrence>(`SELECT DISTINCT ep.doc,ep.page,ep.${role} AS role,ep.confidence,d.agency,d.volume,d.box,d.folder,
+  const titleCol = (await documentsHaveTitles()) ? 'd.title,' : 'NULL::text AS title,';
+  return queryReadSafe<Occurrence>(`SELECT DISTINCT ep.doc,ep.page,ep.${role} AS role,ep.confidence,d.agency,d.volume,d.box,d.folder,${titleCol}
     (SELECT jsonb_agg(pp.dates) FROM site.place_pages pp WHERE pp.doc=ep.doc AND pp.page=ep.page) AS dates
     FROM site.${table} ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
     WHERE ep.${key}=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY ep.doc,ep.page,role`, [id]);
@@ -183,7 +184,12 @@ const cachedTopics = cached(
 );
 export const getTopics = cache(async () => cachedTopics(await buildVersion()));
 export async function topicDocuments(id: number, offset = 0) {
-  return queryReadSafe<Source & { prob: number; agency: string | null; box: string | null; total: number }>(`SELECT dt.doc,dt.prob,d.agency,d.box,p.page,COUNT(*) OVER() AS total
+  // Schema-first (issue #37): d.title/d.summary are read by name, not `SELECT *`, so they are
+  // gated on documentsHaveTitles() rather than risking a 42703 in the deploy/data-load gap — see
+  // that function's comment in lib/site.ts.
+  const withTitles = await documentsHaveTitles();
+  const titleCols = withTitles ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
+  return queryReadSafe<Source & { prob: number; agency: string | null; box: string | null; title: string | null; summary: string | null; total: number }>(`SELECT dt.doc,dt.prob,d.agency,d.box,${titleCols}p.page,COUNT(*) OVER() AS total
     FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN LATERAL (SELECT page FROM site.pages WHERE doc=d.doc ORDER BY page LIMIT 1) p ON true
     WHERE dt.topic=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY dt.prob DESC NULLS LAST,dt.doc LIMIT 50 OFFSET $2`, [id,offset]);
