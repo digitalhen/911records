@@ -25,12 +25,15 @@ Steps:
   4. Within one (house number, type) group, the highest-frequency street-name spelling is the
      seed. If its total count >= 5, every other spelling in the group is matched against it: exact
      (post-normalization) -> 1.0; Damerau-Levenshtein <= 2 -> 0.9; OCR-confusion-aware distance
-     <= 3 (only tried for names >= 8 chars, since a short name has too little signal for a fuzzy
-     match) -> 0.75. Anything that doesn't come within threshold of the seed keeps its own
+     <= 3 (only tried for names >= 6 chars, `OCR_MIN_LEN` — a short name has too little signal for
+     a fuzzy match) -> 0.75. Anything that doesn't come within threshold of the seed keeps its own
      normalized spelling as its own canonical entry (still confidence 1.0 for *its own* subgroup —
      it did not merge into anything, it did not fail to merge either). If the group's best count
      never reaches 5, the whole group is "seed-only": every member gets confidence 0.5, because
-     there was never enough independent corroboration to trust the merge.
+     there was never enough independent corroboration to trust the merge. **A candidate is never
+     matched, at any tier, when both names carry a digit token and the tokens differ** ("EAST 45"
+     vs "EAST 4") — a numbered street's number IS the street name, so that guard applies before the
+     distance check even runs (`_match_tier`).
   5. `canonical_key = f"address:{house_num}-{slug(seed street)}"`, `canonical_label` is the seed
      spelling in Title Case ("295 Lafayette Street").
 
@@ -230,16 +233,53 @@ def load_gazetteer(path: str | Path) -> Dict[str, List[GazEntry]]:
 # frequency-seed fallback, so a roll match and a frequency match are scored on equal footing.
 TIER_CONF = {0: 1.0, 1: 0.9, 2: 0.75}
 
+# Team lead, 2026-09-14: OCR-aware tier's length gate lowered 8 -> 6, so "Labette" (7 chars) can
+# reach "Lafayette" (9 chars, ocr_aware_distance == 3.0). Applied uniformly — to BOTH the roll and
+# the frequency-seed fallback, not roll matches only, even though the ask's parenthetical framed it
+# as roll-anchored ("the candidate seed is a roll address"): 295 Lafayette Street, the address that
+# motivated the ask, sits outside the gazetteer's nine-ZIP footprint (NoHo, ZIP 10012 — see the
+# module docstring), so "Labette" never has a roll candidate to match against at house number 295;
+# restricting the lower gate to roll-only matches would never produce the merge that was asked for.
+OCR_MIN_LEN = 6
+# The OCR-aware tier's distance cap is a RATIO of the longer name's length, not a flat 3, and this
+# is the second live finding from this round's re-testing (also not part of either explicit ask,
+# also fixed and flagged in the report). A flat "<=3 for names >=6 chars" lets a distance-3 match
+# span HALF of a 6-letter word — "WARREN"/"WALKER" and "WARREN"/"WATERS" (each 6 chars, distance 3)
+# are real, distinct Lower Manhattan streets that were merging via ROLL matches once OCR_MIN_LEN
+# dropped to 6. OCR_MAX_RATIO reproduces the original spec's own implicit ratio (distance<=3 AT
+# length>=8 means <=37.5% of the word) at every length instead of only at exactly 8: "LABETTE"
+# (7)/"LAFAYETTE" (9) stays at distance 3 / 9 = 33% (kept), "WARREN"/"WALKER" is 3 / 6 = 50%
+# (rejected). OCR_MIN_LEN stays as a hard floor below which no OCR-aware match is even attempted.
+MIN_PLAIN_LEN = 6
+OCR_MAX_RATIO = 3 / 8
+
+RE_DIGIT_TOKEN = re.compile(r"\d+")
+
+
+def _digit_tokens(s: str) -> set:
+    return set(RE_DIGIT_TOKEN.findall(s))
+
 
 def _match_tier(a: str, b: str) -> Tuple[int, float] | None:
+    # Never fuzzy-match across differing digit tokens (team lead, 2026-09-14): "EAST 45" and
+    # "EAST 4" (from "228 E. 45th Street" / "228 E. 4th Street") are one Damerau edit apart, but a
+    # numbered street's number IS the street — dropping/changing a digit is a different address,
+    # not an OCR wobble, and it is exactly the shape of error this module must never merge past
+    # (same principle as house number and street type, just inside the fuzzy-matched name). A
+    # street name with NO digit token (ordinary names) is unaffected either way.
+    da, db = _digit_tokens(a), _digit_tokens(b)
+    if da and db and da != db:
+        return None
     if a == b:
         return (0, 0.0)
-    dist_plain = damerau_levenshtein(a, b) if min(len(a), len(b)) else 99
-    if dist_plain <= 2:
-        return (1 if dist_plain <= 1 else 2, float(dist_plain))
-    if len(a) >= 8 and len(b) >= 8:
+    if len(a) >= MIN_PLAIN_LEN and len(b) >= MIN_PLAIN_LEN:
+        dist_plain = damerau_levenshtein(a, b)
+        if dist_plain <= 2:
+            return (1 if dist_plain <= 1 else 2, float(dist_plain))
+    if len(a) >= OCR_MIN_LEN and len(b) >= OCR_MIN_LEN:
         dist_ocr = ocr_aware_distance(a, b)
-        if dist_ocr <= 3:
+        max_dist = min(3.0, max(len(a), len(b)) * OCR_MAX_RATIO)
+        if dist_ocr <= max_dist:
             return (1 if dist_ocr <= 1 else 2, dist_ocr)
     return None
 
