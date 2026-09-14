@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh — keep text, page embeddings and entities current while the mirror downloads.
 #
-# Every INTERVAL seconds (default 1200): extract_text.mjs --jobs 2 → embed/pages.py → embed/entities.py.
+# Every INTERVAL seconds (default 1200): extract → render (900s cap) → OCR → page embeddings → entities.
 # Each stage is incremental, so a cycle over nothing new takes seconds. Local only: none of these
 # stages contacts the portal (download.mjs, owned by the mirror, is the only thing that does).
 #
@@ -36,13 +36,18 @@ while true; do
   ext=$(node scripts/extract_text.mjs --jobs 2 2>&1 | tail -1)
   log "extract: $ext"
   after=$(find data/text -name '*.pages.jsonl' 2>/dev/null | wc -l | tr -d ' ')
+  rendered=$(node scripts/render_pages.mjs --jobs 3 --max-seconds 900 2>&1 | tail -1)
+  log "render: $rendered"
+  ocr=$(.venv/bin/python scripts/embed/ocr_pages.py 2>&1 | tail -1)
+  log "ocr: $ocr"
   log "pages.py: $(.venv/bin/python scripts/embed/pages.py 2>&1 | tail -1)"
   ent=$(.venv/bin/python scripts/embed/entities.py 2>&1 | grep -E '"run"' -A3 | tr -d '\n' | tr -s ' ')
   log "entities.py: $ent"
   status=$(python3 -c "import json;print(json.load(open('data/download.progress.json')).get('status',''))" 2>/dev/null || echo "")
   log "text docs $before -> $after; download status: ${status:-unknown}"
   if [ "$status" = "finished" ] || [ "$status" = "done" ] || [ "$status" = "complete" ]; then
-    if [ "$before" = "$after" ]; then log "download finished and nothing new; exiting"; exit 0; fi
+    idle=$(python3 -c 'import json,sys; r,o,e=map(json.loads,sys.argv[1:]); print(int(not r.get("timed_out",True) and r.get("errors",1)==0 and r.get("rendered",1)==0 and o.get("errors",1)==0 and o.get("ocr",1)==0 and e.get("error",0)==0))' "$rendered" "$ocr" "$ext" 2>/dev/null || echo 0)
+    if [ "$before" = "$after" ] && [ "$idle" = 1 ]; then log "download finished and nothing new; exiting"; exit 0; fi
   fi
   sleep "$INTERVAL"
 done

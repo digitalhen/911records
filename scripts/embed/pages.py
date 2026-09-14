@@ -13,7 +13,7 @@ dense): CHUNK_CHARS with OVERLAP, so one page may yield several vectors.
 Store: data/embed/pages.sqlite
   pages(doc TEXT, page INT, bates TEXT, chars INT, alpha_ratio REAL, status TEXT,
         text_sha1 TEXT, PRIMARY KEY(doc, page))
-        status ∈ ok | empty (image-only / <MIN_CHARS) | junk (alpha_ratio < MIN_ALPHA)
+        status ∈ ok | ocr (Tesseract text replacing an empty page) | empty (image-only / <MIN_CHARS) | junk (alpha_ratio < MIN_ALPHA)
   chunks(doc TEXT, page INT, chunk INT, start INT, end INT, model TEXT, vec BLOB,
          PRIMARY KEY(doc, page, chunk, model))
   -- vec is float32 little-endian, 768 bytes*4
@@ -91,7 +91,7 @@ def main() -> int:
         files = files[: args.limit_docs]
 
     pending: list[tuple] = []   # (doc, page, chunk, start, end, text)
-    stats = {"docs": 0, "pages_seen": 0, "pages_new": 0, "ok": 0, "empty": 0, "junk": 0, "chunks": 0}
+    stats = {"docs": 0, "pages_seen": 0, "pages_new": 0, "ok": 0, "ocr": 0, "empty": 0, "junk": 0, "chunks": 0}
     t0 = time.time()
 
     def flush():
@@ -107,24 +107,35 @@ def main() -> int:
     for f in files:
         doc = f.name[: -len(".pages.jsonl")]
         stats["docs"] += 1
+        ocr_file = f.with_name(doc + ".ocr.jsonl")
+        ocr_rows = {int(r["page"]): r for line in ocr_file.read_text().splitlines() if line.strip()
+                    for r in [json.loads(line)]} if ocr_file.exists() else {}
         for line in f.open():
             if not line.strip():
                 continue
             row = json.loads(line)
             page, text = int(row["page"]), row.get("text") or ""
             stats["pages_seen"] += 1
+            used_ocr = False
+            if len(re.sub(r"\s+", " ", text).strip()) < MIN_CHARS:
+                candidate = ocr_rows.get(page, {})
+                if candidate.get("chars", 0) >= MIN_CHARS and candidate.get("text"):
+                    text = candidate["text"]
+                    used_ocr = True
             sha = hashlib.sha1(text.encode()).hexdigest()
             if known.get((doc, page)) == sha:
                 continue
             stripped = re.sub(r"\s+", " ", text).strip()
             alpha = sum(ch.isalpha() for ch in stripped) / max(1, len(stripped))
             status = "empty" if len(stripped) < MIN_CHARS else ("junk" if alpha < MIN_ALPHA else "ok")
+            if used_ocr:
+                status = "ocr"
             stats[status] += 1
             stats["pages_new"] += 1
             con.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?,?,?)",
                         (doc, page, row.get("bates"), len(stripped), round(alpha, 3), status, sha))
             con.execute("DELETE FROM chunks WHERE doc=? AND page=? AND model=?", (doc, page, MODEL))
-            if status != "ok":
+            if status not in ("ok", "ocr"):
                 continue
             for ci, s, e in chunks_of(stripped):
                 pending.append((doc, page, ci, s, e, stripped[s:e]))

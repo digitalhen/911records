@@ -7,9 +7,10 @@
 // For each manifest row whose PDF is complete (its download sidecar exists):
 //   data/text/<agency>/<volume>/<bates_start>.txt          whole document, pages separated by \f
 //   data/text/<agency>/<volume>/<bates_start>.pages.jsonl  {page, bates, chars, text} one line per page
-// Skips documents whose .txt is newer than the PDF. Safe to run while download.mjs is running.
+// Also writes .boxes.jsonl in PDF points; missing boxes get a boxes-only pass.
+// Skips documents whose outputs are newer than the PDF. Safe to run while download.mjs is running.
 //
-// Usage: node scripts/extract_text.mjs [--jobs 4] [--force]
+// Usage: node scripts/extract_text.mjs [--jobs 4] [--force] [--limit N]
 //        node scripts/extract_text.mjs --quality [N]   score N extracted documents (counts only, no text printed)
 
 import { execFile } from 'node:child_process';
@@ -21,7 +22,9 @@ import { DATA, REPO } from './lib/portal.mjs';
 const run = promisify(execFile);
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : dflt; };
-const JOBS = Number(opt('--jobs', 4)) || 4;
+const JOBS = Number(opt('--jobs', 4));
+const LIMIT = Number(opt('--limit', 0));
+if (!Number.isInteger(JOBS) || JOBS < 1 || !Number.isInteger(LIMIT) || LIMIT < 0) throw Error('Invalid --jobs or --limit');
 const FORCE = args.includes('--force');
 const exists = (p) => stat(p).then((s) => s, () => null);
 
@@ -40,22 +43,52 @@ async function extractOne(row) {
   const pdf = join(REPO, row.local_pdf);
   const [p, side] = await Promise.all([exists(pdf), exists(`${pdf}.json`)]);
   if (!p || !side) return 'not-downloaded';
+  const receipt = JSON.parse(await readFile(`${pdf}.json`, 'utf8'));
+  if (!receipt.sha256) return 'not-downloaded';
   const txt = join(REPO, row.local_text);
-  const t = await exists(txt);
-  if (t && !FORCE && t.mtimeMs >= p.mtimeMs) return 'up-to-date';
+  const pagesPath = txt.replace(/\.txt$/, '.pages.jsonl');
+  const boxesPath = txt.replace(/\.txt$/, '.boxes.jsonl');
+  const [t, pagesStat, boxesStat] = await Promise.all([exists(txt), exists(pagesPath), exists(boxesPath)]);
+  const needText = FORCE || !t || !pagesStat || t.mtimeMs < p.mtimeMs;
+  const needBoxes = FORCE || !boxesStat || boxesStat.mtimeMs < p.mtimeMs;
+  if (!needText && !needBoxes) return 'up-to-date';
   await mkdir(dirname(txt), { recursive: true });
-  const { stdout } = await run('pdftotext', ['-layout', '-enc', 'UTF-8', pdf, '-'], { maxBuffer: 2 * 1024 ** 3, encoding: 'utf8' });
-  const pages = stdout.split('\f');
-  if (pages.length > 1 && pages.at(-1).trim() === '') pages.pop();
-  const jsonl = pages.map((text, i) => JSON.stringify({ page: i + 1, bates: batesAt(row, i), chars: text.length, text })).join('\n') + '\n';
-  await writeFile(`${txt}.tmp`, stdout);
-  await writeFile(txt.replace(/\.txt$/, '.pages.jsonl'), jsonl);
-  await rename(`${txt}.tmp`, txt);
+  if (needText) {
+    const { stdout } = await run('pdftotext', ['-layout', '-enc', 'UTF-8', pdf, '-'], { maxBuffer: 2 * 1024 ** 3, encoding: 'utf8' });
+    const pages = stdout.split('\f');
+    if (pages.length > 1 && pages.at(-1).trim() === '') pages.pop();
+    const jsonl = pages.map((text, i) => JSON.stringify({ page: i + 1, bates: batesAt(row, i), chars: text.length, text })).join('\n') + '\n';
+    await writeFile(`${txt}.tmp`, stdout);
+    await writeFile(pagesPath, jsonl);
+    await rename(`${txt}.tmp`, txt);
+  }
+  if (needBoxes) {
+    const { stdout } = await run('pdftotext', ['-bbox-layout', '-enc', 'UTF-8', pdf, '-'], { maxBuffer: 2 * 1024 ** 3, encoding: 'utf8' });
+    const decode = s => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (m, e) => e[0] === '#' ? String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"}[e] ?? m));
+    const attr = (s, key) => { const m = new RegExp(`\\b${key}="([^"]+)"`).exec(s); if (!m || !Number.isFinite(Number(m[1]))) throw Error(`Invalid bbox ${key}`); return Number(m[1]); };
+    const lines = [];
+    for (const m of stdout.matchAll(/<page\b([^>]*)>([\s\S]*?)<\/page>/g)) {
+      const words = [...m[2].matchAll(/<word\b([^>]*)>([\s\S]*?)<\/word>/g)].map(w => [attr(w[1], 'xMin'), attr(w[1], 'yMin'), attr(w[1], 'xMax'), attr(w[1], 'yMax'), decode(w[2])]);
+      lines.push(JSON.stringify({page: lines.length + 1, w: attr(m[1], 'width'), h: attr(m[1], 'height'), words}));
+    }
+    if (!lines.length) throw Error('No bbox pages parsed');
+    await writeFile(`${boxesPath}.tmp`, lines.join('\n') + '\n');
+    await rename(`${boxesPath}.tmp`, boxesPath);
+  }
+  if (!needText) return 'boxes-only';
   return 'extracted';
 }
 
 async function extractAll() {
-  const rows = await manifest();
+  let rows = await manifest();
+  if (LIMIT) {
+    const completed = [];
+    for (const row of rows) {
+      if (await exists(join(REPO, row.local_pdf + ".json")) && await exists(join(REPO, row.local_pdf))) completed.push(row);
+      if (completed.length >= LIMIT) break;
+    }
+    rows = completed;
+  }
   const counts = {};
   let i = 0;
   const worker = async () => {
