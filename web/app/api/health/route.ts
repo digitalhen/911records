@@ -3,6 +3,7 @@ import { pingDb, pingReadPool, readPoolState } from '@/lib/db';
 import { getMeta, siteSchemaReady } from '@/lib/site';
 import { healthCheck as opensearchHealth } from '@/lib/opensearch';
 import { ollamaHealth } from '@/lib/embed';
+import { filesHealth } from '@/lib/files';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +21,14 @@ export async function GET() {
   const commit = process.env.GIT_SHA?.trim() || null;
   const replica = process.env.REPLICA_NAME?.trim() || null;
 
-  const [dbUp, readUp, schemaReady, meta, os, ollama] = await Promise.all([
+  const [dbUp, readUp, schemaReady, meta, os, ollama, files] = await Promise.all([
     pingDb(1_000),
     pingReadPool(1_000),
     siteSchemaReady().catch(() => false),
     getMeta().catch(() => null),
     opensearchHealth(),
     ollamaHealth(),
+    filesHealth(),
   ]);
 
   return NextResponse.json({
@@ -48,5 +50,6 @@ export async function GET() {
     },
     opensearch: { reachable: os.reachable, docCount: os.docCount, error: os.error },
     ollama: { reachable: ollama },
+    files: { reachable: files },
   });
 }

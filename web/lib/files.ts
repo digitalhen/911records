@@ -69,3 +69,22 @@ export async function fileExists(url: string, timeoutMs = 2000): Promise<boolean
     clearTimeout(timer);
   }
 }
+
+/**
+ * Is the files service up at all? Any HTTP response (even a 404 for a path
+ * that doesn't exist) means the service answered; only a network-level
+ * failure (connection refused, timeout, DNS) means it's down. Used by
+ * /api/health — that distinction is exactly "reachable" vs. "not".
+ */
+export async function filesHealth(timeoutMs = 1500): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    await fetch(`${FILES_URL}/pdf/`, { method: 'HEAD', signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
