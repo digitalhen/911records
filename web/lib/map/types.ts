@@ -11,6 +11,8 @@ export interface Candidate {
   dates: string[]; labs: string[]; confidence: number | null; measurements: string[];
   /** Plain-language document title (issue #37, scripts/embed/summaries.py), or null. */
   title: string | null;
+  /** One-sentence summary (<=180 chars) paired with `title`, or null under the same conditions. */
+  summary: string | null;
 }
 export interface BuildingFacts {
   bbl: string; bin: string | null; year_built: number | null; num_floors: number | null;

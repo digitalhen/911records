@@ -12,7 +12,7 @@ export default function RecordTable({ rows, compact = false }: { rows: Candidate
     {!rows.length ? <p>No test candidates in this selection.</p> : <div className={styles.tableWrap}><table className={compact ? styles.compactTable : styles.table}>
       <thead><tr><th>Date / source</th><th>Page candidates</th></tr></thead>
       <tbody>{sorted.map(r=><tr key={`${r.doc}:${r.page}`}>
-        <td>{r.dates.length ? r.dates.join(' · ') : 'Date not extracted'}<br/><a href={pageUrl(r)}>{r.doc} · p. {r.page} ↗</a></td>
+        <td>{r.title && <><strong>{r.title}</strong><br/></>}{r.dates.length ? r.dates.join(' · ') : 'Date not extracted'}<br/><a href={pageUrl(r)}>{r.doc} · p. {r.page} ↗</a></td>
         <td><strong>{r.contaminants.join(', ') || 'Substance not extracted'}</strong>
           <p>{r.measurements.length ? <><span className="muted">Values found on the page: </span>{r.measurements.join(' · ')}</> : 'Numeric value not extracted'}{!r.measurements.length && r.units.length ? ` · units: ${r.units.join(', ')}` : ''}</p>
           <p>Lab candidates: {r.labs.join(' · ') || 'not extracted'}</p>

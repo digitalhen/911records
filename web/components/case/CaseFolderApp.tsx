@@ -263,6 +263,7 @@ export function CaseFolderApp() {
                     <p className="small muted">
                       {s.reason} <Link href={docHref(s.doc, s.page)}>{batesRange(s.doc, m?.bates_end)} ↗</Link>
                     </p>
+                    {m?.summary && <p className="small">{m.summary}</p>}
                   </div>
                 );
               })}

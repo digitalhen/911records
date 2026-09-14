@@ -12,7 +12,7 @@ export const entityHref = (type: string, slug: string) => type === 'signatory' ?
 export interface Source { doc: string; page: number; confidence: number | null }
 export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bin?: string | null; bbl?: string | null; variants?: unknown }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
-export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; title: string | null; dates: unknown }
+export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; title: string | null; summary: string | null; dates: unknown }
 // Not `extends Source`: a parent/rollup topic (no direct site.doc_topics rows — see getTopics)
 // has no doc/page of its own, unlike every other Source-bearing row in this file.
 export interface Topic { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null; doc: string | null; page: number | null; confidence: number | null }
@@ -146,7 +146,7 @@ export const getOccurrences = cache(async (id: string, signatory = false): Promi
   const table = signatory ? 'signatory_pages' : 'entity_pages';
   const key = signatory ? 'id' : 'entity_id';
   const role = signatory ? 'action' : 'role';
-  const titleCol = (await documentsHaveTitles()) ? 'd.title,' : 'NULL::text AS title,';
+  const titleCol = (await documentsHaveTitles()) ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
   return queryReadSafe<Occurrence>(`SELECT DISTINCT ep.doc,ep.page,ep.${role} AS role,ep.confidence,d.agency,d.volume,d.box,d.folder,${titleCol}
     (SELECT jsonb_agg(pp.dates) FROM site.place_pages pp WHERE pp.doc=ep.doc AND pp.page=ep.page) AS dates
     FROM site.${table} ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
