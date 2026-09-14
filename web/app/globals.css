@@ -2939,3 +2939,10 @@ dialog .mono {
 /* Ask pending state (AskPending.tsx) */
 .ask-pending{display:block;flex-basis:100%;font-size:var(--fs-sm,13px);color:var(--muted);padding-top:6px}
 .ask-pending:empty{display:none}
+
+/* Touch devices: dense controls (small buttons, map controls, A–Z rail, pager arrows) get a 40px
+   minimum tap target without changing the desktop density (mobile sweep, 2026-09-14). */
+@media (pointer: coarse) {
+  .button.small, .zoom button, [class*="alpha"] a, .pager a, .pager button, .chips a { min-height: 40px; min-width: 40px; }
+  .brand-logo { height: 40px; }
+}

@@ -53,6 +53,54 @@ CREATE TABLE IF NOT EXISTS app.ask_spend (
 -- this file. See lib/ask/store.ts's saveAnswer/getAnswerChain.
 ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS parent_id TEXT REFERENCES app.answers(id);
 CREATE INDEX IF NOT EXISTS answers_parent_id_idx ON app.answers (parent_id);
+
+-- B22 ("What others are reading", issue #36): editorially pre-seeded and data-
+-- derived entry points into notable documents, refreshed nightly by
+-- web/scripts/seed-reading.ts (see lib/reading/*). "group" is a display
+-- section ('Start here', 'Sampling and results', 'What the City knew',
+-- 'Buildings'); "rank" orders within a group and, blended with recent
+-- app.doc_views, across the whole home-page list. The seed script never
+-- writes a cover sheet or a document whose folder label reads as a private
+-- individual's name (lib/reading/nameSafety.ts) — see COMMON-web.md's
+-- privacy rules.
+CREATE TABLE IF NOT EXISTS app.reading_seeds (
+  doc TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  why TEXT NOT NULL,
+  "group" TEXT NOT NULL,
+  rank INTEGER NOT NULL DEFAULT 0,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS reading_seeds_group_rank_idx ON app.reading_seeds ("group", rank);
+
+-- B22: aggregate, anonymous per-day view counts, incremented once per document
+-- page load by the /api/v beacon (navigator.sendBeacon, no cookies). Never a
+-- user identifier, session id or IP address — a document+day counter only,
+-- so this table carries no personal data at all.
+CREATE TABLE IF NOT EXISTS app.doc_views (
+  doc TEXT NOT NULL,
+  day DATE NOT NULL,
+  views INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (doc, day)
+);
+CREATE INDEX IF NOT EXISTS doc_views_day_idx ON app.doc_views (day);
+
+-- B21 (Ask "list" answers, issue #35): a list plan's rows (lib/ask/lists.ts's ListResult),
+-- snapshotted at save time so the permalink stays frozen like a prose answer. NULL for every
+-- ordinary question/refuse/offtopic answer row — 'answer' still carries an (empty) AskAnswer for
+-- those rows so the column stays NOT NULL without a migration.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS list_result JSONB;
+
+-- B24 ("Refresh this answer", issue "Ask: refresh a frozen answer"): links a refreshed answer
+-- back to the frozen one it replaces (refreshed_from), and forward from the old one to its
+-- replacement (superseded_by), so /a/[id] can show "a newer version exists" / "refreshed from an
+-- earlier answer" without ever mutating the old permalink's own saved content — permalinks never
+-- change. Both self-reference app.answers; ADD COLUMN IF NOT EXISTS keeps this tolerant of an
+-- install where the table already exists without them (COMMON-web.md "schema first, code
+-- second"). See lib/ask/store.ts's saveAnswer/markSuperseded.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS refreshed_from TEXT REFERENCES app.answers(id);
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES app.answers(id);
+CREATE INDEX IF NOT EXISTS answers_refreshed_from_idx ON app.answers (refreshed_from);
 `;
 
 let ensured: Promise<void> | undefined;

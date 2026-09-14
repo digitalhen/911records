@@ -5,11 +5,56 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.9.3';
+export const APP_VERSION = '0.12.1';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.12.1',
+    date: '2026-09-14',
+    notes: ['The map panel shows the collection title and document counts at the top again, directly above "Start with a question".'],
+  },
+  {
+    version: '0.12.0',
+    date: '2026-09-14',
+    notes: ['You can refresh an answer page to get an updated version from the latest records; the original stays online and each version links to the other.'],
+  },
+  {
+    version: '0.11.3',
+    date: '2026-09-14',
+    notes: ['Small buttons, map controls and the A–Z rail are easier to tap on phones.'],
+  },
+  {
+    version: '0.11.2',
+    date: '2026-09-14',
+    notes: ['"What others are reading" now appears beside every answer on the Ask page.'],
+  },
+  {
+    version: '0.11.1',
+    date: '2026-09-14',
+    notes: ['"Start with a question" now sits at the top of the home panel.'],
+  },
+  {
+    version: '0.11.0',
+    date: '2026-09-14',
+    notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
+  },
+  {
+    version: '0.11.0',
+    date: '2026-09-14',
+    notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
+  },
+  {
+    version: '0.10.0',
+    date: '2026-09-14',
+    notes: ['"What others are reading": notable records picked out, plus what people are actually opening, on the home page and a new /reading page; documents show "Others also read".'],
+  },
+  {
+    version: '0.9.4',
+    date: '2026-09-14',
+    notes: ['Topic pages no longer spill off the side of the screen on phones.'],
+  },
   {
     version: '0.9.3',
     date: '2026-09-14',

@@ -9,6 +9,7 @@ import { ensureRuntimeSchema } from '../runtimeSchema';
 import type { AskPlan } from './plan';
 import type { AskAnswer } from './answer';
 import type { RetrievedPage } from './retrieve';
+import type { ListResult } from './lists';
 
 export interface StoredCite {
   doc: string;
@@ -32,7 +33,20 @@ export interface AnswerRow {
   /** B17 (follow-ups): the answer row this turn was asked from, or null for
    *  a root question. See getAnswerChain. */
   parent_id: string | null;
+  /** B21 (issue #35): the frozen table for a plan.kind === 'list' answer, or null for every
+   *  ordinary question/refuse/offtopic row. See lib/ask/listExec.ts's runList. */
+  list_result: ListResult | null;
+  /** B24 ("refresh a frozen answer"): the answer row this one replaced, or null if this row was
+   *  never a refresh. Set once at save time, never mutated. */
+  refreshed_from: string | null;
+  /** B24: the answer row that replaced THIS one, or null while this is still the current version.
+   *  Set after the fact by markSuperseded, on the OLD row, once the refresh's new row is saved. */
+  superseded_by: string | null;
 }
+
+/** An empty AskAnswer — what a 'list' row's `answer` column carries, since that column stays
+ *  NOT NULL for every row (list answers write list_result instead; see runtimeSchema.ts). */
+export const EMPTY_ASK_ANSWER: AskAnswer = { sentences: [], notEstablished: [], followUps: [] };
 
 export async function saveAnswer(args: {
   q: string;
@@ -43,6 +57,11 @@ export async function saveAnswer(args: {
   usage: Record<string, unknown>;
   /** B17: set when this turn is a follow-up on an existing answer. */
   parentId?: string | null;
+  /** B21: set for a plan.kind === 'list' answer — see EMPTY_ASK_ANSWER above. */
+  listResult?: ListResult | null;
+  /** B24: set when this row is a refresh of an existing answer — see lib/ask/store.ts's
+   *  markSuperseded, called on the OLD row right after this new one is saved. */
+  refreshedFrom?: string | null;
 }): Promise<string> {
   await ensureRuntimeSchema();
   const id = randomUUID();
@@ -56,8 +75,8 @@ export async function saveAnswer(args: {
     folder: p.folder,
   }));
   await query(
-    `INSERT INTO app.answers (id, q, plan, answer, cites, model, usage, parent_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO app.answers (id, q, plan, answer, cites, model, usage, parent_id, list_result, refreshed_from)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       id,
       args.q,
@@ -67,6 +86,8 @@ export async function saveAnswer(args: {
       args.model,
       JSON.stringify(args.usage),
       args.parentId ?? null,
+      args.listResult ? JSON.stringify(args.listResult) : null,
+      args.refreshedFrom ?? null,
     ],
   );
   return id;
@@ -74,6 +95,13 @@ export async function saveAnswer(args: {
 
 export async function getAnswer(id: string): Promise<AnswerRow | null> {
   return queryOne<AnswerRow>('SELECT * FROM app.answers WHERE id = $1', [id]);
+}
+
+/** B24: marks `oldId` as superseded by `newId`, once the refresh's new row is safely saved. Never
+ *  touches any other column on the old row — the old permalink's own content stays frozen exactly
+ *  as it was written; only this pointer changes. */
+export async function markSuperseded(oldId: string, newId: string): Promise<void> {
+  await query('UPDATE app.answers SET superseded_by = $2 WHERE id = $1', [oldId, newId]);
 }
 
 /** The Bates pages an answer's SENTENCES actually cite (a subset of `cites`,

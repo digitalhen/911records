@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CitationLink } from './CitationLink';
 import { FollowUpForm } from './FollowUpForm';
+import { WhatOthersAreReading } from '@/components/reading/WhatOthersAreReading';
 import { pageImagePath } from '@/lib/files';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
 import { AiMark, ButtonLink, Panel, PanelBody } from '@/components/ui';
@@ -79,6 +80,7 @@ export function SourceRail({ pages, q, emptyNote }: { pages: CiteLike[]; q: stri
       <ButtonLink variant="secondary" href={searchFallbackUrl(q)} className="mt-5">
         View document results →
       </ButtonLink>
+      <div className="mt-5"><WhatOthersAreReading /></div>
     </aside>
   );
 }

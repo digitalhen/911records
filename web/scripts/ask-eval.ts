@@ -24,10 +24,11 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { routeAsk } from '../lib/ask/router';
 import { planAsk, planFollowUp, askConfigured, type AskPlan } from '../lib/ask/plan';
+import { runList } from '../lib/ask/listExec';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-type Expect = 'doc' | 'search' | 'question' | 'offtopic' | 'refuse';
+type Expect = 'doc' | 'search' | 'question' | 'offtopic' | 'refuse' | 'list';
 
 interface Case {
   id: string;
@@ -35,6 +36,8 @@ interface Case {
   expect: Expect;
   /** Only for expect: 'doc' — the canonical Bates id routeAsk must resolve to. */
   expectTop?: string;
+  /** Only for expect: 'list' — require the plan's listType to be exactly this (B21, issue #35). */
+  expectListType?: string;
   note?: string;
 }
 
@@ -45,6 +48,8 @@ interface Classification {
   detail: string;
   /** routeAsk's resolved Bates id, when category is 'doc'. */
   top?: string;
+  /** The full plan, when one was made — lets a 'list' case check listType/rows below. */
+  plan?: AskPlan;
 }
 
 async function classify(q: string, hasKey: boolean): Promise<Classification> {
@@ -61,7 +66,7 @@ async function classify(q: string, hasKey: boolean): Promise<Classification> {
     return { category: null, detail: 'router: model (needs ANTHROPIC_API_KEY to check plan.kind)' };
   }
   const { plan } = await planAsk(q);
-  return { category: plan.kind, detail: `plan: ${plan.kind}${plan.refuseReason ? ` (${plan.refuseReason})` : ''}` };
+  return { category: plan.kind, detail: `plan: ${plan.kind}${plan.refuseReason ? ` (${plan.refuseReason})` : ''}`, plan };
 }
 
 async function main(): Promise<void> {
@@ -98,6 +103,24 @@ async function main(): Promise<void> {
       const topOk = result.top === c.expectTop;
       ok = topOk;
       detail += topOk ? ` top=${result.top}` : ` top=${result.top} (expected ${c.expectTop})`;
+    }
+    // B21 (issue #35): a 'list' case also checks listType and that the real executor
+    // (lib/ask/listExec.ts, against the dev database) actually returns rows — a plan alone
+    // proves the model classified correctly, not that the table would show anything.
+    if (ok && c.expect === 'list' && result.plan) {
+      if (c.expectListType && result.plan.listType !== c.expectListType) {
+        ok = false;
+        detail += ` listType=${result.plan.listType} (expected ${c.expectListType})`;
+      } else {
+        try {
+          const list = await runList(result.plan);
+          ok = list.rows.length > 0;
+          detail += ` listType=${result.plan.listType} rows=${list.rows.length}`;
+        } catch (err) {
+          ok = false;
+          detail += ` listType=${result.plan.listType} rows=ERROR(${err instanceof Error ? err.message : err})`;
+        }
+      }
     }
     logResult(c, ok, detail);
     ok ? pass++ : fail++;
@@ -137,8 +160,21 @@ interface FollowUpCase {
 const PARENT_PLAN: AskPlan = {
   kind: 'question',
   terms: ['asbestos', '114 Liberty Street'],
-  filters: { contaminant: 'asbestos', address: '114 Liberty Street', agency: '', lab: '', dateFrom: '', dateTo: '', bin: '' },
+  filters: {
+    contaminant: 'asbestos',
+    address: '114 Liberty Street',
+    agency: '',
+    lab: '',
+    dateFrom: '',
+    dateTo: '',
+    bin: '',
+    docType: '',
+    role: '',
+    box: '',
+  },
   refuseReason: '',
+  listType: '',
+  resultOnly: false,
 };
 
 const FOLLOW_UP_CASES: FollowUpCase[] = [
