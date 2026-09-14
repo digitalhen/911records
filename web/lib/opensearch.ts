@@ -84,6 +84,8 @@ export interface SearchFilters {
   lab?: string;
   address?: string;
   year?: string;
+  /** Restrict to these document ids (lib/ask/placeBoost.ts: search inside one building's own records). */
+  docs?: string[];
 }
 
 export interface FacetBucket {
@@ -204,6 +206,7 @@ function buildFilterClauses(filters: SearchFilters): Record<string, unknown>[] {
   if (filters.contaminant) clauses.push({ term: { contaminants: filters.contaminant } });
   if (filters.lab) clauses.push(looseTerm('labs', filters.lab));
   if (filters.address) clauses.push(looseTerm('addresses', filters.address));
+  if (filters.docs?.length) clauses.push({ terms: { doc: filters.docs.slice(0, 1000) } });
   if (filters.year) {
     clauses.push({
       range: { dates: { gte: `${filters.year}-01-01`, lte: `${filters.year}-12-31` } },

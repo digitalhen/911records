@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.14';
+export const APP_VERSION = '0.14.15';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.14.15',
+    date: '2026-09-14',
+    notes: ['A question that names a building now searches that building’s own records for what the question asks (costs, contracts, letters), not just its test pages.'],
+  },
   {
     version: '0.14.14',
     date: '2026-09-14',

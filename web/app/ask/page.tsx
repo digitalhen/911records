@@ -279,7 +279,7 @@ async function renderPlanOutcome(
   // plan.kind === 'question'
   // Parent-turn citations first, then the named building's own attributed pages (folder
   // attribution is invisible to text search — lib/ask/placeBoost.ts), deduped by Bates page.
-  const placeBoost = await placePagesForQuestion(plan.filters, q);
+  const placeBoost = await placePagesForQuestion(plan.filters, q, plan.terms);
   const boost: PageRef[] = [];
   const seenBates = new Set<string>();
   for (const ref of [...(opts.boostPages ?? []), ...placeBoost.refs]) {
