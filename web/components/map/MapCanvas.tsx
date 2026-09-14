@@ -43,12 +43,16 @@ export default function MapCanvas({ places, threeD, onSelect, onFallback }: { pl
     const fallback=()=>{if(cancelled)return;setFlat(true);fallbackFn.current();map.current?.remove();map.current=null;};
     import('maplibre-gl').then(lib=>{
       if(cancelled || !container.current)return;
+      // MapLibre 6's worker must be served from /public (Prospect's lib/maplibre.ts explains: the
+      // bundled blob worker never loads under Next, the map never fires `load`, nothing paints).
+      lib.setWorkerUrl('/maplibre/maplibre-gl-worker.mjs');
       try {
         const m=new lib.Map({container:container.current,center,zoom:15.3,pitch:55,bearing:-22,maxZoom:19,minZoom:12,
           maxBounds:[[-74.045,40.685],[-73.965,40.74]],attributionControl:false,
           style:{version:8,sources:{},layers:[{id:'paper',type:'background',paint:{'background-color':'#f0f2ef'}}]},
           canvasContextAttributes:{antialias:true},fadeDuration:0});
         map.current=m;
+        if(process.env.NODE_ENV!=='production')(window as unknown as {__map?:LibreMap}).__map=m;
         m.on('load',()=>{
           if(cancelled)return;
           m.addSource('buildings',{type:'geojson',data:assets.buildings});
@@ -71,7 +75,7 @@ export default function MapCanvas({ places, threeD, onSelect, onFallback }: { pl
           setReady(true);
         });
         m.on('webglcontextlost',fallback);
-        m.on('error',()=>{if(!m.loaded())fallback()});
+        m.on('error',ev=>{console.error('maplibre error',ev?.error?.message||ev);if(!m.loaded())fallback()});
       } catch {fallback()}
     }).catch(fallback);
     return ()=>{cancelled=true;map.current?.remove();map.current=null};
