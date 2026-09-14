@@ -2,3 +2,5 @@ data/
 node_modules/
 vendor/
 .venv/
+design/astra/.codex-run.log
+design/astra/.codex-last-message.txt
