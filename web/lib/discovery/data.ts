@@ -189,10 +189,14 @@ export async function topicDocuments(id: number, offset = 0) {
   // that function's comment in lib/site.ts.
   const withTitles = await documentsHaveTitles();
   const titleCols = withTitles ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
+  // Cover sheets (issue #28) are excluded from topic document lists, like search — a folder
+  // cover sheet carries no subject-matter content, so a topic assignment on one is noise, not a
+  // document worth reading for this topic. Still reachable through /browse or by Bates.
   return queryReadSafe<Source & { prob: number; agency: string | null; box: string | null; title: string | null; summary: string | null; total: number }>(`SELECT dt.doc,dt.prob,d.agency,d.box,${titleCols}p.page,COUNT(*) OVER() AS total
     FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN LATERAL (SELECT page FROM site.pages WHERE doc=d.doc ORDER BY page LIMIT 1) p ON true
-    WHERE dt.topic=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY dt.prob DESC NULLS LAST,dt.doc LIMIT 50 OFFSET $2`, [id,offset]);
+    WHERE dt.topic=$1 AND d.status IS DISTINCT FROM 'removed' AND d.doc_type IS DISTINCT FROM 'cover_sheet'
+    ORDER BY dt.prob DESC NULLS LAST,dt.doc LIMIT 50 OFFSET $2`, [id,offset]);
 }
 export function jsonValue(value: unknown): unknown {
   if (typeof value !== 'string') return value;

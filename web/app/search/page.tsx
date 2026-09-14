@@ -109,6 +109,38 @@ function FacetGroup({
   );
 }
 
+/** Folder cover sheets (issue #28) are excluded from results by default (lib/opensearch.ts's
+ *  `includeCoverSheets` option) — this is the escape hatch, styled like the other facets so it
+ *  reads as "one more filter", not a hidden setting. Always rendered (never conditional on the
+ *  hidden count): `hidden` is a keyword-only approximation (see countCoverSheets in
+ *  lib/opensearch.ts) that can undercount when a cover sheet only surfaces through semantic
+ *  ranking — hiding the toggle whenever that count reads 0 would make the escape hatch disappear
+ *  in exactly the case where it's still needed. */
+function CoverSheetsToggle({ sp, includeCoverSheets, hidden }: { sp: SearchParamsInput; includeCoverSheets: boolean; hidden: number }) {
+  return (
+    <details className="facet" open>
+      <summary>Folder cover sheets</summary>
+      <div className="facet-options">
+        <label className="check">
+          {includeCoverSheets ? (
+            <>
+              <span>✕ Including cover sheets</span>
+              <Link className="facet-count" href={searchHref(sp, { covers: null })}>
+                hide again
+              </Link>
+            </>
+          ) : (
+            <Link className="facet-link" href={searchHref(sp, { covers: '1' })}>
+              <span>Include folder cover sheets</span>
+              {hidden > 0 && <span className="facet-count">{hidden}</span>}
+            </Link>
+          )}
+        </label>
+      </div>
+    </details>
+  );
+}
+
 export default async function SearchPage({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   const sp = await searchParams;
   const q = getStr(sp, 'q') || '';
@@ -128,7 +160,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     }
   }
 
-  const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
+  // Folder cover sheets (issue #28) are hidden by default (Henry: "I thought we were hiding the
+  // cover pages") — ?covers=1 is the escape hatch, a facet-styled toggle below.
+  const includeCoverSheets = getStr(sp, 'covers') === '1';
+  const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort, includeCoverSheets });
   // One batched query keyed by doc (docs/briefs/COMMON-web.md-style schema-first lookup, issue
   // #37): Postgres's site.documents.title/summary is the live source of truth, kept fresh on every
   // pipeline refresh; the OpenSearch doc_title on each hit (hit.docTitle) can lag behind an index
@@ -227,6 +262,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <FacetGroup aggKey="contaminants" buckets={result.facets.contaminants || []} sp={sp} selected={filters.contaminant} />
             <FacetGroup aggKey="labs" buckets={result.facets.labs || []} sp={sp} selected={filters.lab} />
             <FacetGroup aggKey="addresses" buckets={result.facets.addresses || []} sp={sp} selected={filters.address} />
+            <CoverSheetsToggle sp={sp} includeCoverSheets={includeCoverSheets} hidden={result.hiddenCoverSheets ?? 0} />
           </aside>
           <section>
             <div className="result-toolbar">
