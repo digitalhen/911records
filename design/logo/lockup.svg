@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 4 512 300" role="img" aria-label="9/11 Records, 911records.nyc">
+  <title>9/11 Records, 911records.nyc</title>
+  <path d="M0 184 H36 V175 H70 V166 H98 V144 H109 V118 L116 109 V103.5 V109 L123 118 V144 H134 V153 H152 V123 L164 110.1 L176 123 V137 H190 V47.2 H201 V11.2 V47.2 H212 V118 H230 V47.8 H252 V128 A13 8.5 0 0 1 278 128 V141 H296 V102.7 H326 V131 H342 V110 L346 105 L353 96 V91.3 V96 L360 105 L364 110 V137 H380 V106 L383 102 V96 L387 88.8 L391 96 V102 L394 106 V148 H420 V165 H452 V184 H496" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4.5"/>
+  <text x="248" y="252" text-anchor="middle" fill="currentColor" font-family="Arial, Helvetica, sans-serif" font-size="50" font-weight="700" letter-spacing="-0.5">9/11 Records</text>
+  <text x="248" y="290" text-anchor="middle" fill="currentColor" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="21" letter-spacing="2" opacity="0.72">911records.nyc</text>
+</svg>
