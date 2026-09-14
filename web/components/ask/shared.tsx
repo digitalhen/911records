@@ -175,7 +175,7 @@ export function AnswerBody({
               <h2>Continue from the evidence</h2>
               <div className={styles.chipRow}>
                 {answer.followUps.map((f, i) => (
-                  <a key={i} className={styles.chip} href={`/ask?q=${encodeURIComponent(f)}&mode=question`}>
+                  <a key={i} className={styles.chip} href={`/ask?parent=${encodeURIComponent(answerId)}&q=${encodeURIComponent(f)}&mode=question`}>
                     {f} <AiMark /> <span>→</span>
                   </a>
                 ))}

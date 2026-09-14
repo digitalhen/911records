@@ -460,6 +460,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   // sentence, never prose history). An unknown/expired parent id degrades to
   // an ordinary root question below rather than erroring.
   const parentId = (getStr(sp, 'parent') || '').trim();
+  const forceQuestion = getStr(sp, 'mode') === 'question';
   if (parentId) {
     const parentRow = await getAnswer(parentId).catch(() => null);
     if (parentRow) {
@@ -481,6 +482,10 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       try {
         const result = await planFollowUp(parentRow.plan, parentCited, q);
         plan = result.plan;
+        // "Continue from the evidence" chips (2026-09-14): they read "…at this building" and only
+        // make sense with the parent's filters merged in, and they are AI-marked — so a follow-up
+        // the planner labels 'search' still gets a written answer.
+        if (forceQuestion && plan.kind === 'search') plan = { ...plan, kind: 'question' };
         planUsage = result.usage as unknown as Record<string, unknown>;
         void recordSpend(estimateCostUsd(result.usage));
       } catch (err) {
@@ -501,8 +506,6 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   // search — the user has already seen the plain search results and
   // explicitly asked for the model instead. It never forces plan.kind
   // itself; the planner can still come back 'search'/'refuse'/'offtopic'.
-  const forceQuestion = getStr(sp, 'mode') === 'question';
-
   // Already answered recently (a suggested question, a shared link typed again): open the stored
   // permalink at once — no planner, no retrieval, no model call. Its "Refresh this answer"
   // control is the way to a fresh one.
