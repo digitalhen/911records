@@ -6,6 +6,7 @@ import { pageImagePath } from '@/lib/files';
 import { SaveToCaseButton } from '@/components/case/SaveToCaseButton';
 import { AiMark, ButtonLink, Panel, PanelBody } from '@/components/ui';
 import type { AskAnswer } from '@/lib/ask/answer';
+import styles from './ask.module.css';
 
 /** A page this answer cited, or was retrieved for — the minimal shape
  *  AnswerBody/InsufficientView need, satisfied by both lib/ask/retrieve.ts's
@@ -172,15 +173,17 @@ export function AnswerBody({
           {answer.followUps.length > 0 && (
             <>
               <h2>Continue from the evidence</h2>
-              {answer.followUps.map((f, i) => (
-                <Link key={i} className="question-link" href={`/ask?q=${encodeURIComponent(f)}`}>
-                  {f} <AiMark /> <span>→</span>
-                </Link>
-              ))}
+              <div className={styles.chipRow}>
+                {answer.followUps.map((f, i) => (
+                  <Link key={i} className={styles.chip} href={`/ask?q=${encodeURIComponent(f)}`}>
+                    {f} <AiMark /> <span>→</span>
+                  </Link>
+                ))}
+              </div>
             </>
           )}
           <FollowUpForm parentId={answerId} />
-          <Link className="question-link mt-2" href={searchFallbackUrl(q)}>
+          <Link className={`${styles.chip} mt-2`} href={searchFallbackUrl(q)}>
             See every document result instead <span>→</span>
           </Link>
         </section>

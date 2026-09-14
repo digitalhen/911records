@@ -5,6 +5,7 @@ import { WhatOthersAreReading } from '@/components/reading/WhatOthersAreReading'
 import { FollowUpForm } from './FollowUpForm';
 import { searchFallbackUrl } from './shared';
 import type { ListResult } from '@/lib/ask/lists';
+import styles from './ask.module.css';
 
 /** The "list" plan-kind's answer body (B21, issue #35) — a machine-extracted table instead of a
  *  written, cited paragraph. Used both by the live /ask turn (when it has rows) and the frozen
@@ -34,7 +35,7 @@ export function ListAnswer({ q, result, answerId }: { q: string; result: ListRes
       <ListTable rows={result.rows} extraColumnLabels={result.extraColumnLabels} truncated={result.truncated} />
       <section className="followup mt-5">
         <FollowUpForm parentId={answerId} />
-        <Link className="question-link mt-2" href={searchFallbackUrl(q)}>
+        <Link className={`${styles.chip} mt-2`} href={searchFallbackUrl(q)}>
           See every document result instead <span>→</span>
         </Link>
       </section>

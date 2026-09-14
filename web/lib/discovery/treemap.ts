@@ -53,7 +53,19 @@ export function squarify<T>(items: TreemapInput<T>[], width: number, height: num
   const sized = [...usable].sort((a, b) => b.size - a.size).map((i) => ({ area: i.size * scale, data: i.data }));
   const out: TreemapRect<T>[] = [];
   layout(sized, 0, 0, width, height, out);
-  return out;
+  // Squarify's row/column division uses floating-point division (rowArea /
+  // colWidth, etc.), so accumulated rounding error can push the last rect in
+  // a row or column a hair past the stage edge (issue "UI polish batch 2":
+  // a box visibly overflowing /topics). Clamp every rect into [0,width] x
+  // [0,height] so left+width and top+height never exceed the stage, however
+  // the layout math rounds.
+  return out.map((r) => {
+    const x = Math.min(Math.max(r.x, 0), width);
+    const y = Math.min(Math.max(r.y, 0), height);
+    const w = Math.min(Math.max(r.w, 0), width - x);
+    const h = Math.min(Math.max(r.h, 0), height - y);
+    return { ...r, x, y, w, h };
+  });
 }
 
 // Seven muted, non-red hues — cycled by a topic's root-ancestor index so every

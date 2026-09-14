@@ -1,0 +1,53 @@
+/* "What others are reading" — compact tiles (B25, issue "UI polish batch 2").
+   Used by WhatOthersAreReading.tsx (home panel + Ask side rail, 2 columns)
+   and /reading (adds .gridWide for 3-4 columns on wider screens). Records-
+   desk styling: hairline border, no shadow, existing tokens only. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 0;
+  list-style: none;
+  padding: 0;
+}
+.tile {
+  min-width: 0;
+  border: var(--border-width, 1px) solid var(--line);
+  padding: 10px 12px;
+  box-shadow: none;
+}
+.title {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.why {
+  margin: 6px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* /reading: wider stage, more columns. */
+.gridWide {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (min-width: 1000px) {
+  .gridWide {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .gridWide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 420px) {
+  .gridWide {
+    grid-template-columns: 1fr;
+  }
+}

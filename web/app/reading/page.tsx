@@ -6,6 +6,7 @@
 import Link from 'next/link';
 import { Shell, metadata as pageMetadata } from '@/components/discovery/Shared';
 import { readingGroups, type ReadingItem } from '@/lib/reading/store';
+import styles from '@/components/reading/reading.module.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,19 +46,19 @@ export default async function ReadingPage() {
         return (
           <section className="discovery" key={name}>
             <h2>{name}</h2>
-            <div className="discovery-grid">
-              <div>
-                {rows.map((item) => (
-                  <article className="result-item" key={item.doc}>
-                    <Link href={`/doc/${encodeURIComponent(item.doc)}`}>{item.title}</Link>
-                    <p className="small muted">
-                      {item.why}
-                      {item.box ? ` · Box ${item.box}` : ''}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </div>
+            <ul className={`${styles.grid} ${styles.gridWide}`}>
+              {rows.map((item) => (
+                <li className={styles.tile} key={item.doc}>
+                  <Link className={styles.title} href={`/doc/${encodeURIComponent(item.doc)}`}>
+                    {item.title}
+                  </Link>
+                  <p className={`small muted ${styles.why}`} title={item.why}>
+                    {item.why}
+                    {item.box ? ` · Box ${item.box}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
           </section>
         );
       })}
