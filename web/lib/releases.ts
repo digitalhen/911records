@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.11.3';
+export const APP_VERSION = '0.12.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.12.0',
+    date: '2026-09-14',
+    notes: ['You can refresh an answer page to get an updated version from the latest records; the original stays online and each version links to the other.'],
+  },
   {
     version: '0.11.3',
     date: '2026-09-14',
