@@ -609,7 +609,10 @@ def main() -> int:
         excerpt = redact_titlecase(pick_excerpt(doc, page_status, page_files))
         h = input_hash(doc_type, folder or None, box, agency, page_count, excerpt)
         cached = existing.get(doc)
-        if cached and cached.get("hash") == h:
+        # 2026-09-14: a null row (title None, model None — written when the budget or the account's
+        # usage cap stopped a run) used to match on hash and be skipped forever; 11,744 documents
+        # sat untitled across every later run. Reuse only a row that actually carries a title.
+        if cached and cached.get("hash") == h and cached.get("title"):
             reused += 1
             continue
         hit = cache.get(h)
