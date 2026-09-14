@@ -6,7 +6,7 @@ export const TYPE_LABELS: Record<string, string> = { lab: 'Labs', agency: 'Agenc
 export const pageHref = (doc: string, page = 1) => `/doc/${encodeURIComponent(doc)}/p/${page}`;
 export const entityHref = (type: string, slug: string) => type === 'signatory' ? `/signatory/${encodeURIComponent(slug)}` : `/entity/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`;
 export interface Source { doc: string; page: number; confidence: number | null }
-export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string }
+export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bbl?: string | null; bin?: string | null }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
 export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; dates: unknown }
 export interface Topic extends Source { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null }
