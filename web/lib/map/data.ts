@@ -138,10 +138,10 @@ async function queryPlaceFile(id: string): Promise<PlaceFile | null> {
   if (!places[0]) return null;
   const place = safePlace(places[0]);
   const facts = await getBuildingFacts(place);
-  // Schema-first (issue #37): d.title is read by name, gated the same way as
+  // Schema-first (issue #37): d.title/d.summary are read by name, gated the same way as
   // lib/discovery/data.ts's topicDocuments()/getOccurrences() — see documentsHaveTitles()'s
   // comment in lib/site.ts.
-  const titleCol = (await documentsHaveTitles()) ? 'd.title,' : 'NULL::text AS title,';
+  const titleCol = (await documentsHaveTitles()) ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
   const raw = await queryReadSafe<Candidate & { text: string | null }>(`SELECT pp.doc,pp.page,d.agency,d.box,d.volume,${titleCol}
     pp.has_test,${inspection} inspection,pp.contaminants,pp.units,pp.dates,pp.labs,pp.confidence,t.text
     ${joins} WHERE ${active} AND p.id=$1 ORDER BY dt.first_date NULLS LAST,pp.doc,pp.page`,[place.id]);

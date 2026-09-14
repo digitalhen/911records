@@ -14,16 +14,23 @@ export function ChangeList({ rows }: { rows: SafeChange[] }) {
             <div className="bates">
               {r.kind === 'removed' || r.status === 'removed' ? (
                 <span>
-                  {r.doc}
-                  {r.bates_end && r.bates_end !== r.doc ? ` – ${r.bates_end}` : ''}
+                  {r.title || r.doc}
+                  {!r.title && r.bates_end && r.bates_end !== r.doc ? ` – ${r.bates_end}` : ''}
                 </span>
               ) : (
                 <Link href={`/doc/${encodeURIComponent(r.doc)}`}>
-                  {r.doc}
-                  {r.bates_end && r.bates_end !== r.doc ? ` – ${r.bates_end}` : ''} ↗
+                  {r.title || r.doc}
+                  {!r.title && r.bates_end && r.bates_end !== r.doc ? ` – ${r.bates_end}` : ''} ↗
                 </Link>
               )}
             </div>
+            {r.title && (
+              <p className="small muted mono">
+                {r.doc}
+                {r.bates_end && r.bates_end !== r.doc ? ` – ${r.bates_end}` : ''}
+              </p>
+            )}
+            {r.summary && <p className="small">{r.summary}</p>}
             <p className="small muted">
               {r.agency || 'Agency not recorded'} · {number(r.page_count)} pages
             </p>

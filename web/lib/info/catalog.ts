@@ -1,5 +1,5 @@
 import 'server-only';
-import { cached } from '@/lib/site';
+import { cached, documentsHaveTitles } from '@/lib/site';
 import { queryRead } from '@/lib/db';
 import { buildVersion } from '@/lib/site';
 import { formatDate, type DatabaseDate } from '@/lib/dates';
@@ -22,9 +22,13 @@ const cachedSnapshots = cached(
   { revalidate: 60 },
 );
 export const snapshots = async () => cachedSnapshots(await buildVersion());
-export interface SafeChange { date: DatabaseDate; doc: string; kind: string; bates_end: string | null; agency: string | null; page_count: number | null; status: string | null; removed_at: DatabaseDate | null }
-export function changes(date?: string, limit?: number, offset = 0) {
-  return queryRead<SafeChange>(`SELECT c.date, c.doc, c.kind, d.bates_end, d.agency, d.page_count, d.status, d.removed_at FROM site.changes c LEFT JOIN site.documents d ON d.doc=c.doc ${date ? 'WHERE c.date=$1' : ''} ORDER BY c.date DESC, c.doc, c.kind ${limit ? `LIMIT $${date ? 2 : 1} OFFSET $${date ? 3 : 2}` : ''}`, [...(date ? [date] : []), ...(limit ? [limit, offset] : [])]);
+export interface SafeChange { date: DatabaseDate; doc: string; kind: string; bates_end: string | null; agency: string | null; page_count: number | null; status: string | null; removed_at: DatabaseDate | null; title: string | null; summary: string | null }
+// Schema-first (issue #37): d.title/d.summary are read by name, not `SELECT *`, so they are gated
+// on documentsHaveTitles() rather than risking a 42703 in the deploy/data-load gap — see that
+// function's comment in lib/site.ts.
+export async function changes(date?: string, limit?: number, offset = 0) {
+  const titleCols = (await documentsHaveTitles()) ? 'd.title, d.summary' : 'NULL::text AS title, NULL::text AS summary';
+  return queryRead<SafeChange>(`SELECT c.date, c.doc, c.kind, d.bates_end, d.agency, d.page_count, d.status, d.removed_at, ${titleCols} FROM site.changes c LEFT JOIN site.documents d ON d.doc=c.doc ${date ? 'WHERE c.date=$1' : ''} ORDER BY c.date DESC, c.doc, c.kind ${limit ? `LIMIT $${date ? 2 : 1} OFFSET $${date ? 3 : 2}` : ''}`, [...(date ? [date] : []), ...(limit ? [limit, offset] : [])]);
 }
 export const levels = ['agency', 'volume', 'box', 'folder'] as const;
 // Reserve segments for missing/empty metadata and URL dot segments; escape real tildes.
