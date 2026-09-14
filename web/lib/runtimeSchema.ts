@@ -21,6 +21,29 @@ CREATE TABLE IF NOT EXISTS app.runtime_migrations (
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   note TEXT
 );
+
+-- B3 (Ask): frozen answers, permalinked at /a/<id>. Only a validated,
+-- non-empty answer is ever written here — see lib/ask/store.ts.
+CREATE TABLE IF NOT EXISTS app.answers (
+  id TEXT PRIMARY KEY,
+  q TEXT NOT NULL,
+  plan JSONB NOT NULL,
+  answer JSONB NOT NULL,
+  cites JSONB NOT NULL,
+  model TEXT NOT NULL,
+  usage JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- B3 (Ask): the running daily USD total for the model calls Ask makes, so
+-- ASK_DAILY_USD_CAP can be enforced across restarts — see lib/ask/spend.ts
+-- for the per-replica caveat (two Dokploy replicas each enforce this cap
+-- independently against the same shared total).
+CREATE TABLE IF NOT EXISTS app.ask_spend (
+  day DATE PRIMARY KEY,
+  usd NUMERIC NOT NULL DEFAULT 0,
+  calls INTEGER NOT NULL DEFAULT 0
+);
 `;
 
 let ensured: Promise<void> | undefined;
