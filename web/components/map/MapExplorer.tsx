@@ -44,7 +44,7 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
         <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask →</button></div>
       </form>
       <div className={styles.chips}>
-        {suggestions.place && <a href={buildingUrl(suggestions.place)}>{suggestions.place.label} · most test pages</a>}
+        {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}
         {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question}</a>}
         {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion}</a>}
