@@ -5,11 +5,20 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.6.0';
+export const APP_VERSION = '0.7.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.7.0',
+    date: '2026-09-14',
+    notes: [
+      'Consistent look across the site: the same buttons, fields, panels and tables everywhere, and every page uses the same content width.',
+      'The 3D/flat toggle sits with the map controls at the bottom left.',
+      'A small star marks the buttons and links where an AI model will write or interpret the response (Ask, suggested questions, follow-ups) so it is always clear when you are reading a machine-written summary.',
+    ],
+  },
   {
     version: '0.6.0',
     date: '2026-09-14',
