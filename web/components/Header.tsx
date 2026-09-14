@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 const NAV = [
-  { href: '/search', label: 'Ask & search' },
+  { href: '/ask', label: 'Ask & search' },
   { href: '/map', label: 'Building map' },
   { href: '/topics', label: 'Topic map' },
   { href: '/entities', label: 'Entities' },
@@ -15,7 +15,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
     <header className="masthead">
       <div className="mast-top">
         <Link className="brand" href="/" aria-label="9/11 Records home">
-          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.nyc" height={32} style={{ display: 'block' }} />
+          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.nyc" className="brand-logo" style={{ display: 'block' }} />
         </Link>
         <div className="edition">
           <strong>{edition || 'NYC Law Department release'}</strong>

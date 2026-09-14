@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Header } from '@/components/Header';
 import { getMapPlaces, getSubstances, getSuggestions } from '@/lib/map/data';
+import { HomePanel } from '@/components/home/HomePanel';
+import { AdUnit } from '@/components/ads/AdUnit';
 import MapExplorer from './MapExplorer';
 import styles from './map.module.css';
 export function mapMetadata(): Metadata {
@@ -13,5 +15,5 @@ export default async function HomeMap() {
     substances={substances.status==='fulfilled'?substances.value:[]}
     suggestions={suggestions.status==='fulfilled'?suggestions.value:{place:null,substance:null,substanceSource:null}}
     unavailable={results.some(r=>r.status==='rejected')}
-    homePanel={<div id="home-panel"><div className="eyebrow">Public records / September 11, 2001</div><h2>Lower Manhattan, on the record.</h2><p>Explore buildings to find environmental sampling, inspections and other pages across the City’s released records.</p><p>Select a building, then read the source. A sample is not a health or occupancy determination.</p><a href="/browse">Browse the collection →</a></div>}/></div>;
+    homePanel={<><HomePanel /><AdUnit /></>}/></div>;
 }
