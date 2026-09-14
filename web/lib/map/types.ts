@@ -14,6 +14,10 @@ export interface PlaceFile { place: Place; rows: Candidate[]; related: Place[] }
 export interface MapFilters { substance: string; from: number; to: number; type: string; only: boolean }
 export const DEFAULT_FILTERS: MapFilters = { substance: '', from: 0, to: 27, type: '', only: false };
 export const COLORS = { test: '#315f91', inspection: '#668873', mention: '#bba578', ground: '#dce0df' };
+// Map ground: water is the canvas background; land is the existing paper tone
+// (unchanged, so footprints/streets keep their contrast); shoreline is a
+// hairline a shade darker than land, drawn on the land polygons' edges.
+export const MAP_GROUND = { water: '#c7d3d6', land: '#f0f2ef', shoreline: '#aebcc0' };
 export function buildingUrl(p: Pick<Place, 'kind' | 'key' | 'id'>) {
   return `/building/${encodeURIComponent(p.kind === 'bin' ? p.key : p.id)}`;
 }
