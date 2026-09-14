@@ -12,14 +12,16 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
   pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
   snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
   changes(date, doc, kind, fields)                       kind IN added|removed|changed|reappeared
-  entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date)
-  entity_pages(entity_id, doc, page, role, confidence)
+  entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin)
+  entity_pages(entity_id, doc, page, role, confidence, raw)
   signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
   signatory_pages(id, doc, page, action, confidence)
   related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
   topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   doc_topics(doc, topic, prob)
   places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
   place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
+  building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
+                  num_bldgs, source)   present-day PLUTO-derived facts ONLY, never owner/sales/people
   meta(key PK, value)                                     built_at, snapshot_date, counts
 
 Sources:
@@ -35,6 +37,10 @@ Sources:
   data/embed/entities.sqlite mentions(...), roles(...)               roles.official=1 only ever surfaces
   data/embed/related.sqlite  related, near_dupes, topics, doc_topics
   data/embed/places.sqlite   places, place_pages
+  data/embed/gazetteer-prospect.csv  one-time Prospect property-roll export (GAZETTEER_CSV,
+                             export_prospect_gazetteer.py, operator-run) -> entities.bbl/bin for
+                             roll-matched addresses (via mentions.canonical_bbl/bin) and the whole
+                             of `building_facts`. Optional: build runs fine without it.
   data/pages/**/pages.json   {pages:n, w:[...], h:[...], dpi, rendered_at} -> image_ready per page
                              (written by A1's render_pages.mjs; may not exist yet — treated as optional)
 
@@ -45,6 +51,15 @@ places.py). A person is NEVER an entity; the only people ever surfaced are `sign
 from `roles` WHERE official=1 (a title or org attached, or the role is a certifying action) — see
 entities.py's docstring. No other mention of a person is written anywhere in this database.
 
+Address/lab/contractor mentions carry OCR-canonicalisation (entities.py --canonicalise, issue #19,
+scripts/embed/canonical.py): entities of these three types group by `mentions.canonical_key` when
+it is set (falls back to `type:norm` for agency/substance, and for any address/lab/contractor row
+that hasn't been canonicalised yet), so "295 Lafayette Street" and its five OCR misreads become one
+entity instead of six. `entities.label`/`entities.variants` and `entity_pages.raw` are how a raw
+OCR spelling stays visible: `label` is the canonical Title Case form, `variants` is a JSON object
+of {raw spelling: mention count} (every raw spelling ever seen for that entity, most-frequent
+first, capped at 20), and `entity_pages.raw` is the exact raw text found on that one page.
+
 Usage: .venv/bin/python scripts/embed/build_site_db.py [--out PATH]
 Build-then-swap: writes data/site/site.sqlite.tmp, indexes, VACUUMs, then os.replace()s over
 data/site/site.sqlite. Prints a one-line JSON summary of row counts and timing.
@@ -53,6 +68,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import csv
 import datetime as dt
 import json
 import os
@@ -67,6 +83,11 @@ DATA = REPO / "data"
 EMB = DATA / "embed"
 SITE_DIR = DATA / "site"
 OUT_PATH = SITE_DIR / "site.sqlite"
+# One-time export of Prospect's property roll (export_prospect_gazetteer.py, operator-run; this
+# script never connects to the Prospect database — see that script's docstring). TODO(coordinator,
+# on merge to main): rename off the p1- prefix if this stays the permanent path — same note as
+# entities.py's GAZETTEER_CSV, which must point at the same file.
+GAZETTEER_CSV = EMB / "gazetteer-prospect.csv"
 
 RE_BATES_NUM = re.compile(r"(\d+)$")
 RE_LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
@@ -250,46 +271,76 @@ def load_doc_date_range(entities_con: sqlite3.Connection | None) -> dict[str, tu
     return out
 
 
+MAX_VARIANTS = 20
+
+
 def build_entities(entities_con: sqlite3.Connection | None, doc_dates: dict[str, tuple[str, str]]):
-    """entities + entity_pages rows from mentions (source='regex', label in ENTITY_TYPE)."""
+    """entities + entity_pages rows from mentions (source='regex', label in ENTITY_TYPE).
+
+    Groups by `mentions.canonical_key` when set (address/lab/contractor after entities.py
+    --canonicalise; issue #19) so OCR misreads of one address/org collapse to one entity, falling
+    back to `type:norm` for agency/substance (never canonicalised — their gazetteer match already
+    fixes the spelling) and for any address/lab/contractor row not yet canonicalised. The entity's
+    `label` is the canonical_label when every row in the group agrees on one (picks the
+    highest-confidence, most-frequent one otherwise); `variants` is every raw spelling seen with
+    its count, most-frequent first, capped at MAX_VARIANTS. `entity_pages.raw` carries the exact
+    raw spelling found on that page. `entities.bbl`/`bin` come from `canonical_bbl`/`canonical_bin`
+    (set only for address mentions the Prospect property-roll gazetteer matched — entities.py
+    --canonicalise, issue #19 follow-up) so `places.py`/the building page can resolve a building
+    straight from an address entity, no separate address-matching pass needed there."""
     entities: list[tuple] = []
     entity_pages: list[tuple] = []
     if entities_con is None:
         return entities, entity_pages
-    # (type, norm) -> aggregate
-    agg: dict[tuple, dict] = {}
     display: dict[tuple, collections.Counter] = collections.defaultdict(collections.Counter)
+    canon_label: dict[tuple, collections.Counter] = collections.defaultdict(collections.Counter)
     pages_seen: dict[tuple, set] = collections.defaultdict(set)
     docs_seen: dict[tuple, set] = collections.defaultdict(set)
     rows_by_key: dict[tuple, list] = collections.defaultdict(list)
-    q = "SELECT doc, page, label, text, norm FROM mentions WHERE source='regex' AND label IN ({})".format(
-        ",".join("?" * len(ENTITY_TYPE)))
-    for doc, page, label, text, norm in entities_con.execute(q, list(ENTITY_TYPE)):
+    bbl_by_key: dict[tuple, str] = {}
+    bin_by_key: dict[tuple, str] = {}
+    q = ("SELECT doc, page, label, text, norm, canonical_key, canonical_label, canonical_bbl, canonical_bin "
+         "FROM mentions WHERE source='regex' AND label IN ({})").format(",".join("?" * len(ENTITY_TYPE)))
+    for doc, page, label, text, norm, ckey, clabel, cbbl, cbin in entities_con.execute(q, list(ENTITY_TYPE)):
         etype = ENTITY_TYPE[label]
-        key = (etype, norm)
+        key = (etype, ckey or norm)
         display[key][text] += 1
+        if clabel:
+            canon_label[key][clabel] += 1
+        if cbbl and key not in bbl_by_key:
+            bbl_by_key[key] = cbbl
+        if cbin and key not in bin_by_key:
+            bin_by_key[key] = cbin
         docs_seen[key].add(doc)
         pages_seen[key].add((doc, page))
-        rows_by_key[key].append((doc, page))
+        rows_by_key[key].append((doc, page, text))
 
     taken_slugs: dict[str, set] = collections.defaultdict(set)
-    for (etype, norm), pages in pages_seen.items():
-        docs = docs_seen[(etype, norm)]
-        label = display[(etype, norm)].most_common(1)[0][0]
+    for (etype, ckey), pages in pages_seen.items():
+        docs = docs_seen[(etype, ckey)]
+        variants = display[(etype, ckey)]
+        label = (canon_label[(etype, ckey)].most_common(1)[0][0] if canon_label[(etype, ckey)]
+                  else variants.most_common(1)[0][0])
         base_slug = slugify(label)
         slug = unique_slug(base_slug, taken_slugs[etype])
         eid = f"{etype}:{slug}"
         dr = [doc_dates[d] for d in docs if d in doc_dates]
         first_date = min((d[0] for d in dr), default=None)
         last_date = max((d[1] for d in dr), default=None)
-        entities.append((eid, etype, slug, label, len(docs), len(pages), first_date, last_date))
+        variants_json = json.dumps(dict(variants.most_common(MAX_VARIANTS)))
+        entities.append((eid, etype, slug, label, len(docs), len(pages), first_date, last_date, variants_json,
+                          bbl_by_key.get((etype, ckey)), bin_by_key.get((etype, ckey))))
         # `role` has no extra information beyond the entity's own `type` for a regex mention (there
         # is no sense of e.g. "subject of the test" vs "mentioned in passing" yet) — it is set to
         # `etype` so the column is never NULL and stays meaningful if a future extractor adds a
         # real distinction. `confidence` is 1.0 for every regex mention (entities.py doesn't score
         # them); only `gliner` mentions carry a real score, and gliner output isn't used here.
-        for doc, page in rows_by_key[(etype, norm)]:
-            entity_pages.append((eid, doc, page, etype, 1.0))
+        seen_page: set = set()
+        for doc, page, text in rows_by_key[(etype, ckey)]:
+            if (doc, page) in seen_page:
+                continue  # entity_pages is one row per (entity, doc, page); keep the first raw text
+            seen_page.add((doc, page))
+            entity_pages.append((eid, doc, page, etype, 1.0, text))
     return entities, entity_pages
 
 
@@ -383,6 +434,44 @@ def load_places():
     return places, place_pages
 
 
+# ----------------------------------------------------------- building_facts -
+
+def _int_or_none(v: str | None) -> int | None:
+    return int(float(v)) if v not in (None, "") else None
+
+
+def _float_or_none(v: str | None) -> float | None:
+    return float(v) if v not in (None, "") else None
+
+
+def load_building_facts() -> list[tuple]:
+    """building_facts rows straight from GAZETTEER_CSV (export_prospect_gazetteer.py's one-time
+    dump of Prospect's property roll + pluto_lots). PRESENT-DAY BUILDING FACTS ONLY — year built,
+    floor count, residential/total unit counts, floor area, building class, building count on the
+    lot — never owner names, unit-level rows, sales or anything about a person (Henry, 2026-09-14;
+    the export script's own query never selects those fields in the first place, so there is
+    nothing here to accidentally forward). One row per bbl (the CSV already is; `seen` guards a
+    hand-edited CSV that isn't). Optional: the export may not have been run yet."""
+    out: list[tuple] = []
+    if not GAZETTEER_CSV.exists():
+        return out
+    seen: set[str] = set()
+    with GAZETTEER_CSV.open(newline="") as f:
+        for row in csv.DictReader(f):
+            bbl = row.get("bbl")
+            if not bbl or bbl in seen:
+                continue
+            seen.add(bbl)
+            out.append((
+                bbl, row.get("bin") or None, _int_or_none(row.get("year_built")),
+                _float_or_none(row.get("num_floors")), _int_or_none(row.get("units_res")),
+                _int_or_none(row.get("units_total")), _int_or_none(row.get("bldg_area")),
+                row.get("bldg_class") or None, _int_or_none(row.get("num_bldgs")),
+                "prospect.nyc (PLUTO-derived)",
+            ))
+    return out
+
+
 # --------------------------------------------------------------- build ------
 
 SCHEMA = """
@@ -401,9 +490,10 @@ CREATE TABLE snapshots(
 );
 CREATE TABLE changes(date TEXT, doc TEXT, kind TEXT, fields TEXT);
 CREATE TABLE entities(
-  id TEXT PRIMARY KEY, type TEXT, slug TEXT, label TEXT, n_docs INT, n_pages INT, first_date TEXT, last_date TEXT
+  id TEXT PRIMARY KEY, type TEXT, slug TEXT, label TEXT, n_docs INT, n_pages INT, first_date TEXT, last_date TEXT,
+  variants TEXT, bbl TEXT, bin TEXT
 );
-CREATE TABLE entity_pages(entity_id TEXT, doc TEXT, page INT, role TEXT, confidence REAL);
+CREATE TABLE entity_pages(entity_id TEXT, doc TEXT, page INT, role TEXT, confidence REAL, raw TEXT);
 CREATE TABLE signatories(
   id TEXT PRIMARY KEY, slug TEXT, name TEXT, title TEXT, org TEXT, n_docs INT, first_date TEXT, last_date TEXT
 );
@@ -423,6 +513,10 @@ CREATE TABLE place_pages(
   confidence REAL
 );
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE building_facts(
+  bbl TEXT PRIMARY KEY, bin TEXT, year_built INT, num_floors REAL, units_res INT, units_total INT,
+  bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
+);
 """
 
 INDEXES = """
@@ -449,6 +543,8 @@ CREATE INDEX doc_topics_topic ON doc_topics(topic);
 CREATE INDEX places_kind_key ON places(kind, key);
 CREATE INDEX place_pages_place ON place_pages(place_id);
 CREATE INDEX place_pages_doc ON place_pages(doc);
+CREATE INDEX building_facts_bin ON building_facts(bin);
+CREATE INDEX entities_bbl ON entities(bbl);
 """
 
 
@@ -482,6 +578,7 @@ def main() -> int:
 
     related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related()
     places_rows, place_pages_rows = load_places()
+    building_facts_rows = load_building_facts()
     snapshots_rows = load_snapshots()
     changes_rows = load_changes(manifest_by_doc)
 
@@ -523,8 +620,8 @@ def main() -> int:
                      [(s["date"], s["documents"], s["pages"], s["bytes"], s["added"], s["removed"], s["changed"],
                        s["sha256"]) for s in snapshots_rows])
     con.executemany("INSERT INTO changes VALUES (?,?,?,?)", changes_rows)
-    con.executemany("INSERT INTO entities VALUES (?,?,?,?,?,?,?,?)", entities_rows)
-    con.executemany("INSERT INTO entity_pages VALUES (?,?,?,?,?)", entity_pages_rows)
+    con.executemany("INSERT INTO entities VALUES (?,?,?,?,?,?,?,?,?,?,?)", entities_rows)
+    con.executemany("INSERT INTO entity_pages VALUES (?,?,?,?,?,?)", entity_pages_rows)
     con.executemany("INSERT INTO signatories VALUES (?,?,?,?,?,?,?,?)", signatories_rows)
     con.executemany("INSERT INTO signatory_pages VALUES (?,?,?,?,?)", signatory_pages_rows)
     con.executemany("INSERT INTO related VALUES (?,?,?,?,?)", related_rows)
@@ -533,6 +630,7 @@ def main() -> int:
     con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
     con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
+    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
 
     counts = {
         "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),
@@ -540,6 +638,7 @@ def main() -> int:
         "signatories": len(signatories_rows), "signatory_pages": len(signatory_pages_rows),
         "related": len(related_rows), "near_dupes": len(near_dupes_rows), "topics": len(topics_rows),
         "doc_topics": len(doc_topics_rows), "places": len(places_rows), "place_pages": len(place_pages_rows),
+        "building_facts": len(building_facts_rows),
     }
     latest_snapshot = snapshots_rows[-1]["date"] if snapshots_rows else None
     meta_rows = [

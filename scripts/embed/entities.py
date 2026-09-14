@@ -47,10 +47,20 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import canonical  # noqa: E402  (address/lab/contractor canonicalisation, issue #19)
+
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "data" / "text"
 DB = REPO / "data" / "embed" / "entities.sqlite"
 REGEX_VERSION = 2
+CANONICAL_LABELS = ("address", "lab", "contractor")
+# One-time export of Prospect's property roll (export_prospect_gazetteer.py, operator-run; this
+# module never connects to the Prospect database itself — see that script's docstring). Optional:
+# canonicalise() falls back to the frequency-seed method everywhere the file is absent or a house
+# number isn't in it. TODO(coordinator, on merge to main): rename off the p1- prefix if this stays
+# the permanent path.
+GAZETTEER_CSV = REPO / "data" / "embed" / "gazetteer-prospect.csv"
 
 MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
@@ -214,9 +224,10 @@ def role_mentions(text: str):
 GLINER_LABELS = ["person", "organization", "government agency", "laboratory", "location", "building", "chemical"]
 
 
-def connect() -> sqlite3.Connection:
-    DB.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+def connect(db_path: Path | None = None) -> sqlite3.Connection:
+    path = db_path or DB
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript("""
     CREATE TABLE IF NOT EXISTS pages(doc TEXT, page INT, text_sha1 TEXT, regex_done INT DEFAULT 0,
@@ -230,7 +241,65 @@ def connect() -> sqlite3.Connection:
     CREATE INDEX IF NOT EXISTS roles_name ON roles(name_norm, role);
     CREATE INDEX IF NOT EXISTS roles_doc ON roles(doc, page);
     """)
+    migrate_canonical_columns(con)
     return con
+
+
+def migrate_canonical_columns(con: sqlite3.Connection) -> None:
+    """Add mentions.canonical_key/canonical_label/canonical_confidence if missing. Safe to re-run
+    (checks PRAGMA table_info first; SQLite has no ADD COLUMN IF NOT EXISTS)."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(mentions)")}
+    for name, decl in (("canonical_key", "TEXT"), ("canonical_label", "TEXT"),
+                        ("canonical_confidence", "REAL"), ("canonical_bbl", "TEXT"),
+                        ("canonical_bin", "TEXT")):
+        if name not in cols:
+            con.execute(f"ALTER TABLE mentions ADD COLUMN {name} {decl}")
+    con.execute("CREATE INDEX IF NOT EXISTS mentions_canonical ON mentions(canonical_key)")
+    con.commit()
+
+
+def canonicalise(con: sqlite3.Connection) -> dict:
+    """Incremental pass: for label in address/lab/contractor, compute canonical_key/label/
+    confidence for every distinct `norm` and fill any mentions row still missing one. Addresses try
+    the Prospect property-roll gazetteer (GAZETTEER_CSV, loaded once here if present — canonical.py
+    itself never touches a database) first, carrying its bbl/bin; anything the roll doesn't cover
+    falls back to entities.py's own mention-frequency counts as a seed gazetteer, same as labs and
+    contractors always do. Only ever WRITES WHERE canonical_key IS NULL, so a re-run never re-scores
+    an already-canonicalised row even if the corpus or the gazetteer has grown since (that
+    re-scoring, if ever wanted, is a deliberate separate pass, not a side effect of running this one
+    again)."""
+    migrate_canonical_columns(con)
+    gazetteer = None
+    if GAZETTEER_CSV.exists():
+        gazetteer = canonical.load_gazetteer(GAZETTEER_CSV)
+    stats: dict = {}
+    for label in CANONICAL_LABELS:
+        counts = dict(con.execute("SELECT norm, count(*) FROM mentions WHERE label=? GROUP BY 1", (label,)))
+        before = con.execute("SELECT count(*) FROM mentions WHERE label=? AND canonical_key IS NULL",
+                              (label,)).fetchone()[0]
+        if label == "address":
+            mapping = canonical.canonicalize_addresses(counts, gazetteer=gazetteer)
+            rows = [(ck, cl, cf, bbl, bin_, label, norm) for norm, (ck, cl, cf, bbl, bin_) in mapping.items()]
+            roll_matched = sum(1 for v in mapping.values() if v[3])
+            con.executemany(
+                "UPDATE mentions SET canonical_key=?, canonical_label=?, canonical_confidence=?, "
+                "canonical_bbl=?, canonical_bin=? WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
+        else:
+            mapping = canonical.canonicalize_orgs(label, counts)
+            rows = [(ck, cl, cf, label, norm) for norm, (ck, cl, cf) in mapping.items()]
+            roll_matched = None
+            con.executemany(
+                "UPDATE mentions SET canonical_key=?, canonical_label=?, canonical_confidence=? "
+                "WHERE label=? AND norm=? AND canonical_key IS NULL", rows)
+        after = con.execute("SELECT count(*) FROM mentions WHERE label=? AND canonical_key IS NULL",
+                             (label,)).fetchone()[0]
+        stats[label] = {"distinct_raw": len(counts), "distinct_canonical": len(set(v[0] for v in mapping.values())),
+                         "rows_filled": before - after, "rows_still_null": after}
+        if roll_matched is not None:
+            stats[label]["roll_matched_raw_spellings"] = roll_matched
+            stats[label]["gazetteer_loaded"] = gazetteer is not None
+    con.commit()
+    return stats
 
 
 def main() -> int:
@@ -239,9 +308,20 @@ def main() -> int:
     ap.add_argument("--gliner-model", default="urchade/gliner_medium-v2.1")
     ap.add_argument("--limit-docs", type=int, default=0)
     ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--canonicalise", action="store_true",
+                     help="fill mentions.canonical_key/label/confidence for address/lab/contractor "
+                          "mentions still missing them, then exit (does not run extraction)")
+    ap.add_argument("--db", default=None, help="override the entities.sqlite path (e.g. for a copy)")
     args = ap.parse_args()
 
-    con = connect()
+    db_path = Path(args.db) if args.db else None
+    con = connect(db_path)
+
+    if args.canonicalise:
+        stats = canonicalise(con)
+        print(json.dumps({"canonicalise": stats}, indent=1))
+        return 0
+
     state = {(d, p): (s, r, g) for d, p, s, r, g in con.execute("SELECT doc,page,text_sha1,regex_done,gliner_done FROM pages")}
     files = sorted(TEXT.rglob("*.pages.jsonl"))
     if args.limit_docs:

@@ -97,8 +97,8 @@ documents(doc PK, bates_end, agency, source, volume, box, folder, page_count, pd
 pages(doc, page, bates, chars, ocr_status, ocr_source, image_ready, PRIMARY KEY(doc,page))
 snapshots(date PK, documents, pages, bytes, added, removed, changed, sha256)
 changes(date, doc, kind, fields)                       kind ∈ added|removed|changed|reappeared
-entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date)
-entity_pages(entity_id, doc, page, role, confidence)
+entities(id PK, type, slug, label, n_docs, n_pages, first_date, last_date, variants, bbl, bin)
+entity_pages(entity_id, doc, page, role, confidence, raw)
 signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
 signatory_pages(id, doc, page, action, confidence)
 related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
@@ -106,8 +106,35 @@ topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   do
 places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
 place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
 page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
+building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
+                num_bldgs, source)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
+
+`building_facts` is a one-time export of Prospect's property roll for lower Manhattan (issue #19
+follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (year built, floor
+count, residential/total unit counts, floor area, building class, building count on the lot) —
+**never** owner names, unit-level rows, sales figures, or anything about a person. The building
+page shows it labelled "Building details · data provided by prospect.nyc". `entities.bbl`/`bin`
+(address entities only, when the roll matched) let the building page and `places.py` resolve a
+building straight from an address entity. Provenance: `scripts/embed/export_prospect_gazetteer.py`
+is a **one-time, operator-run** script that reads Prospect's central Postgres (`prospect_ro`,
+read-only) and writes `data/embed/gazetteer-prospect.csv`; **nothing under `scripts/` or `web/` connects
+to the Prospect database at run time** — the pipeline (`entities.py --canonicalise`,
+`build_site_db.py`) only ever reads that CSV. `lot_area` and `land_use` were requested but are not
+in Prospect's schema (`pluto_lots` has no `lotarea`/`landuse` column) and are not exported or shown.
+
+Address/lab/contractor entities are canonicalised (issue #19, `scripts/embed/canonical.py` +
+`entities.py --canonicalise`): OCR misreads of one address or org (house number and street type
+matched exactly, street name fuzzy-matched) collapse into one entity keyed by
+`mentions.canonical_key`. `entities.label` is the canonical Title Case spelling,
+`entities.variants` is a JSON object of every raw spelling seen with its count (most-frequent
+first), and `entity_pages.raw` is the exact raw spelling found on that page. For addresses, the
+Prospect property-roll gazetteer (`data/embed/gazetteer-prospect.csv`, see `building_facts` below) is
+tried first and wins when it matches — that match carries the roll's bbl/bin onto the entity;
+addresses the roll doesn't cover (most of them: the export is nine lower-Manhattan ZIPs, and many
+mentioned addresses — labs, contractor offices — sit well outside that footprint) fall back to
+the mention-frequency seed method alone, with no bbl/bin.
 
 Word boxes for highlighting live beside the text: `data/text/<agency>/<volume>/<bates>.boxes.jsonl`,
 one line per page, `{page, words:[[x0,y0,x1,y1,"word"],…], w, h}` in page-image pixel space.

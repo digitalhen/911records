@@ -76,11 +76,12 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "changes": [("date", "DATE"), ("doc", "TEXT"), ("kind", "TEXT"), ("fields", "JSONB")],
     "entities": [
         ("id", "TEXT"), ("type", "TEXT"), ("slug", "TEXT"), ("label", "TEXT"), ("n_docs", "INTEGER"),
-        ("n_pages", "INTEGER"), ("first_date", "DATE"), ("last_date", "DATE"),
+        ("n_pages", "INTEGER"), ("first_date", "DATE"), ("last_date", "DATE"), ("variants", "JSONB"),
+        ("bbl", "TEXT"), ("bin", "TEXT"),
     ],
     "entity_pages": [
         ("entity_id", "TEXT"), ("doc", "TEXT"), ("page", "INTEGER"), ("role", "TEXT"),
-        ("confidence", "DOUBLE PRECISION"),
+        ("confidence", "DOUBLE PRECISION"), ("raw", "TEXT"),
     ],
     "signatories": [
         ("id", "TEXT"), ("slug", "TEXT"), ("name", "TEXT"), ("title", "TEXT"), ("org", "TEXT"),
@@ -110,13 +111,18 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("contaminants", "JSONB"), ("units", "JSONB"), ("dates", "JSONB"), ("labs", "JSONB"),
         ("confidence", "DOUBLE PRECISION"),
     ],
+    "building_facts": [
+        ("bbl", "TEXT"), ("bin", "TEXT"), ("year_built", "INTEGER"), ("num_floors", "DOUBLE PRECISION"),
+        ("units_res", "INTEGER"), ("units_total", "INTEGER"), ("bldg_area", "BIGINT"),
+        ("bldg_class", "TEXT"), ("num_bldgs", "INTEGER"), ("source", "TEXT"),
+    ],
     "meta": [("key", "TEXT"), ("value", "TEXT")],
 }
 BOOL_COLUMNS = {"held_locally", "image_ready", "cross", "has_test"}
 PRIMARY_KEYS = {
     "documents": ["doc"], "pages": ["doc", "page"], "snapshots": ["date"], "entities": ["id"],
     "signatories": ["id"], "topics": ["id"], "places": ["id"], "meta": ["key"],
-    "page_text": ["doc", "page"],
+    "page_text": ["doc", "page"], "building_facts": ["bbl"],
 }
 PAGE_TEXT_COLUMNS = [("doc", "TEXT"), ("page", "INTEGER"), ("text", "TEXT"), ("source", "TEXT")]
 
@@ -145,6 +151,8 @@ INDEX_STATEMENTS = [
     'CREATE INDEX place_pages_place ON site_new.place_pages(place_id)',
     'CREATE INDEX place_pages_doc ON site_new.place_pages(doc)',
     'CREATE INDEX page_text_doc ON site_new.page_text(doc)',
+    'CREATE INDEX building_facts_bin ON site_new.building_facts(bin)',
+    'CREATE INDEX entities_bbl ON site_new.entities(bbl)',
 ]
 
 
