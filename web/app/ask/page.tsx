@@ -13,13 +13,14 @@ import { socialMeta } from '@/lib/seo/social';
 import { getPageByBates } from '@/lib/site';
 import { findExactBates } from '@/lib/opensearch';
 import { routeAsk } from '@/lib/ask/router';
-import { askConfigured, planAsk, planFollowUp, type AskPlan } from '@/lib/ask/plan';
+import { askConfigured, planAsk, planFollowUp, ASK_MODEL, type AskPlan } from '@/lib/ask/plan';
 import { retrieveForQuestion, type PageRef, type RetrievedPage } from '@/lib/ask/retrieve';
 import { answerQuestion, validateAnswer, validateFollowUps, type AskAnswer } from '@/lib/ask/answer';
+import { runList } from '@/lib/ask/listExec';
 import { underDailyCap, recordSpend, estimateCostUsd } from '@/lib/ask/spend';
 import { allowAskRequest, clientIp } from '@/lib/ask/rateLimit';
 import { FollowUpForm } from '@/components/ask/FollowUpForm';
-import { saveAnswer, getAnswer, citedBatesPages } from '@/lib/ask/store';
+import { saveAnswer, getAnswer, citedBatesPages, EMPTY_ASK_ANSWER } from '@/lib/ask/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,6 +171,38 @@ function InsufficientView({
   );
 }
 
+/** B21 (issue #35): a "list" plan that resolved to zero rows — a model slip (an address/lab/role
+ *  the records don't mention) or a genuinely empty result. No permalink, same rule as
+ *  InsufficientView: there is nothing frozen worth a stable URL for. */
+function ListEmptyView({ q, title, parentId }: { q: string; title: string; parentId?: string }) {
+  return (
+    <>
+      <Header active="/ask" />
+      <main id="main">
+        <AskAgainForm q={q} />
+        <article className="answer-main">
+          <div className="empty-note">
+            <MachineNote />
+            <h1>
+              No rows matched
+              <br />
+              that table.
+            </h1>
+          </div>
+          <div className="citation-rule">
+            <b>{title}</b> — nothing in the records matched. A gap here is not proof a record does not exist
+            elsewhere.
+          </div>
+          <section className="followup">
+            <FollowUpForm parentId={parentId} />
+          </section>
+        </article>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
 /**
  * The tail shared by a root question and a follow-up merge alike, once a
  * plan (AskPlan) is in hand: render/redirect on refuse|offtopic|search, else
@@ -202,6 +235,24 @@ async function renderPlanOutcome(
     const year = plan.filters.dateFrom?.slice(0, 4) || plan.filters.dateTo?.slice(0, 4);
     if (year) params.set('year', year);
     redirect(`/search?${params.toString()}`);
+  }
+
+  if (plan.kind === 'list') {
+    const listResult = await runList(plan);
+    if (listResult.rows.length === 0) {
+      return <ListEmptyView q={q} title={listResult.title} parentId={opts.parentId} />;
+    }
+    const id = await saveAnswer({
+      q,
+      plan,
+      answer: EMPTY_ASK_ANSWER,
+      pages: [],
+      model: ASK_MODEL,
+      usage: { plan: planUsage },
+      parentId: opts.parentId ?? null,
+      listResult,
+    });
+    redirect(`/a/${id}`);
   }
 
   // plan.kind === 'question'

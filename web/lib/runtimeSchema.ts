@@ -84,6 +84,12 @@ CREATE TABLE IF NOT EXISTS app.doc_views (
   PRIMARY KEY (doc, day)
 );
 CREATE INDEX IF NOT EXISTS doc_views_day_idx ON app.doc_views (day);
+
+-- B21 (Ask "list" answers, issue #35): a list plan's rows (lib/ask/lists.ts's ListResult),
+-- snapshotted at save time so the permalink stays frozen like a prose answer. NULL for every
+-- ordinary question/refuse/offtopic answer row — 'answer' still carries an (empty) AskAnswer for
+-- those rows so the column stays NOT NULL without a migration.
+ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS list_result JSONB;
 `;
 
 let ensured: Promise<void> | undefined;
