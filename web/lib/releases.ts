@@ -5,11 +5,16 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.7.2';
+export const APP_VERSION = '0.7.3';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.7.3',
+    date: '2026-09-14',
+    notes: ['Typing a Bates number with a space (for example "NYC WTC 058160") now takes you straight to the record.'],
+  },
   {
     version: '0.7.2',
     date: '2026-09-14',
