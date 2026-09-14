@@ -1,6 +1,6 @@
 # 911records.nyc holding page
 
-Static page served by nginx. No JavaScript, cookies, analytics or forms.
+Static pages served by nginx: the holding page, /privacy and /ads.txt. The only third-party code is Google AdSense and its consent message; no analytics or forms.
 
     docker build -t 911records-holding site/holding
     docker run --rm -p 8080:80 911records-holding   # http://localhost:8080
