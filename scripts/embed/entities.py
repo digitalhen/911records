@@ -1,21 +1,36 @@
 #!/usr/bin/env python3
 """entities.py — incremental entity extraction over the extracted OCR pages.
 
-Local only (never contacts the portal). Two passes, both incremental per page text hash:
+Local only (never contacts the portal). Incremental per page text hash AND extractor version:
+bumping REGEX_VERSION re-runs the regex pass over every page.
 
-  regex  (default, fast): dates (normalised to ISO, kept only if 1990–2012), measurements
-         (number + unit: f/cc, s/mm2, ppm, ppb, ug/m3, mg/kg, %), contaminants (gazetteer),
-         agencies/organisations (gazetteer), street addresses, BIN / block / lot.
-  gliner (--gliner): zero-shot NER for person, organization, location, building, chemical,
-         with the model named by --gliner-model. Chunks of ~1,200 characters.
+  regex  (default, fast):
+    date         normalised to ISO, kept only if 1990–2012
+    measurement  number + unit (f/cc, s/mm2, ppm, ppb, ug/m3, mg/kg, %)
+    contaminant  gazetteer
+    agency       gazetteer (acronyms case-sensitive)
+    lab          "<Name> Laborator(y|ies) / Labs / Analytical / Testing" organisations
+    contractor   "<Name> (Inc.|Corp.|LLC|Co.|Associates|Consultants|Engineers|Contracting)"
+    address      street addresses, Broadway/Bowery
+    bin, block_lot
+  roles (regex, same pass) — people in an official/professional capacity, table `roles`:
+    labelled fields: Prepared/Reviewed/Approved/Analyzed/Certified/Submitted/Inspected by:, Analyst:,
+    Inspector:, Signature:, From:, To:, CC:  and closing blocks ("Sincerely," / "Very truly yours,")
+    followed by a name line and (optionally) a title line.
+    official = 1 when a title line (Commissioner, Director, Chemist, Inspector, ...) or an agency/lab
+    is attached, or the role is a certifying action (approved/reviewed/analyzed/certified/inspected).
+  gliner (--gliner): zero-shot NER (person, organization, government agency, location, building,
+    chemical, laboratory) as a second opinion.
 
-Personal data: every `person` mention is stored with pii=1. The console summary never
-prints person or address values — counts only. Top values are printed only for
-contaminant, agency and measurement-unit labels. Keep entities.sqlite local.
+Personal data policy (see design brief): people are only ever searchable as a role on a record, in
+an official capacity. Every person mention is stored pii=1; the console summary never prints any
+person or address value — counts only. Top values are printed only for contaminant, agency, lab,
+contractor and measurement units. Keep entities.sqlite local.
 
 Store: data/embed/entities.sqlite
-  pages(doc, page, text_sha1, regex_done, gliner_done, PRIMARY KEY(doc, page))
+  pages(doc, page, text_sha1, regex_done (= version), gliner_done)
   mentions(doc, page, start, end, label, text, norm, score, source, pii)
+  roles(doc, page, start, end, role, name, name_norm, title, org, official)
 
 Usage: .venv/bin/python scripts/embed/entities.py [--gliner] [--limit-docs N] [--gliner-model NAME]
 """
@@ -35,6 +50,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "data" / "text"
 DB = REPO / "data" / "embed" / "entities.sqlite"
+REGEX_VERSION = 2
 
 MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
@@ -58,8 +74,18 @@ AGENCIES = [
     "Lower Manhattan Development Corporation", "LMDC", "Battery Park City Authority", "Verizon",
     "Board of Education", "Department of Sanitation", "DSNY", "HPD", "Red Cross", "Salvation Army",
 ]
+TITLE_WORDS = [
+    "Commissioner", "Deputy Commissioner", "Assistant Commissioner", "Director", "Deputy Director",
+    "Chief", "Manager", "Project Manager", "Supervisor", "Engineer", "Chief Engineer", "Inspector",
+    "Analyst", "Chemist", "Microbiologist", "Industrial Hygienist", "Hygienist", "Toxicologist",
+    "Geologist", "Scientist", "Technician", "Counsel", "General Counsel", "Attorney", "Officer",
+    "Coordinator", "Administrator", "Secretary", "Mayor", "Deputy Mayor", "President", "Vice President",
+    "Principal", "Laboratory Director", "QA Officer", "Quality Assurance", "Specialist", "Superintendent",
+    "Borough Commissioner", "Executive", "Associate", "Assistant", "Environmental Scientist",
+]
 UNITS = r"(?:f/cc|fibers?/cc|s/mm2|s/mm\^?2|structures?/mm2|ppm|ppb|ppt|µg/m3|ug/m3|mg/m3|mg/kg|µg/g|ug/g|ng/m3|%)"
 STREET_T = r"(?:Street|St\.?|Avenue|Ave\.?|Place|Pl\.?|Plaza|Lane|Slip|Road|Boulevard|Blvd\.?|Drive|Way|Terrace|Square)"
+CAPWORD = r"(?:[A-Z][a-zA-Z'&\-]+|[A-Z]\.)"
 
 RE_DATE_NUM = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b")
 RE_DATE_ISO = re.compile(r"\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b")
@@ -69,6 +95,26 @@ RE_ADDR = re.compile(r"\b(\d{1,4}(?:-\d{1,4})?)\s+((?:[NSEW]\.?\s+)?(?:[A-Z][a-z
 RE_BROADWAY = re.compile(r"\b(\d{1,4})\s+(Broadway|Bowery)\b")
 RE_BIN = re.compile(r"\bBIN\s*#?:?\s*(\d{7})\b")
 RE_BLOCKLOT = re.compile(r"\bBlock\s*#?:?\s*(\d{1,5})\W{1,4}Lot\s*#?:?\s*(\d{1,4})\b", re.I)
+RE_LAB = re.compile(r"\b((?:" + CAPWORD + r"[ ,&]{1,3}){1,5}(?:Laborator(?:y|ies)|Labs?|Analytical(?:\s+(?:Services|Laboratories|Inc\.?))?|Testing(?:\s+(?:Laboratories|Services|Inc\.?))?))\b")
+RE_CONTRACTOR = re.compile(r"\b((?:" + CAPWORD + r"[ ,&]{1,3}){1,5}(?:Inc\.|Inc\b|Corp\.|Corporation|LLC|L\.L\.C\.|Co\.|Company|Associates|Consultants|Consulting|Engineers|Engineering|Contracting|Contractors|Construction|Environmental Services))")
+
+ROLE_LABELS = {
+    "prepared by": "prepared", "reviewed by": "reviewed", "approved by": "approved", "analyzed by": "analyzed",
+    "analysed by": "analyzed", "certified by": "certified", "submitted by": "submitted", "inspected by": "inspected",
+    "sampled by": "sampled", "collected by": "sampled", "checked by": "reviewed", "authorized by": "approved",
+    "analyst": "analyzed", "inspector": "inspected", "signature": "signed", "signed": "signed",
+    "from": "from", "to": "to", "cc": "cc", "c.c.": "cc", "attention": "to", "attn": "to",
+}
+CERTIFYING = {"approved", "reviewed", "analyzed", "certified", "inspected", "signed", "prepared"}
+RE_ROLE = re.compile(
+    r"(?im)^[ \t]*(" + "|".join(sorted((re.escape(k) for k in ROLE_LABELS), key=len, reverse=True)) + r")[ \t]*[:.\-][ \t]*"
+    r"((?:" + CAPWORD + r"[ \t]+){0,3}" + CAPWORD + r")(?:[ \t]*,[ \t]*([^\n]{2,80}))?")
+RE_CLOSING = re.compile(
+    r"(?i)(sincerely|very truly yours|respectfully(?: submitted)?|regards)\s*,?\s*\n(?:[ \t]*\n){0,3}"
+    r"[ \t]*((?:" + CAPWORD + r"[ \t]+){0,3}" + CAPWORD + r")[ \t]*\n[ \t]*([^\n]{2,80})?")
+RE_TITLE = re.compile(r"\b(" + "|".join(sorted((re.escape(t) for t in TITLE_WORDS), key=len, reverse=True)) + r")\b")
+NOT_NAMES = {"The", "This", "Date", "Subject", "Re", "Page", "Sample", "Project", "Report", "City", "New", "York",
+             "Department", "Office", "Environmental", "Protection", "Agency", "Laboratory", "Inc", "N/A", "None"}
 
 
 def gaz_regex(words: list[str], flags=re.I) -> re.Pattern:
@@ -77,8 +123,9 @@ def gaz_regex(words: list[str], flags=re.I) -> re.Pattern:
 
 
 RE_CONT = gaz_regex(CONTAMINANTS)
-RE_AGENCY_CS = gaz_regex([a for a in AGENCIES if a.isupper() or "." in a], flags=0)   # acronyms: case-sensitive
+RE_AGENCY_CS = gaz_regex([a for a in AGENCIES if a.isupper() or "." in a], flags=0)
 RE_AGENCY_CI = gaz_regex([a for a in AGENCIES if not (a.isupper() or "." in a)])
+RE_AGENCY_ANY = gaz_regex(AGENCIES)
 
 
 def iso(y: int, m: int, d: int) -> str | None:
@@ -89,6 +136,10 @@ def iso(y: int, m: int, d: int) -> str | None:
     except ValueError:
         return None
     return v.isoformat() if 1990 <= v.year <= 2012 else None
+
+
+def norm_org(s: str) -> str:
+    return re.sub(r"[\s,]+", " ", s).strip(" ,&").upper()
 
 
 def regex_mentions(text: str):
@@ -112,6 +163,10 @@ def regex_mentions(text: str):
     for rx in (RE_AGENCY_CS, RE_AGENCY_CI):
         for m in rx.finditer(text):
             yield m.start(), m.end(), "agency", m.group(0), m.group(0).upper(), 0
+    for m in RE_LAB.finditer(text):
+        yield m.start(1), m.end(1), "lab", m.group(1), norm_org(m.group(1)), 0
+    for m in RE_CONTRACTOR.finditer(text):
+        yield m.start(1), m.end(1), "contractor", m.group(1), norm_org(m.group(1)), 0
     for rx in (RE_ADDR, RE_BROADWAY):
         for m in rx.finditer(text):
             yield m.start(), m.end(), "address", m.group(0), re.sub(r"\s+", " ", m.group(0)).upper(), 1
@@ -121,7 +176,42 @@ def regex_mentions(text: str):
         yield m.start(), m.end(), "block_lot", m.group(0), f"{m.group(1)}/{m.group(2)}", 0
 
 
-GLINER_LABELS = ["person", "organization", "government agency", "location", "building", "chemical"]
+def plausible_name(name: str) -> bool:
+    toks = name.split()
+    return (1 <= len(toks) <= 4 and not any(t.strip(".") in NOT_NAMES for t in toks)
+            and sum(len(t.strip(".")) > 1 for t in toks) >= 1 and not RE_TITLE.search(name))
+
+
+def role_mentions(text: str):
+    """(start, end, role, name, name_norm, title, org, official) for people acting on a record."""
+    for m in RE_ROLE.finditer(text):
+        role = ROLE_LABELS[m.group(1).lower().rstrip(".")] if m.group(1).lower().rstrip(".") in ROLE_LABELS \
+            else ROLE_LABELS.get(m.group(1).lower(), "named")
+        name = m.group(2).strip()
+        if not plausible_name(name):
+            continue
+        tail = (m.group(3) or "")
+        after = text[m.end(): m.end() + 120].split("\n")
+        title_src = tail or (after[1] if len(after) > 1 else "")
+        t = RE_TITLE.search(title_src)
+        org = RE_AGENCY_ANY.search(title_src) or RE_LAB.search(title_src)
+        title = t.group(1) if t else None
+        orgv = norm_org(org.group(1)) if org else None
+        official = int(bool(title or orgv) or role in CERTIFYING)
+        yield m.start(2), m.start(2) + len(name), role, name, name.upper(), title, orgv, official
+    for m in RE_CLOSING.finditer(text):
+        name = m.group(2).strip()
+        if not plausible_name(name):
+            continue
+        line = m.group(3) or ""
+        t = RE_TITLE.search(line)
+        org = RE_AGENCY_ANY.search(line) or RE_LAB.search(line)
+        title = t.group(1) if t else None
+        orgv = norm_org(org.group(1)) if org else None
+        yield m.start(2), m.start(2) + len(name), "signed", name, name.upper(), title, orgv, int(bool(title or orgv))
+
+
+GLINER_LABELS = ["person", "organization", "government agency", "laboratory", "location", "building", "chemical"]
 
 
 def connect() -> sqlite3.Connection:
@@ -133,8 +223,12 @@ def connect() -> sqlite3.Connection:
         gliner_done INT DEFAULT 0, PRIMARY KEY(doc, page));
     CREATE TABLE IF NOT EXISTS mentions(doc TEXT, page INT, start INT, "end" INT, label TEXT, text TEXT,
         norm TEXT, score REAL, source TEXT, pii INT);
+    CREATE TABLE IF NOT EXISTS roles(doc TEXT, page INT, start INT, "end" INT, role TEXT, name TEXT,
+        name_norm TEXT, title TEXT, org TEXT, official INT);
     CREATE INDEX IF NOT EXISTS mentions_label_norm ON mentions(label, norm);
     CREATE INDEX IF NOT EXISTS mentions_doc ON mentions(doc, page);
+    CREATE INDEX IF NOT EXISTS roles_name ON roles(name_norm, role);
+    CREATE INDEX IF NOT EXISTS roles_doc ON roles(doc, page);
     """)
     return con
 
@@ -176,14 +270,20 @@ def main() -> int:
             prev = state.get((doc, page))
             if prev and prev[0] != sha:
                 con.execute("DELETE FROM mentions WHERE doc=? AND page=?", (doc, page))
+                con.execute("DELETE FROM roles WHERE doc=? AND page=?", (doc, page))
                 prev = None
-            regex_done = bool(prev and prev[1])
+            regex_current = bool(prev and (prev[1] or 0) >= REGEX_VERSION)
             gliner_done = bool(prev and prev[2])
-            if not regex_done:
+            if not regex_current:
+                con.execute("DELETE FROM mentions WHERE doc=? AND page=? AND source='regex'", (doc, page))
+                con.execute("DELETE FROM roles WHERE doc=? AND page=?", (doc, page))
                 rows = [(doc, page, s, e, lab, t, n, None, "regex", pii) for s, e, lab, t, n, pii in regex_mentions(text)]
                 con.executemany('INSERT INTO mentions VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+                rrows = [(doc, page, *r) for r in role_mentions(text)]
+                con.executemany('INSERT INTO roles VALUES (?,?,?,?,?,?,?,?,?,?)', rrows)
                 stats["regex_pages"] += 1
                 stats["regex_mentions"] += len(rows)
+                stats["role_mentions"] += len(rrows)
             if model is not None and not gliner_done:
                 rows = []
                 for cs in range(0, len(text), 1200):
@@ -197,18 +297,21 @@ def main() -> int:
                 stats["gliner_pages"] += 1
                 stats["gliner_mentions"] += len(rows)
             con.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?)",
-                        (doc, page, sha, 1, 1 if (gliner_done or model is not None) else 0))
+                        (doc, page, sha, REGEX_VERSION, 1 if (gliner_done or model is not None) else 0))
         con.commit()
-    dt_s = time.time() - t0
 
-    summary = {"run": dict(stats), "seconds": round(dt_s, 1)}
+    summary = {"run": dict(stats), "seconds": round(time.time() - t0, 1)}
     summary["mentions_by_label"] = dict(con.execute("SELECT label, count(*) FROM mentions GROUP BY 1 ORDER BY 2 DESC").fetchall())
     summary["distinct_by_label"] = dict(con.execute("SELECT label, count(DISTINCT norm) FROM mentions GROUP BY 1").fetchall())
-    for lab in ("contaminant", "agency", "measurement"):
+    summary["roles_by_role"] = dict(con.execute("SELECT role, count(*) FROM roles GROUP BY 1 ORDER BY 2 DESC").fetchall())
+    summary["roles_official"] = dict(con.execute("SELECT official, count(*) FROM roles GROUP BY 1").fetchall())
+    summary["distinct_official_people"] = con.execute("SELECT count(DISTINCT name_norm) FROM roles WHERE official=1").fetchone()[0]
+    summary["roles_top_titles"] = con.execute("SELECT title, count(*) FROM roles WHERE title IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 10").fetchall()
+    for lab in ("contaminant", "agency", "lab", "contractor", "measurement"):
         summary[f"top_{lab}"] = con.execute(
-            "SELECT norm, count(*) FROM mentions WHERE label=? GROUP BY 1 ORDER BY 2 DESC LIMIT 12", (lab,)).fetchall()
-    years = con.execute("SELECT substr(norm,1,7), count(*) FROM mentions WHERE label='date' GROUP BY 1 ORDER BY 2 DESC LIMIT 12").fetchall()
-    summary["top_date_months"] = years
+            "SELECT norm, count(*) FROM mentions WHERE label=? GROUP BY 1 ORDER BY 2 DESC LIMIT 10", (lab,)).fetchall()
+    summary["top_date_months"] = con.execute(
+        "SELECT substr(norm,1,7), count(*) FROM mentions WHERE label='date' GROUP BY 1 ORDER BY 2 DESC LIMIT 10").fetchall()
     print(json.dumps(summary, indent=1))
     return 0
 
