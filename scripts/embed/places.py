@@ -10,6 +10,16 @@ page that carries a place AND at least one contaminant AND at least one measurem
 date and a lab); it is a candidate, not a verified reading — confidence reflects how many of those
 signals co-occur on the page and how close they sit to each other.
 
+An address-kind page is SKIPPED entirely (no place, no entry in `places`/`place_pages`) when
+entities.py's classify_addresses() tagged its representative address mention
+`canonical_address_role='organisation'` or `canonical_borough` other than 'Manhattan' (issue #19
+follow-up, Henry 2026-09-14: "59-17 Junction Blvd -> this is in Queens; it's a testing center" — a
+lab's own outside-Manhattan mailing address was showing up as a sampling-site building on the map
+and in Ask's buildings_by_substance). The address stays reachable as an ordinary entity
+(`/entity/address/<slug>`); it just never becomes a `places` row. Optional: an entities.sqlite from
+before that pass (no canonical_borough/canonical_address_role columns) excludes nothing, unchanged
+from before.
+
   places(place_id, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
   place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
 
@@ -54,11 +64,26 @@ def main() -> int:
     t0 = time.time()
     meta = {r["bates_start"]: r for r in map(json.loads, (REPO / "data" / "manifest.jsonl").open())}
     ent = sqlite3.connect(EMB / "entities.sqlite")
+    # Issue #19 follow-up (Henry, 2026-09-14: "59-17 Junction Blvd -> this is in Queens; it's a
+    # testing center") — entities.py's classify_addresses() (--canonicalise) tags every address
+    # mention with canonical_borough/canonical_address_role; pull them for address rows only (both
+    # columns are optional — an entities.sqlite from before that pass simply has neither) so this
+    # loop can skip a lab/contractor's own outside-Manhattan mailing address rather than turning it
+    # into a "place" (a building on the map / an Ask buildings_by_substance row).
+    ent_cols = {r[1] for r in ent.execute("PRAGMA table_info(mentions)")}
+    has_borough = "canonical_borough" in ent_cols
+    borough_sel = "canonical_borough" if has_borough else "NULL"
+    role_sel = "canonical_address_role" if has_borough else "NULL"
+    n_excluded_org = n_excluded_borough = 0
     per_page: dict[tuple, dict] = collections.defaultdict(lambda: collections.defaultdict(list))
-    for doc, page, start, label, norm in ent.execute(
-            "SELECT doc, page, start, label, norm FROM mentions WHERE source='regex' AND label IN "
+    for doc, page, start, label, norm, borough, role in ent.execute(
+            f"SELECT doc, page, start, label, norm, {borough_sel}, {role_sel} FROM mentions "
+            "WHERE source='regex' AND label IN "
             "('bin','block_lot','address','contaminant','measurement','date','lab')"):
-        per_page[(doc, page)][label].append((start, norm))
+        if label == "address":
+            per_page[(doc, page)][label].append((start, norm, borough, role))
+        else:
+            per_page[(doc, page)][label].append((start, norm))
 
     geo = {}
     if GEO.exists():
@@ -76,7 +101,14 @@ def main() -> int:
             b, l = f["block_lot"][0][1].split("/")
             kind, key = "bbl", f"1{int(b):05d}{int(l):04d}"
         elif f["address"]:
-            kind, key = "address", norm_address(f["address"][0][1])
+            _, addr_norm, addr_borough, addr_role = f["address"][0]
+            if addr_role == "organisation":
+                n_excluded_org += 1
+                continue
+            if addr_borough is not None and addr_borough != "Manhattan":
+                n_excluded_borough += 1
+                continue
+            kind, key = "address", norm_address(addr_norm)
         else:
             continue
         cont, meas = f["contaminant"], f["measurement"]
@@ -127,7 +159,10 @@ def main() -> int:
     print(json.dumps({
         "pages_with_place": len(rows), "places": len(places), "places_by_key": dict(kinds),
         "test_pages": sum(r[3] for r in rows), "places_with_tests": sum(1 for p in places.values() if p["tests"]),
-        "geocoded_places": len(feats), "geometry_lookup": GEO.exists(), "seconds": round(time.time() - t0, 1),
+        "geocoded_places": len(feats), "geometry_lookup": GEO.exists(),
+        "pages_excluded_organisation_address": n_excluded_org,
+        "pages_excluded_non_manhattan_address": n_excluded_borough,
+        "borough_classification_available": has_borough, "seconds": round(time.time() - t0, 1),
     }))
     return 0
 
