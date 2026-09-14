@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { COLORS, DEFAULT_FILTERS, buildingUrl, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
+import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
 import RecordTable from './RecordTable';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -30,7 +30,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
     return()=>{clearTimeout(timer);abort.abort()};
   },[filters,revision]);
   function change<K extends keyof MapFilters>(key:K,value:MapFilters[K]) {setFilters(f=>({...f,[key]:value}))}
-  const question=suggestions.place?`What was measured at ${suggestions.place.label} in October 2001?`:null;
+  // Only a real street address makes a sensible question; fallback labels ("BIN …", "Block …",
+  // "Building address in the source record") produced nonsense starter questions.
+  const placeLabel=suggestions.place && /^\d/.test(suggestions.place.label)?suggestions.place.label:null;
+  const question=placeLabel?`What was measured at ${placeLabel} in October 2001?`:null;
   const relatedQuestion=suggestions.substance?`Which buildings have ${suggestions.substance} test records?`:null;
   return <main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>{setFallback(true);setThreeD(false)}} />
@@ -38,10 +41,10 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
       <h1>Find the record. Read it for yourself.</h1>
       <form action="/ask" className={styles.searchForm}>
         <label className={styles.searchLabel} htmlFor="map-query">Ask anything / search the released records</label>
-        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="An address, substance, Bates number or question" autoComplete="off"/><button type="submit" formAction="/search">Search →</button><button type="submit" formAction="/ask">Ask →</button></div>
+        <div className={styles.searchRow}><input id="map-query" name="q" required placeholder="Ask a question, or type an address, substance or Bates number" autoComplete="off"/><button type="submit">Ask →</button></div>
       </form>
       <div className={styles.chips}>
-        {suggestions.place && <a href={buildingUrl(suggestions.place)}>{suggestions.place.label} · most test pages</a>}
+        {suggestions.place && placeLabel && <a href={buildingUrl(suggestions.place)}>{placeLabel} · most test pages</a>}
         {suggestions.substance && <a href={`/search?q=${encodeURIComponent(suggestions.substance)}`}>{suggestions.substance}</a>}
         {question && <a href={`/ask?q=${encodeURIComponent(question)}`}>{question}</a>}
         {relatedQuestion && <a href={`/ask?q=${encodeURIComponent(relatedQuestion)}`}>{relatedQuestion}</a>}
@@ -58,6 +61,12 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
           <p>{file.place.n_docs} records · {file.place.n_pages} pages · {file.place.n_test_pages} test candidate pages</p>
           <p className={styles.note}>Machine-extracted building match · confidence {file.place.confidence?.toFixed(2) ?? 'not available'} · <a href={pageUrl(file.place)}>verify source</a></p>
           <a href={buildingUrl(file.place)}>Open building file →</a>
+          {file.facts && <><h3>Building details</h3><dl className={styles.facts}>
+            {file.facts.year_built!=null && <div><dt>Year built</dt><dd>{file.facts.year_built}</dd></div>}
+            {file.facts.num_floors!=null && <div><dt>Floors</dt><dd>{file.facts.num_floors}</dd></div>}
+            {(file.facts.units_res!=null||file.facts.units_total!=null) && <div><dt>Units</dt><dd>{file.facts.units_res??'—'} res / {file.facts.units_total??'—'} total</dd></div>}
+            {file.facts.bldg_class && <div><dt>Class</dt><dd>{decodeBldgClass(file.facts.bldg_class)}</dd></div>}
+          </dl><p className={styles.note}>Present-day data · provided by <a href="https://prospect.nyc">prospect.nyc</a>, not a 2001 description.</p></>}
           <h3>Tests over time</h3><p className={styles.note}>All available pages for this building, independent of the map filters.</p>
           <RecordTable rows={file.rows.filter(r=>r.has_test)} compact/>
           <h3>Other pages / related memos</h3><p className={styles.note}>These pages mention the building; a memo or decision classification is not established.</p>

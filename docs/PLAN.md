@@ -102,20 +102,30 @@ entity_pages(entity_id, doc, page, role, confidence, raw)
 signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
 signatory_pages(id, doc, page, action, confidence)
 related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
-topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   doc_topics(doc, topic, prob)
+topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies, title, description,
+       name_confidence)   doc_topics(doc, topic, prob)
+       -- title/description/name_confidence (P2, 2026-09-14): a human-readable name for the topic,
+       -- one Haiku call per topic over its top terms + folder labels + a few page excerpts (personal
+       -- names stripped from the inputs first), name-safety-checked before being accepted (see
+       -- scripts/embed/topics.py). null until a name-safe title was produced; the app falls back to
+       -- `terms` when title is null. Source: scripts/embed/topics.py, which replaces related.py's
+       -- topic/doc_topics stage (related.py's own `related`/`near_dupes` output is unchanged).
 places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
 place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
 page_text(doc, page, text, source)                     source ∈ pdftotext|ours (Postgres only)
-building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
-                num_bldgs, source)
+building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total, bldg_area,
+                bldg_class, num_bldgs, source)
 meta(key PK, value)                                     built_at, snapshot_date, counts
 ```
 
 `building_facts` is a one-time export of Prospect's property roll for lower Manhattan (issue #19
-follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (year built, floor
-count, residential/total unit counts, floor area, building class, building count on the lot) —
-**never** owner names, unit-level rows, sales figures, or anything about a person. The building
-page shows it labelled "Building details · data provided by prospect.nyc". `entities.bbl`/`bin`
+follow-up, Henry 2026-09-14): PRESENT-DAY PLUTO-derived building facts only (address, zip, year
+built, floor count, residential/total unit counts, floor area, building class, building count on
+the lot) — **never** owner names, unit-level rows, sales figures, or anything about a person. The
+building page shows it labelled "Building details · data provided by prospect.nyc". `address` is
+Title Case "<housenum> <street>" straight off the roll and is the building page's preferred title
+(issue #20 follow-up, Henry 2026-09-14: a place with no OCR-matched address was titling itself
+"BIN nnnnnnn" — see `lib/map/data.ts` label resolution order below). `entities.bbl`/`bin`
 (address entities only, when the roll matched) let the building page and `places.py` resolve a
 building straight from an address entity. Provenance: `scripts/embed/export_prospect_gazetteer.py`
 is a **one-time, operator-run** script that reads Prospect's central Postgres (`prospect_ro`,

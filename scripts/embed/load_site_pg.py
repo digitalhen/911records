@@ -99,6 +99,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
     "topics": [
         ("id", "INTEGER"), ("parent", "INTEGER"), ("label", "TEXT"), ("size_docs", "INTEGER"),
         ("size_pages", "INTEGER"), ("terms", "JSONB"), ("boxes", "JSONB"), ("agencies", "JSONB"),
+        ("title", "TEXT"), ("description", "TEXT"), ("name_confidence", "DOUBLE PRECISION"),
     ],
     "doc_topics": [("doc", "TEXT"), ("topic", "INTEGER"), ("prob", "DOUBLE PRECISION")],
     "places": [
@@ -112,7 +113,8 @@ TABLES: dict[str, list[tuple[str, str]]] = {
         ("confidence", "DOUBLE PRECISION"),
     ],
     "building_facts": [
-        ("bbl", "TEXT"), ("bin", "TEXT"), ("year_built", "INTEGER"), ("num_floors", "DOUBLE PRECISION"),
+        ("bbl", "TEXT"), ("bin", "TEXT"), ("address", "TEXT"), ("zip", "TEXT"),
+        ("year_built", "INTEGER"), ("num_floors", "DOUBLE PRECISION"),
         ("units_res", "INTEGER"), ("units_total", "INTEGER"), ("bldg_area", "BIGINT"),
         ("bldg_class", "TEXT"), ("num_bldgs", "INTEGER"), ("source", "TEXT"),
     ],
@@ -153,6 +155,7 @@ INDEX_STATEMENTS = [
     'CREATE INDEX page_text_doc ON site_new.page_text(doc)',
     'CREATE INDEX building_facts_bin ON site_new.building_facts(bin)',
     'CREATE INDEX entities_bbl ON site_new.entities(bbl)',
+    'CREATE INDEX entities_bin ON site_new.entities(bin)',
 ]
 
 

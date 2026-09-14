@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getEntity, getOccurrences, relatedEntities, formatDate, entityHref, entityLinkHref, distribution, months, pageHref, TYPE_LABELS } from '@/lib/discovery/data';
 import { Shell, Extraction, Caveat, Records, Section, metadata } from '@/components/discovery/Shared';
 import { getPlaceFile } from '@/lib/map/data';
+import { buildingUrl, decodeBldgClass } from '@/lib/map/types';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic = 'force-dynamic';
@@ -12,10 +13,15 @@ export default async function EntityPage({params}:{params:Params}) {
   const {type,slug}=await params; const entity=await getEntity(type,slug); if(!entity) notFound();
   const rows=await getOccurrences(entity.id); if(!rows.length) notFound();
   const source=rows[0]!;
+  // The roll match (entity.bin/bbl) does not guarantee a building page has records of its own —
+  // only link when one actually resolves, so this never points at a 404 (issue #25's rule).
+  const buildingId = entity.bin ? `bin:${entity.bin}` : entity.bbl ? `bbl:${entity.bbl}` : null;
   const [related, buildingFile]=await Promise.all([
     relatedEntities(rows,entity.id),
-    type==='address' && entity.bin ? getPlaceFile(entity.bin) : Promise.resolve(null),
+    type==='address' && buildingId ? getPlaceFile(buildingId) : Promise.resolve(null),
   ]);
+  const buildingHref = buildingFile ? buildingUrl(buildingFile.place) : null;
+  const facts = buildingFile?.facts;
   const filings=[...new Set(rows.map(r=>JSON.stringify([r.agency,r.volume,r.box,r.folder])))];
   const allMonths=[...new Set(rows.flatMap(r=>months(r.dates)))].sort();
   const activity=allMonths.map(month=>({month,rows:rows.filter(r=>months(r.dates).includes(month))}));
@@ -52,19 +58,27 @@ export default async function EntityPage({params}:{params:Params}) {
       <div className={styles.relatedGrid}>{related.map(r=><div key={r.id} className={styles.relatedItem}><Link href={entityLinkHref(r)}>{r.label}</Link><p className="small muted">{TYPE_LABELS[r.type] || r.type} · {r.shared_pages} shared {r.shared_pages===1?'page':'pages'}</p><small className="extraction">machine-extracted</small></div>)}</div>
     </Section>}
 
-    {/* Only when a building page actually resolves — entity.bin (Prospect gazetteer match)
-        doesn't guarantee a site.places row exists (that's a separate extraction pass). */}
-    {type==='address' && entity.bin && buildingFile && <Section id="building" title="Building file">
+    {/* Only when a building page actually resolves — entity.bin/bbl (Prospect gazetteer match)
+        doesn't guarantee a site.places row exists (that's a separate extraction pass, #25). */}
+    {type==='address' && buildingFile && buildingHref && <Section id="building" title="Building file">
       <div className={styles.buildingPanel}>
         <h3>{buildingFile.place.label}</h3>
-        <p className="small muted">BIN {entity.bin}{entity.bbl?` · BBL ${entity.bbl}`:''} · matched through the Prospect property-roll gazetteer (docs/PLAN.md).</p>
+        <p className="small muted">{entity.bin?`BIN ${entity.bin}`:`BBL ${entity.bbl}`}{entity.bin && entity.bbl?` · BBL ${entity.bbl}`:''} · matched through the Prospect property-roll gazetteer (docs/PLAN.md).</p>
         <div className={styles.buildingFacts}>
           <div><strong>{buildingFile.place.n_docs}</strong><span>records</span></div>
           <div><strong>{buildingFile.place.n_pages}</strong><span>source pages</span></div>
           <div><strong>{buildingFile.place.n_test_pages}</strong><span>test candidate pages</span></div>
           <div><strong>{buildingFile.place.first_date||'—'}</strong><span>{buildingFile.place.first_date?`through ${buildingFile.place.last_date||'—'}`:'no dated pages'}</span></div>
         </div>
-        <Link className="button primary" href={`/building/${encodeURIComponent(entity.bin)}`}>Open the building file →</Link>
+        {facts && <dl className={styles.buildingDetails}>
+          {facts.year_built!=null && <div><dt>Year built</dt><dd>{facts.year_built}</dd></div>}
+          {facts.num_floors!=null && <div><dt>Floors</dt><dd>{facts.num_floors}</dd></div>}
+          {(facts.units_res!=null||facts.units_total!=null) && <div><dt>Units</dt><dd>{facts.units_res??'—'} residential / {facts.units_total??'—'} total</dd></div>}
+          {facts.bldg_area!=null && <div><dt>Building area</dt><dd>{Number(facts.bldg_area).toLocaleString()} sq ft</dd></div>}
+          {facts.bldg_class && <div><dt>Building class</dt><dd>{decodeBldgClass(facts.bldg_class)}</dd></div>}
+        </dl>}
+        {facts && <p className="small muted">Present-day building details · provided by <a href="https://prospect.nyc">prospect.nyc</a>. Describes the lot today, not in 2001 — never owner names, unit lists or sales.</p>}
+        <Link className="button primary" href={buildingHref}>Open the building file →</Link>
       </div>
     </Section>}
   </Shell>;

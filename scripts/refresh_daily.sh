@@ -122,7 +122,14 @@ else
   log "--index-only: skipping enumerate/diff/download/loop-cycle stages"
 fi
 
-run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py
+# Discovery layer: document vectors, related records, near-duplicates (related.py), then the
+# human-readable topic hierarchy (topics.py, Haiku-named, cached; needs ANTHROPIC_API_KEY from
+# .claudekey), then buildings/places for the map. All local except the topic naming calls.
+if [ -f .claudekey ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < .claudekey)"; fi
+run_stage related_py .venv/bin/python scripts/embed/related.py
+run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
+run_stage places_py .venv/bin/python scripts/embed/places.py
+run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --related data/embed/related-topics.sqlite
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
 run_stage opensearch_setup .venv/bin/python scripts/search/opensearch.py setup
 run_stage opensearch_index .venv/bin/python scripts/search/opensearch.py index

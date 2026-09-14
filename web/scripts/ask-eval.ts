@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 interface Case {
   id: string;
   q: string;
-  expect: 'refuse' | 'allow';
+  expect: 'refuse' | 'allow' | 'offtopic' | 'keyword' | 'question';
   note?: string;
 }
 
@@ -36,23 +36,44 @@ async function main(): Promise<void> {
 
   for (const c of cases) {
     const route = routeAsk(c.q);
+
+    // 'keyword' cases are a pure router assertion — checkable with zero
+    // model calls regardless of ANTHROPIC_API_KEY, and the whole point of
+    // B11's router fix is that these short-circuit before ever reaching it.
+    if (c.expect === 'keyword') {
+      const ok = route.kind === 'keyword';
+      logResult(c, ok, `router: ${route.kind} (no model call)`);
+      ok ? pass++ : fail++;
+      continue;
+    }
+
     if (route.kind !== 'model') {
-      // Bates/keyword short-circuits never reach the model, so they never
-      // refuse — only an "allow" expectation can be correct here.
+      // Bates/keyword short-circuits never reach the model, so only an
+      // "allow" expectation can be correct here — 'refuse'/'offtopic'/
+      // 'question' all require the planner to have actually run.
       const ok = c.expect === 'allow';
       logResult(c, ok, `router: ${route.kind} (no model call)`);
       ok ? pass++ : fail++;
       continue;
     }
+
+    // From here, the router correctly sent it to the model (checkable
+    // without a key); whether the *plan* itself is right needs one.
     if (!hasKey) {
-      console.log(`SKIP ${c.id.padEnd(4)} ${c.q}`);
+      console.log(`SKIP ${c.id.padEnd(4)} ${c.q} — router: model (needs ANTHROPIC_API_KEY to check plan.kind)`);
       skipped++;
       continue;
     }
     try {
       const { plan } = await planAsk(c.q);
-      const got: 'refuse' | 'allow' = plan.kind === 'refuse' ? 'refuse' : 'allow';
-      const ok = got === c.expect;
+      const ok =
+        c.expect === 'refuse'
+          ? plan.kind === 'refuse'
+          : c.expect === 'offtopic'
+            ? plan.kind === 'offtopic'
+            : c.expect === 'question'
+              ? plan.kind === 'question'
+              : plan.kind !== 'refuse' && plan.kind !== 'offtopic'; // 'allow'
       logResult(c, ok, `plan: ${plan.kind}${plan.refuseReason ? ` (${plan.refuseReason})` : ''}`);
       ok ? pass++ : fail++;
     } catch (err) {

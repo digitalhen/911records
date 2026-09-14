@@ -1,0 +1,58 @@
+/**
+ * Version and release history for /releases — plain typed constants, no database, client-safe.
+ * Rule (CLAUDE.md): every merge to main that changes what a visitor can see or do bumps APP_VERSION
+ * and prepends a RELEASES entry. Notes are user-facing only — features, behaviour, visible fixes —
+ * in plain language; never internal work.
+ * The footer renders the version as the link to /releases; /api/health reports it.
+ */
+export const APP_VERSION = '0.5.1';
+
+export type Release = { version: string; date: string; notes: string[] };
+
+export const RELEASES: Release[] = [
+  {
+    version: '0.5.1',
+    date: '2026-09-14',
+    notes: ['Building pages, the map panel and document building links now show the street address (for example 77 Pearl Street) instead of a bare building number.'],
+  },
+  {
+    version: '0.5.0',
+    date: '2026-09-14',
+    notes: [
+      'One "Ask" control: a Bates number opens the document, keywords search, a question gets a cited answer; off-topic questions get a plain note.',
+      'Topics are named in plain English (63 subjects under 8 groups), generated from the records and reviewed for names.',
+      'OCR spellings of the same address, lab or contractor collapse into one entity; variants are kept as evidence.',
+      'Building pages show present-day building details (year built, floors, units, class) provided by prospect.nyc.',
+      'Entities index redesigned as panels per type with live filtering and A–Z listings.',
+      'Search no longer returns look-alike results for words that appear nowhere in the records.',
+    ],
+  },
+  {
+    version: '0.4.0',
+    date: '2026-09-14',
+    notes: [
+      'Case folder: save pages from the viewer or any citation, add notes, order exhibits, export an exhibit list.',
+      'Related records, more-like-this-page and buildings on every document; copies and versions side by side.',
+      'Removed documents answer 410 with a notice; sitemaps for documents, entities, buildings and topics; per-page social cards.',
+      'Google Analytics with disclosure on the privacy page; www redirects to the apex.',
+    ],
+  },
+  {
+    version: '0.3.0',
+    date: '2026-09-14',
+    notes: ['Ask anything: cited answers from retrieved pages, every sentence linked to a Bates page; identity questions refused; permalinks.'],
+  },
+  {
+    version: '0.2.0',
+    date: '2026-09-14',
+    notes: [
+      'Home is a 3D map of lower Manhattan; buildings that appear in the records are lit; land, water and shoreline drawn from the borough outlines.',
+      'Browse the physical order (collection → agency → volume → box → folder), releases and changes, entities and topics, personal-information policy.',
+    ],
+  },
+  {
+    version: '0.1.0',
+    date: '2026-09-14',
+    notes: ['First public version replacing the holding page: search with facets, document viewer with page images and OCR text, served from two hosts.'],
+  },
+];

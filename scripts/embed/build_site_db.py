@@ -17,11 +17,15 @@ Schema (docs/PLAN.md, "site.sqlite" section — this file must match it exactly)
   signatories(id PK, slug, name, title, org, n_docs, first_date, last_date)
   signatory_pages(id, doc, page, action, confidence)
   related(doc, rank, other, score, cross)     near_dupes(doc, other, score)
-  topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies)   doc_topics(doc, topic, prob)
+  topics(id PK, parent, label, size_docs, size_pages, terms, boxes, agencies, title, description,
+         name_confidence)   doc_topics(doc, topic, prob)
   places(id PK, kind, key, label, n_docs, n_pages, n_test_pages, first_date, last_date, lat, lon)
   place_pages(place_id, doc, page, has_test, contaminants, units, dates, labs, confidence)
-  building_facts(bbl PK, bin, year_built, num_floors, units_res, units_total, bldg_area, bldg_class,
-                  num_bldgs, source)   present-day PLUTO-derived facts ONLY, never owner/sales/people
+  building_facts(bbl PK, bin, address, zip, year_built, num_floors, units_res, units_total,
+                  bldg_area, bldg_class, num_bldgs, source)   present-day PLUTO-derived facts ONLY,
+                  never owner/sales/people. `address` is Title Case "<housenum> <street>" straight
+                  off the roll (never a machine-extracted/OCR address) — the building page's title
+                  falls back to it ahead of anything OCR-derived.
   meta(key PK, value)                                     built_at, snapshot_date, counts
 
 Sources:
@@ -35,7 +39,10 @@ Sources:
                                                  already distinguishes a reappearance from a plain add).
   data/embed/pages.sqlite    pages(doc,page,bates,chars,status)      status: ok|empty|junk|ocr
   data/embed/entities.sqlite mentions(...), roles(...)               roles.official=1 only ever surfaces
-  data/embed/related.sqlite  related, near_dupes, topics, doc_topics
+  data/embed/related.sqlite  related, near_dupes, topics, doc_topics (--related to point elsewhere,
+                             e.g. data/embed/p2-related.sqlite; topics.title/description/
+                             name_confidence are read only if the source file has those columns —
+                             related.sqlite's older schema without them loads as NULL)
   data/embed/places.sqlite   places, place_pages
   data/embed/gazetteer-prospect.csv  one-time Prospect property-roll export (GAZETTEER_CSV,
                              export_prospect_gazetteer.py, operator-run) -> entities.bbl/bin for
@@ -60,7 +67,7 @@ OCR spelling stays visible: `label` is the canonical Title Case form, `variants`
 of {raw spelling: mention count} (every raw spelling ever seen for that entity, most-frequent
 first, capped at 20), and `entity_pages.raw` is the exact raw text found on that one page.
 
-Usage: .venv/bin/python scripts/embed/build_site_db.py [--out PATH]
+Usage: .venv/bin/python scripts/embed/build_site_db.py [--out PATH] [--related PATH]
 Build-then-swap: writes data/site/site.sqlite.tmp, indexes, VACUUMs, then os.replace()s over
 data/site/site.sqlite. Prints a one-line JSON summary of row counts and timing.
 """
@@ -386,28 +393,37 @@ def build_signatories(entities_con: sqlite3.Connection | None, doc_dates: dict[s
 
 # ---------------------------------------------------------- related.sqlite --
 
-def load_related():
-    path = EMB / "related.sqlite"
+def load_related(related_path: Path):
+    """Reads related/near_dupes/topics/doc_topics from `related_path` (default
+    data/embed/related.sqlite; pass --related data/embed/p2-related.sqlite to read topics.py's
+    output instead — see topics.py). topics.title/description/name_confidence are optional
+    columns: read if present, else every topic gets title=description=None, name_confidence=None,
+    which is exactly what related.py's older topics table (no naming step) produces."""
     related, near_dupes, topics, doc_topics = [], [], [], []
     topic_of_doc: dict[str, int] = {}
     cross_of_doc: dict[str, int] = collections.defaultdict(int)
-    if not path.exists():
+    if not related_path.exists():
         return related, near_dupes, topics, doc_topics, topic_of_doc, cross_of_doc
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{related_path}?mode=ro", uri=True)
     for doc, rank, other, score, cross in con.execute("SELECT doc, rank, other, score, cross FROM related"):
         related.append((doc, rank, other, score, cross))
         if cross:
             cross_of_doc[doc] += 1
     for doc, other, score in con.execute("SELECT doc, other, score FROM near_dupes"):
         near_dupes.append((doc, other, score))
-    for topic, parent, size_docs, size_pages, terms, boxes, agencies in con.execute(
-            "SELECT topic, parent, size_docs, size_pages, terms, boxes, agencies FROM topics"):
+    topic_cols = {r[1] for r in con.execute("PRAGMA table_info(topics)")}
+    has_names = {"title", "description", "name_confidence"} <= topic_cols
+    name_select = ", title, description, name_confidence" if has_names else ""
+    for row in con.execute(f"SELECT topic, parent, size_docs, size_pages, terms, boxes, agencies{name_select} FROM topics"):
+        topic, parent, size_docs, size_pages, terms, boxes, agencies = row[:7]
+        title, description, name_confidence = row[7:10] if has_names else (None, None, None)
         try:
             term_list = json.loads(terms) if terms else []
         except json.JSONDecodeError:
             term_list = []
         label = " · ".join(term_list[:3]) if term_list else f"topic {topic}"
-        topics.append((topic, parent, label, size_docs, size_pages, terms, boxes, agencies))
+        topics.append((topic, parent, label, size_docs, size_pages, terms, boxes, agencies,
+                       title, description, name_confidence))
     for doc, topic, prob in con.execute("SELECT doc, topic, prob FROM doc_topics"):
         doc_topics.append((doc, topic, prob))
         if topic is not None and topic >= 0:
@@ -444,6 +460,13 @@ def _float_or_none(v: str | None) -> float | None:
     return float(v) if v not in (None, "") else None
 
 
+def _roll_address(housenum: str | None, street: str | None) -> str | None:
+    """Title Case "<housenum> <street>" straight off the roll, e.g. "77 Pearl Street". Never an
+    OCR/machine-extracted address — those stay in `places.label`, not here."""
+    parts = [p for p in (housenum, street) if p]
+    return " ".join(parts).title() if parts else None
+
+
 def load_building_facts() -> list[tuple]:
     """building_facts rows straight from GAZETTEER_CSV (export_prospect_gazetteer.py's one-time
     dump of Prospect's property roll + pluto_lots). PRESENT-DAY BUILDING FACTS ONLY — year built,
@@ -463,7 +486,9 @@ def load_building_facts() -> list[tuple]:
                 continue
             seen.add(bbl)
             out.append((
-                bbl, row.get("bin") or None, _int_or_none(row.get("year_built")),
+                bbl, row.get("bin") or None,
+                _roll_address(row.get("housenum"), row.get("street_canonical")),
+                row.get("zip") or None, _int_or_none(row.get("year_built")),
                 _float_or_none(row.get("num_floors")), _int_or_none(row.get("units_res")),
                 _int_or_none(row.get("units_total")), _int_or_none(row.get("bldg_area")),
                 row.get("bldg_class") or None, _int_or_none(row.get("num_bldgs")),
@@ -501,7 +526,8 @@ CREATE TABLE signatory_pages(id TEXT, doc TEXT, page INT, action TEXT, confidenc
 CREATE TABLE related(doc TEXT, rank INT, other TEXT, score REAL, cross INT);
 CREATE TABLE near_dupes(doc TEXT, other TEXT, score REAL);
 CREATE TABLE topics(
-  id INT PRIMARY KEY, parent INT, label TEXT, size_docs INT, size_pages INT, terms TEXT, boxes TEXT, agencies TEXT
+  id INT PRIMARY KEY, parent INT, label TEXT, size_docs INT, size_pages INT, terms TEXT, boxes TEXT, agencies TEXT,
+  title TEXT, description TEXT, name_confidence REAL
 );
 CREATE TABLE doc_topics(doc TEXT, topic INT, prob REAL);
 CREATE TABLE places(
@@ -514,8 +540,8 @@ CREATE TABLE place_pages(
 );
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE building_facts(
-  bbl TEXT PRIMARY KEY, bin TEXT, year_built INT, num_floors REAL, units_res INT, units_total INT,
-  bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
+  bbl TEXT PRIMARY KEY, bin TEXT, address TEXT, zip TEXT, year_built INT, num_floors REAL,
+  units_res INT, units_total INT, bldg_area INT, bldg_class TEXT, num_bldgs INT, source TEXT
 );
 """
 
@@ -545,12 +571,16 @@ CREATE INDEX place_pages_place ON place_pages(place_id);
 CREATE INDEX place_pages_doc ON place_pages(doc);
 CREATE INDEX building_facts_bin ON building_facts(bin);
 CREATE INDEX entities_bbl ON entities(bbl);
+CREATE INDEX entities_bin ON entities(bin);
 """
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(OUT_PATH))
+    ap.add_argument("--related", default=str(EMB / "related.sqlite"),
+                     help="related/near_dupes/topics/doc_topics source (default data/embed/related.sqlite; "
+                          "point at data/embed/p2-related.sqlite for topics.py's human-readable topics)")
     args = ap.parse_args()
     out_path = Path(args.out)
     tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -576,7 +606,7 @@ def main() -> int:
     if entities_con is not None:
         entities_con.close()
 
-    related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related()
+    related_rows, near_dupes_rows, topics_rows, doc_topics_rows, topic_of_doc, cross_of_doc = load_related(Path(args.related))
     places_rows, place_pages_rows = load_places()
     building_facts_rows = load_building_facts()
     snapshots_rows = load_snapshots()
@@ -626,11 +656,11 @@ def main() -> int:
     con.executemany("INSERT INTO signatory_pages VALUES (?,?,?,?,?)", signatory_pages_rows)
     con.executemany("INSERT INTO related VALUES (?,?,?,?,?)", related_rows)
     con.executemany("INSERT INTO near_dupes VALUES (?,?,?)", near_dupes_rows)
-    con.executemany("INSERT INTO topics VALUES (?,?,?,?,?,?,?,?)", topics_rows)
+    con.executemany("INSERT INTO topics VALUES (?,?,?,?,?,?,?,?,?,?,?)", topics_rows)
     con.executemany("INSERT INTO doc_topics VALUES (?,?,?)", doc_topics_rows)
     con.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?,?,?)", places_rows)
     con.executemany("INSERT INTO place_pages VALUES (?,?,?,?,?,?,?,?,?)", place_pages_rows)
-    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
+    con.executemany("INSERT INTO building_facts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", building_facts_rows)
 
     counts = {
         "documents": len(doc_rows), "pages": len(pages_rows), "snapshots": len(snapshots_rows),
