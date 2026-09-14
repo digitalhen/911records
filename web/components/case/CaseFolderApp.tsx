@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useCaseFolder } from '@/lib/case/useCaseFolder';
+import { exportCsv } from '@/lib/case/store';
 import type { CaseItem } from '@/lib/case/types';
 import type { CaseDocMeta } from '@/lib/case/lookup';
 
@@ -15,10 +16,6 @@ function docHref(doc: string, page: number): string {
 function batesRange(doc: string, batesEnd: string | null | undefined): string {
   if (!batesEnd || batesEnd === doc) return doc;
   return `${doc}–${batesEnd.replace(/^NYC-WTC_/, '')}`;
-}
-
-function csvEscape(value: unknown): string {
-  return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
 
 function useToast() {
@@ -110,26 +107,11 @@ export function CaseFolderApp() {
 
   const totalPages = items.length; // one saved page per exhibit; ranges collapse when a doc's bates_end covers it.
 
-  function buildCsv(): string {
-    const rows: (string | number)[][] = [
-      ['Exhibit', 'Bates page', 'Document Bates range', 'Our permalink', 'Official City URL', 'Note'],
-    ];
-    items.forEach((item, i) => {
-      const m = meta[item.doc];
-      rows.push([
-        i + 1,
-        item.batesPage,
-        batesRange(item.doc, m?.bates_end ?? null),
-        `${SITE_URL}${docHref(item.doc, item.page)}`,
-        m?.official_url || '—',
-        item.note,
-      ]);
-    });
-    return rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
-  }
-
   function openExport() {
-    setCsv(buildCsv());
+    // The export itself is a pure function in lib/case/store.ts (exportCsv)
+    // so it stays in one place alongside the rest of the case-folder
+    // contract, not duplicated here.
+    setCsv(exportCsv(items, meta, SITE_URL));
     dialogRef.current?.showModal();
   }
 
