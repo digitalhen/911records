@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
+import { COLORS, DEFAULT_FILTERS, buildingUrl, decodeBldgClass, month, pageUrl, placeQuestion, substanceQuestion, type MapFilters, type Place, type PlaceFile } from '@/lib/map/types';
 import MapCanvas from './MapCanvas';
 import RecordTable from './RecordTable';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -33,8 +33,14 @@ export default function MapExplorer({ initialPlaces, substances, suggestions, ho
   // Only a real street address makes a sensible question; fallback labels ("BIN …", "Block …",
   // "Building address in the source record") produced nonsense starter questions.
   const placeLabel=suggestions.place && /^\d/.test(suggestions.place.label)?suggestions.place.label:null;
-  const question=placeLabel?`What was measured at ${placeLabel} in October 2001?`:null;
-  const relatedQuestion=suggestions.substance?`Which buildings have ${suggestions.substance} test records?`:null;
+  // B15: a fixed "in October 2001" invented a date that usually has no
+  // reading for whichever building happens to have the most test pages
+  // today (sampling ramped up in 2002-2003, not the attack month itself) —
+  // verified against the live index (npm run suggestions:check) to
+  // reliably return results across different top-test-page buildings,
+  // unlike the old phrasing.
+  const question=placeLabel?placeQuestion(placeLabel):null;
+  const relatedQuestion=suggestions.substance?substanceQuestion(suggestions.substance):null;
   return <main id="main" className={styles.explorer}>
     <MapCanvas places={mapBusy?[]:places} threeD={threeD} onSelect={select} onFallback={()=>{setFallback(true);setThreeD(false)}} />
     <section className={styles.search} aria-label="Ask and search the records">

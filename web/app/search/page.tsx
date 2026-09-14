@@ -8,7 +8,7 @@ import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
-import { SUGGESTED_QUESTIONS } from '@/components/home/HomePanel';
+import { SUGGESTED_QUESTIONS } from '@/lib/suggestedQuestions';
 
 export const dynamic = 'force-dynamic';
 
