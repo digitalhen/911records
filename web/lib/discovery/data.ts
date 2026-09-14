@@ -11,7 +11,14 @@ export interface Source { doc: string; page: number; confidence: number | null }
 export interface Entity extends Source { id: string; type: string; slug: string; label: string; n_docs: number; n_pages: number; first_date: string | Date | null; last_date: string | Date | null; role?: string; bin?: string | null; bbl?: string | null; variants?: unknown }
 export interface Signatory extends Entity { name: string; title: string | null; org: string | null }
 export interface Occurrence extends Source { role: string; agency: string | null; volume: string | null; box: string | null; folder: string | null; dates: unknown }
-export interface Topic extends Source { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null }
+// Not `extends Source`: a parent/rollup topic (no direct site.doc_topics rows — see getTopics)
+// has no doc/page of its own, unlike every other Source-bearing row in this file.
+export interface Topic { id: number; parent: number | null; label: string; size_docs: number; size_pages: number; terms: unknown; boxes: unknown; agencies: unknown; title: string | null; description: string | null; name_confidence: number | null; doc: string | null; page: number | null; confidence: number | null }
+/** A Topic has a checkable source page only when it carries direct document assignments
+ * (every leaf topic does; parent/rollup topics don't) — use as the `Extraction` `source` prop. */
+export function topicSource(t: Topic): Source | null {
+  return t.doc != null && t.page != null ? { doc: t.doc, page: t.page, confidence: t.confidence } : null;
+}
 /** Human-readable title when a name-safe one was generated (site.topics.title, P2); otherwise the
  * term-list label, falling back further to a generic "Topic N". Never renders raw terms as a title. */
 export function topicTitle(t: Topic): string {
@@ -145,8 +152,12 @@ export async function relatedEntities(pages: Pick<Source,'doc'|'page'>[], exclud
       AND EXISTS (SELECT 1 FROM unnest($1::text[],$2::int[]) AS src(doc,page) WHERE src.doc=ep.doc AND src.page=ep.page)
     GROUP BY e.id,e.type,e.slug,e.label,e.bin ORDER BY shared_pages DESC,e.id LIMIT $4`, [docs, pageNos, excludeId, limit]);
 }
+// LEFT JOIN LATERAL: parent/rollup topics (site.topics.parent IS NULL for every one seen so far)
+// carry no direct site.doc_topics rows of their own — their size_pages/size_docs are aggregated
+// from their children — so an inner join here would silently drop every parent topic and make
+// the tree unreachable above its leaves. Callers must treat doc/page/confidence as possibly null.
 export const getTopics = cache(async () => queryReadSafe<Topic>(`SELECT t.*,s.doc,s.page,t.name_confidence AS confidence FROM site.topics t
-  JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
+  LEFT JOIN LATERAL (SELECT dt.doc,p.page FROM site.doc_topics dt JOIN site.documents d USING(doc)
     JOIN site.pages p USING(doc) WHERE dt.topic=t.id AND d.status IS DISTINCT FROM 'removed'
     ORDER BY dt.prob DESC NULLS LAST,dt.doc,p.page LIMIT 1) s ON true ORDER BY t.size_pages DESC,t.id`));
 export async function topicDocuments(id: number, offset = 0) {
