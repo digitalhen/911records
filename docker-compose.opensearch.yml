@@ -1,0 +1,27 @@
+# Local OpenSearch for the 9/11 records explorer (dev only).
+#   docker compose -f docker-compose.opensearch.yml up -d
+# Bound to 127.0.0.1 only; the security plugin is disabled because this node never leaves the
+# machine. Do NOT expose this port or reuse this file for a deployed instance — a deployed node
+# needs the security plugin, TLS and real credentials.
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.2
+    container_name: sept11-opensearch
+    environment:
+      - discovery.type=single-node
+      - cluster.name=sept11
+      - node.name=sept11-os-1
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - sept11-os-data:/usr/share/opensearch/data
+    restart: unless-stopped
+volumes:
+  sept11-os-data: {}
