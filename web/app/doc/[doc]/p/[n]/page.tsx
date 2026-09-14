@@ -14,7 +14,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const row = await getDocument(doc);
   const label = row?.title || row?.folder || doc;
   const title = row ? `${label} · page ${n}` : `${doc} p${n}`;
-  const description = row ? `Page ${n} of ${label}, Bates-numbered ${doc}. Mirrored independently; not affiliated with the City of New York.` : undefined;
+  // Prefer the document's plain-language summary (issue #37) when the pipeline has one; falls back
+  // to the prior generic pattern for documents it hasn't summarized yet.
+  const description = row
+    ? row.summary
+      ? `${row.summary} (page ${n} of ${label}, Bates-numbered ${doc}.)`
+      : `Page ${n} of ${label}, Bates-numbered ${doc}. Mirrored independently; not affiliated with the City of New York.`
+    : undefined;
   return {
     // Root layout's title template already appends " · 9/11 City Records".
     title,

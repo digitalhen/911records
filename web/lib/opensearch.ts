@@ -129,6 +129,10 @@ export interface SearchResult {
   noSearchableTerms?: boolean;
   /** Content terms remained, but none of them literally appear in any page — the semantic arm was gated off. */
   noLexicalMatch?: boolean;
+  /** Folder cover sheets matching this query, hidden from `hits`/`total` unless
+   *  `SearchOptions.includeCoverSheets` was set — see withCoverSheetHandling. 0 when
+   *  includeCoverSheets is true (nothing was hidden to count). */
+  hiddenCoverSheets?: number;
 }
 
 const MULTI_MATCH_FIELDS = ['text', 'text.exact^0.5', 'folder.text^0.3'];
@@ -149,6 +153,24 @@ function withCoverSheetPenalty(query: Record<string, unknown>): Record<string, u
       boost_mode: 'multiply',
     },
   };
+}
+
+const COVER_SHEET_TERM = { term: { doc_type: 'cover_sheet' } };
+
+/**
+ * Cover sheets are hidden from search results entirely by default (Henry: "I thought we were
+ * hiding the cover pages") — a facet toggle on /search (`SearchOptions.includeCoverSheets`) can
+ * turn them back on, in which case they fall back to the same 0.5x ranking penalty as before
+ * rather than being mixed in at full weight. The exclusion is baked into the query itself (not a
+ * post_filter) so the facet aggregations below also reflect the hidden-by-default universe. Same
+ * schema-first degrade as withCoverSheetPenalty above: a `term` filter on a field the index
+ * doesn't have yet just matches nothing, never errors.
+ */
+function withCoverSheetHandling(query: Record<string, unknown>, includeCoverSheets: boolean): Record<string, unknown> {
+  if (!includeCoverSheets) {
+    return { bool: { must: query, must_not: [COVER_SHEET_TERM] } };
+  }
+  return withCoverSheetPenalty(query);
 }
 
 const FACET_FIELDS = ['agency', 'source', 'box', 'volume', 'folder', 'contaminants', 'labs', 'addresses'] as const;
@@ -190,11 +212,12 @@ function renderSnippet(fragment: string): string {
  * caller already knows it wants semantic recall regardless (a planner
  * question, `SearchOptions.allowSemanticOnly`).
  */
-async function hasLexicalHit(query: string, filterClauses: Record<string, unknown>[]): Promise<boolean> {
+async function hasLexicalHit(query: string, filterClauses: Record<string, unknown>[], includeCoverSheets: boolean): Promise<boolean> {
   try {
+    const clauses = includeCoverSheets ? filterClauses : [...filterClauses, { bool: { must_not: [COVER_SHEET_TERM] } }];
     const body = {
-      query: filterClauses.length
-        ? { bool: { must: { multi_match: { query, fields: MULTI_MATCH_FIELDS } }, filter: filterClauses } }
+      query: clauses.length
+        ? { bool: { must: { multi_match: { query, fields: MULTI_MATCH_FIELDS } }, filter: clauses } }
         : { multi_match: { query, fields: MULTI_MATCH_FIELDS } },
     };
     const res = (await call('POST', `/${INDEX}/_count`, body, 5000)) as { count: number };
@@ -202,6 +225,25 @@ async function hasLexicalHit(query: string, filterClauses: Record<string, unknow
   } catch {
     // Don't let a broken count call falsely suppress a real search — fail open.
     return true;
+  }
+}
+
+/**
+ * How many pages of this same query are folder cover sheets — shown next to the "Include folder
+ * cover sheets" toggle so hiding them by default doesn't read as the count silently changing.
+ * Keyword-only, like hasLexicalHit above (an exact figure would need the same hybrid query twice);
+ * good enough for a facet count, not claimed as the precise hidden total when semantic-only hits exist.
+ */
+async function countCoverSheets(query: string, filterClauses: Record<string, unknown>[]): Promise<number> {
+  try {
+    const filter = [...filterClauses, COVER_SHEET_TERM];
+    const body = {
+      query: query ? { bool: { must: { multi_match: { query, fields: MULTI_MATCH_FIELDS } }, filter } } : { bool: { filter } },
+    };
+    const res = (await call('POST', `/${INDEX}/_count`, body, 5000)) as { count: number };
+    return res.count ?? 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -239,10 +281,13 @@ export interface SearchOptions {
    * neighbour" noise reads as a bug (team brief).
    */
   allowSemanticOnly?: boolean;
+  /** Show folder cover sheets in `hits`/`total` instead of hiding them (a /search facet toggle;
+   *  default false — see withCoverSheetHandling). Cover sheets are still ranked down when shown. */
+  includeCoverSheets?: boolean;
 }
 
 export async function search(opts: SearchOptions): Promise<SearchResult> {
-  const { q, filters = {}, page = 1, pageSize = 20, sort = 'relevance', allowSemanticOnly = false } = opts;
+  const { q, filters = {}, page = 1, pageSize = 20, sort = 'relevance', allowSemanticOnly = false, includeCoverSheets = false } = opts;
   const from = Math.max(0, (page - 1) * pageSize);
   const filterClauses = buildFilterClauses(filters);
   const trimmed = q.trim();
@@ -258,7 +303,7 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
   }
 
   let noLexicalMatch = false;
-  if (strippedQuery && !allowSemanticOnly && !(await hasLexicalHit(strippedQuery, filterClauses))) {
+  if (strippedQuery && !allowSemanticOnly && !(await hasLexicalHit(strippedQuery, filterClauses, includeCoverSheets))) {
     noLexicalMatch = true;
   }
 

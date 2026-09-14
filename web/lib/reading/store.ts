@@ -29,6 +29,11 @@ async function queryAppSafe<T = Record<string, unknown>>(text: string, params: r
 export interface ReadingItem {
   doc: string;
   title: string;
+  /** site.documents.summary (issue #37 follow-up) — live, like title; null before the pipeline has
+   *  summarized this document. Not name-safety-filtered like title (see safeReadingItems below):
+   *  the summaries pipeline is the same trusted source as title and every other reader of
+   *  site.documents.summary (DocumentViewer, /browse, /topics) already shows it unfiltered. */
+  summary: string | null;
   why: string;
   group: string;
   rank: number;
@@ -51,8 +56,10 @@ export interface ReadingItem {
 // than nothing. Reading d.title BY NAME (not `SELECT *`) is schema-first gated the same way
 // lib/site.ts's other callers are, via documentsHaveTitles() — see that function's comment.
 async function selectSql(): Promise<string> {
-  const titleCol = (await documentsHaveTitles()) ? 'COALESCE(d.title, rs.title)' : 'rs.title';
-  return `SELECT rs.doc, ${titleCol} AS title, rs.why, rs."group" AS "group", rs.rank,
+  const hasTitles = await documentsHaveTitles();
+  const titleCol = hasTitles ? 'COALESCE(d.title, rs.title)' : 'rs.title';
+  const summaryCol = hasTitles ? 'd.summary' : 'NULL::text';
+  return `SELECT rs.doc, ${titleCol} AS title, ${summaryCol} AS summary, rs.why, rs."group" AS "group", rs.rank,
     d.box, d.agency, d.folder, COALESCE(v.views7, 0)::int AS views7,
     (COALESCE(v.views7, 0) + GREATEST(0, 200 - rs.rank)) AS blended
   FROM app.reading_seeds rs
@@ -98,6 +105,7 @@ export interface AlsoRead {
   /** site.documents.title (issue #37 follow-up) — null before the pipeline has named this
    *  document, or before the column exists at all (documentsHaveTitles() gate below). */
   title: string | null;
+  summary: string | null;
   reason: string;
 }
 
@@ -111,14 +119,15 @@ export interface AlsoRead {
  * also found useful" signal, not a citation-validated claim.
  */
 export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]> {
-  // Schema-first (issue #37 follow-up): d.title read by name, gated like every other explicit
-  // site.documents.title reference in this codebase — see documentsHaveTitles()'s comment.
+  // Schema-first (issue #37 follow-up): d.title/d.summary read by name, gated like every other
+  // explicit site.documents.title reference in this codebase — see documentsHaveTitles()'s comment.
   const hasTitles = await documentsHaveTitles();
   const titleSelect = (alias: string) => (hasTitles ? `${alias}.title` : 'NULL::text') + ' AS title';
-  const titleGroupBy = (alias: string) => (hasTitles ? `, ${alias}.title` : '');
+  const summarySelect = (alias: string) => (hasTitles ? `${alias}.summary` : 'NULL::text') + ' AS summary';
+  const titleGroupBy = (alias: string) => (hasTitles ? `, ${alias}.title, ${alias}.summary` : '');
   const [coCited, neighbours, related] = await Promise.all([
-    queryAppSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null; n: number }>(
-      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}, COUNT(*)::int AS n
+    queryAppSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null; summary: string | null; n: number }>(
+      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}, ${summarySelect('d')}, COUNT(*)::int AS n
        FROM app.answers a
        JOIN LATERAL jsonb_array_elements(a.cites) c1 ON (c1->>'doc') = $1
        JOIN LATERAL jsonb_array_elements(a.cites) c2 ON (c2->>'doc') <> $1
@@ -127,8 +136,8 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
        GROUP BY d.doc, p.page, d.box, d.folder${titleGroupBy('d')} ORDER BY n DESC, d.doc LIMIT $2`,
       [doc, limit],
     ),
-    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null }>(
-      `SELECT d2.doc, p.page, d2.box, d2.folder, ${titleSelect('d2')}
+    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null; summary: string | null }>(
+      `SELECT d2.doc, p.page, d2.box, d2.folder, ${titleSelect('d2')}, ${summarySelect('d2')}
        FROM site.documents d1 JOIN site.documents d2
          ON d2.agency = d1.agency AND d2.volume = d1.volume AND d2.box = d1.box
         AND d2.folder = d1.folder AND d2.doc <> d1.doc
@@ -137,8 +146,8 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
        ORDER BY d2.doc LIMIT $2`,
       [doc, limit],
     ),
-    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null }>(
-      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}
+    queryReadSafe<{ doc: string; page: number; box: string | null; folder: string | null; title: string | null; summary: string | null }>(
+      `SELECT d.doc, p.page, d.box, d.folder, ${titleSelect('d')}, ${summarySelect('d')}
        FROM site.related r JOIN site.documents d ON d.doc = r.other
        JOIN LATERAL (SELECT page FROM site.pages WHERE doc = d.doc ORDER BY page LIMIT 1) p ON true
        WHERE r.doc = $1 AND r.other <> r.doc AND d.status IS DISTINCT FROM 'removed'
@@ -148,17 +157,18 @@ export async function othersAlsoRead(doc: string, limit = 5): Promise<AlsoRead[]
   ]).catch(() => [[], [], []] as const);
 
   // Same defense-in-depth as topReading()/readingGroups() above: never surface an unsafe title
-  // (a name, or the portal watermark), even a live site.documents.title, on this strip.
+  // (a name, or the portal watermark), even a live site.documents.title, on this strip. Summary is
+  // not filtered the same way — see the AlsoRead.summary field comment above.
   const safeTitle = (t: string | null) => (t && !isUnsafeReadingTitle(t) ? t : null);
   const byDoc = new Map<string, AlsoRead>();
   for (const row of coCited) {
-    if (!byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Cited alongside this record in an Ask answer' });
+    if (!byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), summary: row.summary, reason: 'Cited alongside this record in an Ask answer' });
   }
   for (const row of neighbours) {
-    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Filed in the same folder' });
+    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), summary: row.summary, reason: 'Filed in the same folder' });
   }
   for (const row of related) {
-    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), reason: 'Similar indexed content' });
+    if (row.doc !== doc && !byDoc.has(row.doc)) byDoc.set(row.doc, { doc: row.doc, page: row.page, box: row.box, folder: row.folder, title: safeTitle(row.title), summary: row.summary, reason: 'Similar indexed content' });
   }
   return [...byDoc.values()].slice(0, limit);
 }

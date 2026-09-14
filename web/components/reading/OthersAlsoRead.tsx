@@ -31,6 +31,7 @@ export async function OthersAlsoRead({ doc }: { doc: string }) {
                 {r.box ? ` · Box ${r.box}` : ''}
               </Link>
               {r.title && <p className="small muted mono">{r.doc}</p>}
+              {r.summary && <p className="small">{r.summary}</p>}
               <p className="small muted">{r.reason}</p>
             </article>
           ))}

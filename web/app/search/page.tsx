@@ -8,6 +8,7 @@ import { CopyLinkButton } from '@/components/CopyLinkButton';
 import { SearchTabs } from '@/components/SearchTabs';
 import { CaseBinderBar } from '@/components/case/CaseBinderBar';
 import { findExactBates, search, type FacetBucket, type SearchFilters } from '@/lib/opensearch';
+import { getDocSummaries } from '@/lib/search/docSummaries';
 import { FILTER_KEYS, getStr, searchHref, type SearchParamsInput } from '@/lib/searchUrl';
 import { socialMeta } from '@/lib/seo/social';
 import { AiMark, Button, ButtonLink, Callout, EmptyState } from '@/components/ui';
@@ -128,6 +129,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   }
 
   const result = await search({ q, filters, page, pageSize: PAGE_SIZE, sort });
+  // One batched query keyed by doc (docs/briefs/COMMON-web.md-style schema-first lookup, issue
+  // #37): Postgres's site.documents.title/summary is the live source of truth, kept fresh on every
+  // pipeline refresh; the OpenSearch doc_title on each hit (hit.docTitle) can lag behind an index
+  // that hasn't been rebuilt yet, so it's only the fallback here, not the primary.
+  const docSummaries = await getDocSummaries(result.hits.map((h) => h.doc));
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const note = getStr(sp, 'note');
   const fallbackNote = note ? FALLBACK_NOTES[note] : undefined;
@@ -246,17 +252,24 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               </div>
             </div>
             <div id="result-list">
-              {result.hits.map((hit) => (
+              {result.hits.map((hit) => {
+                const doc = docSummaries.get(hit.doc);
+                const title = doc?.title || hit.docTitle;
+                const summary = doc?.summary;
+                return (
                 <article className="result-item" key={`${hit.doc}_${hit.page}`}>
                   <div className="result-top">
                     <div>
                       <h2>
                         <Link href={`/doc/${hit.doc}${hit.page > 1 ? `/p/${hit.page}` : ''}`}>
-                          {hit.docTitle || hit.folder || hit.doc} — page {hit.page}
+                          {title || hit.folder || hit.doc} — page {hit.page}
                         </Link>
                       </h2>
+                      <div className="result-context">
+                        {[hit.source, hit.box, hit.folder].filter(Boolean).join(' / ')}
+                      </div>
                       <span className="range mono">{hit.batesPage}</span>
-                      {hit.docTitle && <span className="derived-label">Machine-extracted title</span>}
+                      {title && <span className="derived-label">Machine-extracted title</span>}
                     </div>
                     {hit.docType && (
                       <span className="derived-label" title="Machine-extracted document type">
@@ -264,9 +277,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       </span>
                     )}
                   </div>
-                  <div className="result-context">
-                    {[hit.source, hit.box, hit.folder].filter(Boolean).join(' / ')}
-                  </div>
+                  {summary && <p className="small">{summary}</p>}
                   {hit.snippetHtml ? (
                     <p className="snippet" dangerouslySetInnerHTML={{ __html: hit.snippetHtml }} />
                   ) : (
@@ -282,7 +293,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     {hit.contaminants.length > 0 && <span className="derived">Contaminants: {hit.contaminants.join(', ')}</span>}
                   </div>
                 </article>
-              ))}
+                );
+              })}
               {!result.hits.length && !result.error && (
                 <div id="no-results">
                   <EmptyState compact title="No matches">

@@ -33,8 +33,8 @@ export default async function Signatory({params}:{params:Params}) {
         caption="Distinct page counts by extracted month, not measurements."
         unit="page"
       />
-      {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · signature pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
-      {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
+      {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · signature pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
+      {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
       <Extraction source={source} confidence={null}/>
     </Section>
 
@@ -42,7 +42,7 @@ export default async function Signatory({params}:{params:Params}) {
 
     <Section id="where" title="Where it appears">
       <p className="small muted">Boxes, folders and agencies this official's signature pages are filed under. Folder labels are omitted to avoid surfacing personal names.</p>
-      {filings.map((key,i)=>{const matches=rows.filter(r=>JSON.stringify([r.agency,r.volume,r.box,r.folder])===key);const r=matches[0]!;return <details key={key}><summary>{r.agency || 'Agency unavailable'} · Box {r.box || 'unavailable'} · Folder {i+1}</summary><p className="small muted">Volume {r.volume || 'unavailable'}.</p>{matches.map(m=><p key={`${m.doc}:${m.page}:${m.role}`}><Link href={pageHref(m.doc,m.page)}>{m.doc} · page {m.page}</Link><Extraction source={m}/></p>)}</details>})}
+      {filings.map((key,i)=>{const matches=rows.filter(r=>JSON.stringify([r.agency,r.volume,r.box,r.folder])===key);const r=matches[0]!;return <details key={key}><summary>{r.agency || 'Agency unavailable'} · Box {r.box || 'unavailable'} · Folder {i+1}</summary><p className="small muted">Volume {r.volume || 'unavailable'}.</p>{matches.map(m=><p key={`${m.doc}:${m.page}:${m.role}`}><Link href={pageHref(m.doc,m.page)}>{m.title || m.doc} · page {m.page}</Link><Extraction source={m}/></p>)}</details>})}
     </Section>
 
     {related.length>0&&<Section id="related" title="Related entities">
