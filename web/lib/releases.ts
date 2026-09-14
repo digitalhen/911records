@@ -5,7 +5,7 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.16';
+export const APP_VERSION = '0.14.17';
 
 export type Release = { version: string; date: string; notes: string[] };
 

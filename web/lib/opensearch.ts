@@ -346,7 +346,13 @@ export async function search(opts: SearchOptions): Promise<SearchResult> {
 
   let queryBody: Record<string, unknown>;
   let searchPath = `/${INDEX}/_search`;
-  if (strippedQuery && vector) {
+  if (filters.docs?.length) {
+    // A document-scoped search (one building's own records, lib/ask/placeBoost.ts) must filter
+    // BEFORE ranking: as a post_filter on the hybrid query it only sees the corpus-wide top hits,
+    // which rarely include the scoped documents, so it came back empty (2026-09-14). Keyword arm
+    // only — the semantic arm cannot be pre-filtered here.
+    queryBody = { bool: { must: textQuery, filter: [{ terms: { doc: filters.docs.slice(0, 1000) } }] } };
+  } else if (strippedQuery && vector) {
     queryBody = {
       hybrid: {
         queries: [textQuery, withCoverSheetHandling({ knn: { vector: { vector, k: Math.max(50, pageSize * 5) } } }, includeCoverSheets)],
