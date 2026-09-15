@@ -575,7 +575,7 @@ def call_ollama(prompt: str) -> str:
     import urllib.request
     body = {"model": OLLAMA_MODEL, "stream": False, "think": False,
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-            "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 3000}}
+            "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 6000}}
     req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=900) as resp:
         data = json.loads(resp.read())
@@ -585,7 +585,11 @@ def call_ollama(prompt: str) -> str:
 def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
     if BACKEND == "ollama":
-        return extract_json_array(call_ollama(prompt)), 0.0  # local: no spend
+        text = call_ollama(prompt)
+        arr = extract_json_array(text)
+        if arr is None:  # say what came back, so a truncated or chatty reply can be diagnosed
+            print(f"summaries: ollama reply not a JSON array ({len(text)} chars): {text[:160]!r} … {text[-80:]!r}", file=sys.stderr)
+        return arr, 0.0  # local: no spend
     if BACKEND == "codex":
         try:
             text = call_codex_cli(prompt)
