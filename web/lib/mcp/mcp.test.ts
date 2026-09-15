@@ -18,7 +18,7 @@ function fixture(): Backend {
     async getDocument(key) { return { doc: key, status: key === removed ? 'removed' : 'present', agency: 'Environmental Protection, Dept. of', volume: 'NYC-WTC0006', box: 'Box 1', page_count: 11, official_url: 'https://example.org/original.pdf', title: 'Machine title', summary: 'Machine summary' } as DocumentRow; },
     async getPage(key, page) { return { doc: key, page, bates: 'NYC-WTC_000161247', ocr_source: 'pdf' } as PageRow; },
     async getPageText(key, page) { return { doc: key, page, source: 'pdf', text: 'a'.repeat(22000) }; },
-    async search() { return { hits: [{ doc, page: 5, batesPage: 'NYC-WTC_000161247', docTitle: 'Machine title' }, { doc: removed, page: 1, docTitle: 'Never disclose' }] as SearchHit[], total: 51, tookMs: 1, facets: {}, semantic: false }; },
+    async search() { return { hits: [{ doc, page: 5, batesPage: 'NYC-WTC_000161247', agency: null, docTitle: 'Machine title' }, { doc: removed, page: 1, docTitle: 'Never disclose' }] as SearchHit[], total: 51, tookMs: 1, facets: {}, semantic: false }; },
     async availableDocuments() { return [{ doc }]; },
     async browse() { return [{ doc, agency: 'DEP', volume: 'NYC-WTC0006', box: 'Box 1', page_count: 11 }, { doc: 'NYC-WTC_000161254', agency: 'DEP', volume: 'NYC-WTC0006', box: 'Box 1', page_count: 1 }]; },
     async changes() { return [{ doc: removed, date: '2026-09-15', kind: 'removed' }, { doc, date: '2026-09-14', kind: 'added' }]; },
@@ -42,7 +42,9 @@ async function connect(db = fixture()) {
 test('official client discovers and calls all five tools over stateless HTTP', async () => {
   const client = await connect();
   try {
-    assert.equal((await client.listTools()).tools.length, 5);
+    const tools = (await client.listTools()).tools;
+    assert.equal(tools.length, 5);
+    for (const tool of tools) assert.equal(tool.outputSchema?.type, 'object', `${tool.name} must declare its output`);
     const search = await client.callTool({ name: 'search_records', arguments: { query: 'Cedar Street', limit: 1 } });
     const s = search.structuredContent as { hits: { url: string }[]; next_page: number };
     assert.equal(s.hits.length, 1);

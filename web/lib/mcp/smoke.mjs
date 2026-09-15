@@ -6,7 +6,9 @@ const endpoint = process.argv[2] || 'http://127.0.0.1:3111/mcp';
 const client = new Client({ name: '911records-smoke', version: '1' });
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL(endpoint)));
-  assert.equal((await client.listTools()).tools.length, 5);
+  const tools = (await client.listTools()).tools;
+  assert.equal(tools.length, 5);
+  for (const tool of tools) assert.equal(tool.outputSchema?.type, 'object', `${tool.name} outputSchema missing`);
   console.log('PASS initialize and discover five tools');
   const cases = [
     ['get_document', { doc: 'NYC-WTC_000140827' }],
