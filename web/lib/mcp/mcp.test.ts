@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { documentShortUrl } from '../shortlinks/paths';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createHandler } from './http';
@@ -56,6 +57,7 @@ test('official client discovers and calls all five tools over stateless HTTP', a
     assert.equal(data(document).machine_extracted_title, 'Machine title');
     assert.ok(!JSON.stringify(document).includes('0.0.0.0'));
     const page = await client.callTool({ name: 'get_page', arguments: { doc, page: 5, max_chars: 20000 } });
+    assert.equal(data(page).short_url, documentShortUrl(doc, 5));
     assert.equal(data(page).bates, 'NYC-WTC_000161247');
     assert.equal(data(page).next_offset, 20000);
     const rest = await client.callTool({ name: 'get_page', arguments: { doc, page: 5, offset: 20000 } });
@@ -65,7 +67,7 @@ test('official client discovers and calls all five tools over stateless HTTP', a
     assert.equal(data(browse).next_after, doc);
     const changes = await client.callTool({ name: 'get_changes', arguments: { since: '2026-09-14', limit: 1 } });
     assert.equal(data(changes).next_offset, 1);
-    assert.deepEqual(data(changes).changes, [{ doc: removed, date: '2026-09-15', kind: 'removed' }]);
+    assert.deepEqual(data(changes).changes, [{ doc: removed, date: '2026-09-15', kind: 'removed', url: `https://911records.nyc/doc/${removed}`, short_url: documentShortUrl(removed) }]);
   } finally { await client.close(); }
 });
 

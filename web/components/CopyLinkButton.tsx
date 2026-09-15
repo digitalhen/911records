@@ -2,28 +2,30 @@
 
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui';
+import { requestShortlink } from '@/lib/shortlinks/client';
 
-/** "Copy link to this search" (docs/PLAN.md B6 Part 2: saved-search alerts
- *  as copy-a-link only — no accounts, no email delivery in v1).
- *
- *  Extension point: Henry's 2026-09-14 direction is that a real alerts
- *  feature (emailed on a saved search, once accounts exist) comes later.
- *  This hook is the reusable half — it just copies the current URL — so
- *  that feature can build its own control on top of it (e.g. a form that
- *  copies the link *and* offers to email it) without forking this file. */
+/** Copy a short link preserving the current query and anchor, with a full-URL fallback. */
 export function useCopyCurrentLink() {
   const [message, setMessage] = useState('');
+  const [pending, setPending] = useState(false);
   const copy = async () => {
-    const link = window.location.href;
+    if (pending) return;
+    setPending(true);
+    let link = window.location.href;
+    let shortened = false;
+    try {
+      link = await requestShortlink(window.location.pathname + window.location.search + window.location.hash);
+      shortened = true;
+    } catch { /* Keep the full URL available when the shortlink service is down. */ }
     try {
       await navigator.clipboard.writeText(link);
-      setMessage('Link copied.');
+      setMessage(window.location.pathname === '/case' ? 'Link copied. Your saved case contents stay in this browser.' : shortened ? 'Short link copied.' : 'Full link copied; shortlink unavailable.');
     } catch {
       window.prompt('Copy this link:', link);
       setMessage('');
-    }
+    } finally { setPending(false); }
   };
-  return { copy, message };
+  return { copy, message, pending };
 }
 
 /** The button + note as used today on /search and /changes. `note` lets a

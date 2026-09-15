@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SITE_ORIGIN } from '@/lib/shortlinks/paths';
 import { normalizeBates } from '@/lib/bates';
 import { getPageByBates } from '@/lib/site';
 import { findExactBates } from '@/lib/opensearch';
@@ -13,13 +14,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bate
 
   const fromDb = await getPageByBates(bates);
   if (fromDb) {
-    return NextResponse.redirect(new URL(fromDb.page > 1 ? `/doc/${fromDb.doc}/p/${fromDb.page}` : `/doc/${fromDb.doc}`, req.url));
+    return NextResponse.redirect(new URL(fromDb.page > 1 ? `/doc/${fromDb.doc}/p/${fromDb.page}` : `/doc/${fromDb.doc}`, SITE_ORIGIN));
   }
 
   const fromIndex = await findExactBates(bates);
   if (fromIndex) {
     return NextResponse.redirect(
-      new URL(fromIndex.page > 1 ? `/doc/${fromIndex.doc}/p/${fromIndex.page}` : `/doc/${fromIndex.doc}`, req.url),
+      new URL(fromIndex.page > 1 ? `/doc/${fromIndex.doc}/p/${fromIndex.page}` : `/doc/${fromIndex.doc}`, SITE_ORIGIN),
     );
   }
 

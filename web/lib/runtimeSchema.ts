@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS app.runtime_migrations (
   note TEXT
 );
 
+CREATE TABLE IF NOT EXISTS app.shortlinks (
+  code TEXT PRIMARY KEY,
+  target_hash TEXT NOT NULL UNIQUE,
+  target TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- B3 (Ask): frozen answers, permalinked at /a/<id>. Only a validated,
 -- non-empty answer is ever written here — see lib/ask/store.ts.
 CREATE TABLE IF NOT EXISTS app.answers (

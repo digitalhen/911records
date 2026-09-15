@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Button, Field, Input } from '@/components/ui';
+import { requestShortlink } from '@/lib/shortlinks/client';
 
 export function CopySearch() {
   const [q, setQ] = useState('');
@@ -11,7 +12,9 @@ export function CopySearch() {
       className="stack-sm mt-4"
       onSubmit={async (e) => {
         e.preventDefault();
-        const link = `${window.location.origin}/search?q=${encodeURIComponent(q.trim())}`;
+        const target = `/search?q=${encodeURIComponent(q.trim())}`;
+        let link = `${window.location.origin}${target}`;
+        try { link = await requestShortlink(target); } catch { /* Full URL fallback. */ }
         setUrl(link);
         try {
           await navigator.clipboard.writeText(link);
