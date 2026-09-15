@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS app.shortlinks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS app.contradiction_submissions (
+  id UUID PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind TEXT NOT NULL CHECK (kind IN ('suggestion', 'correction')),
+  sources TEXT NOT NULL,
+  note TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new'
+);
+
 -- B3 (Ask): frozen answers, permalinked at /a/<id>. Only a validated,
 -- non-empty answer is ever written here — see lib/ask/store.ts.
 CREATE TABLE IF NOT EXISTS app.answers (

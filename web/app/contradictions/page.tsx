@@ -3,6 +3,7 @@ import { PageShell } from '@/components/info/PageShell';
 import { pageMetadata } from '@/lib/info/metadata';
 import { comparisons, reportUrl } from '@/lib/contradictions/data';
 import styles from './comparisons.module.css';
+import { SubmissionForm } from '@/components/contradictions/SubmissionForm';
 
 function Citations({ sources }: { sources: { url: string; source: string }[] }) {
   return <span className="small"> {sources.map((source, i) => <span key={source.url}> <a href={source.url} title={source.source} aria-label={`Source ${i + 1}: ${source.source}`}>[{i + 1}]</a></span>)}</span>;
@@ -49,8 +50,13 @@ export default function ContradictionsPage() {
       <h2 id="about-comparisons">About these comparisons</h2>
       <p>“Contradictions” includes changed draft wording and reassurances later found to lack sufficient support. Each entry names the specific relationship. These are editorial selections, not an automated verdict or a complete account of the response.</p>
       <p>The initial entries draw on the EPA Office of Inspector General’s August 21, 2003 report, <a href={reportUrl}>EPA’s Response to the World Trade Center Collapse: Challenges, Successes, and Areas for Improvement</a> (2003-P-00012), preserved in the City’s released records. These findings were published in 2003; their inclusion here does not make them newly discovered. Read the full report, including the agency’s responses, for the broader record.</p>
-      <p>Quotations are excerpts; source links open the complete page or release. More comparisons can be added as their sources are checked. To suggest a record or a correction, email <a href="mailto:henry@digitalhen.com">henry@digitalhen.com</a>.</p>
+      <p>Quotations are excerpts; source links open the complete page or release. More comparisons can be added as their sources are checked. <a href="#submit">Suggest a comparison or submit a correction.</a></p>
       <p><Link href="/browse">Browse the records</Link> · <Link href="/search">Search for evidence</Link></p>
+    </section>
+    <section id="submit" className={styles.method} aria-labelledby="submit-heading">
+      <h2 id="submit-heading">Suggest a comparison or correction</h2>
+      <p>Include the source pages so we can check the evidence. Submissions are stored privately for review by Cleartext Labs and are not published automatically. No name, email address, or account is required. Please leave out private personal information.</p>
+      <SubmissionForm />
     </section>
   </PageShell>;
 }
