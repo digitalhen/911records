@@ -1,5 +1,5 @@
 export const SITE_ORIGIN = 'https://911records.nyc';
-const roots = new Set(['', 'doc', 'page', 'search', 'browse', 'building', 'map', 'timeline', 'topics', 'entities', 'entity', 'signatory', 'a', 'ask', 'case', 'reading', 'changes', 'releases', 'about', 'privacy', 'terms', 'personal-information', 'support', 'styleguide', 'gone']);
+const roots = new Set(['', 'doc', 'page', 'search', 'browse', 'building', 'map', 'timeline', 'topics', 'entities', 'entity', 'signatory', 'a', 'ask', 'case', 'reading', 'contradictions', 'changes', 'releases', 'about', 'privacy', 'terms', 'personal-information', 'support', 'styleguide', 'gone']);
 
 export function normalizeTarget(input: string): string {
   if (input.length > 4096 || /[\\\u0000-\u001f\u007f]/.test(input)) throw new Error('Invalid page URL.');

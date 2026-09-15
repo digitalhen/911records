@@ -9,6 +9,7 @@ const NAV = [
   { href: '/timeline', label: 'Timeline' },
   { href: '/topics', label: 'Topic map' },
   { href: '/entities', label: 'Entities' },
+  { href: '/contradictions', label: 'Contradictions' },
   { href: '/browse', label: 'Browse records' },
   { href: '/case', label: 'Case folder' },
   { href: '/changes', label: 'Releases & changes' },
