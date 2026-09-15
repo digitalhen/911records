@@ -104,7 +104,7 @@ PRICE_IN_PER_MTOK = 1.00
 PRICE_OUT_PER_MTOK = 5.00
 DEFAULT_BUDGET_USD = 30.0
 BATCH_SIZE = int(os.environ.get("SUMMARIES_BATCH", "10"))  # documents per model call; 20 with the claude -p backend (process start-up dominates)
-CHECKPOINT_EVERY = 500  # documents (across all batches), not API calls
+CHECKPOINT_EVERY = 100  # documents (across all batches), not API calls; small so a stop loses ~3 minutes
 
 # Bumped whenever the prompt, the excerpt selection or the privacy rules below change, so a cached
 # row with an old SUMMARIES_VERSION is never carried over unexamined (same convention as

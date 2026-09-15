@@ -35,7 +35,7 @@ import summaries as S  # noqa: E402  (shares backends, redaction, privacy check,
 QA_PATH = S.EMB / "p5-summaries-qa.jsonl"
 REPORT_PATH = S.REPO / "docs" / "eval" / "summaries-qa-report.md"
 BATCH = int(S.os.environ.get("SUMMARIES_QA_BATCH", "20"))
-CHECKPOINT_EVERY = 200
+CHECKPOINT_EVERY = 100
 
 PLACEHOLDER_TITLES = re.compile(
     r"^(untitled|unknown|document|record|report|form|page|n/?a|none|no title|"

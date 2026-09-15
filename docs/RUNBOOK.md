@@ -223,3 +223,20 @@ Deploy changes with `npx wrangler deploy` in that directory (Wrangler OAuth logi
 digitalhen@gmail.com). The zone is on Cloudflare's Free plan: the Workers free tier allows
 100,000 requests a day, and beyond that Cloudflare answers with its own error page until the
 day resets — upgrade to Workers Paid ($5/month) in the dashboard before a traffic spike.
+
+## Titles and summaries pipeline (local qwen, no LLM session needed) — added 2026-09-14
+
+All document titles/summaries come from `qwen3.5:35b-a3b` on Ollama (Henry: "skip haiku entirely").
+`scripts/embed/summaries_pipeline.sh` runs the whole thing detached and resumable, one Ollama job at a
+time with a memory watchdog:
+
+```
+scripts/embed/summaries_pipeline.sh start    # runs: summarise → publish → qa-screen → qa-review → qa-apply → publish
+scripts/embed/summaries_pipeline.sh status   # stage, counts (titled / by qwen / still by Haiku), QA verdicts, last log lines
+scripts/embed/summaries_pipeline.sh stop     # clean stop; progress is checkpointed every 100 documents; `start` resumes
+```
+
+Log `data/embed/logs/summaries-pipeline.log`; completed stages in `…/summaries-pipeline.state` (delete a
+line to re-run that stage). The QA report lands in `docs/eval/summaries-qa-report.md`. The daily refresh's
+summaries stage also uses the Ollama backend now (`SUMMARIES_BACKEND=ollama`), so new documents get qwen
+titles the next morning without any API spend. If the watchdog stops a stage for memory, just `start` again.
