@@ -5,11 +5,21 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.14.23';
+export const APP_VERSION = '0.15.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.15.0',
+    date: '2026-09-14',
+    notes: [
+      'New Timeline page (in the top menu): when lower Manhattan was tested, for what, and by which labs. Test pages per week by substance family, how many buildings had been reached by each week, and month-by-month grids for the most-named substances and labs. Hover for figures; click a grid cell to open the matching search or lab page.',
+      'Building pages have a “Tests over time” chart: each substance on its own row, one dot per day it was tested, bigger dots for more pages.',
+      'Lab, contractor and address pages show their monthly activity split by the agency whose files the pages came from.',
+      'Building details (year built, floors, units) are back at the top of the building page, above the charts.',
+    ],
+  },
   {
     version: '0.14.22',
     date: '2026-09-14',
