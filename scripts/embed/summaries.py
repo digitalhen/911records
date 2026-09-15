@@ -622,6 +622,8 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
         parsed = None
 
     violators: set[int] = set()
+    reasons: list[str] = []
+    malformed = parsed is None
     if parsed:
         for row in parsed:
             if not isinstance(row, dict) or "id" not in row:
@@ -637,6 +639,7 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
             problem = text_violates(f"{title} {summary}", roles_words, item_source(by_id[iid]))
             if problem:
                 violators.add(iid)
+                reasons.append(problem)
                 continue
             conf = row.get("confidence", 0.5)
             cache_val = {"title": title, "summary": summary or None,
@@ -678,6 +681,10 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
                 results[iid] = {"doc": by_id[iid]["doc"], "hash": by_id[iid]["hash"], **cache_val}
                 cache.put(by_id[iid]["hash"], cache_val)
 
+    lost = [i for i in by_id if i not in results]
+    print(f"summaries: batch n={len(items)} {'MALFORMED response' if malformed else f'parsed={len(parsed)}'} "
+          f"violators={len(violators)} titled={len(results)} lost={len(lost)}"
+          + (f" | {'; '.join(sorted(set(reasons))[:4])}" if reasons else ""), file=sys.stderr)
     for iid, it in by_id.items():
         if iid not in results:
             results[iid] = {"doc": it["doc"], "title": None, "summary": None, "confidence": 0.0,
