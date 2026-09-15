@@ -5,7 +5,13 @@ Local only (never contacts the portal). Incremental per page text hash AND extra
 bumping REGEX_VERSION re-runs the regex pass over every page.
 
   regex  (default, fast):
-    date         normalised to ISO, kept only if 1990–2012
+    date         normalised to ISO, kept only if 1990–2012; a date that is a FORM's own template
+                 stamp is dropped (`is_template_stamp()`): before the attack (< 2001-09-11) and, on
+                 the same line just before it, either a file path (L: DATA PRIVATE MIKEC CADD TEM3, backslash-separated,
+                 then "9/22/95") or a "revision"/"Rev." marker ("Analyst ___ revision 4/12/01"). Henry,
+                 2026-09-15: NYC-WTC_000097440 p44 (an ATC TEM worksheet from Sept 2001) was dated
+                 1995-09-22 from its footer. Deliberately narrow: "Revised 02/15/02" on a letter, a
+                 drawing's PLOT DATE, a print footer's date all stay — only pre-attack stamps go.
     measurement  number + unit (f/cc, s/mm2, ppm, ppb, ug/m3, mg/kg, %)
     contaminant  gazetteer
     agency       gazetteer (acronyms case-sensitive)
@@ -33,6 +39,12 @@ Store: data/embed/entities.sqlite
   roles(doc, page, start, end, role, name, name_norm, title, org, official)
 
 Usage: .venv/bin/python scripts/embed/entities.py [--gliner] [--limit-docs N] [--gliner-model NAME]
+       .venv/bin/python scripts/embed/entities.py --rescan-dates
+         re-derives ONLY the regex `date` mentions of every page (delete + re-insert), leaving every
+         other label — and the canonical_* columns on address/lab/contractor rows, which a
+         REGEX_VERSION bump would wipe and cost an LLM pass to refill — untouched. Run it after
+         changing the date rules; the daily refresh's build_site_db/load_site_pg/opensearch stages
+         then carry the result through (OpenSearch re-indexes a page when its content hash changes).
 """
 from __future__ import annotations
 
@@ -98,6 +110,14 @@ STREET_T = r"(?:Street|St\.?|Avenue|Ave\.?|Place|Pl\.?|Plaza|Lane|Slip|Road|Boul
 CAPWORD = r"(?:[A-Z][a-zA-Z'&\-]+|[A-Z]\.)"
 
 RE_DATE_NUM = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b")
+# Form-template stamps (see docstring): a Windows path — two backslash-delimited segments, so a
+# stray OCR backslash ("7\S Loc.: 38  Date: 04/26/2002") does not count — or a "revision"/"Rev."
+# word, on the same line within STAMP_WINDOW chars before the date. OCR often garbles the drive
+# colon ("L•\DATA", "L`DATA", "V\DATA"), so the path pattern does not require one.
+RE_STAMP_PATH = re.compile(r"\\[A-Za-z0-9_$%~•`'\-. ]{1,40}\\[A-Za-z0-9_$%~•`'\-]")
+RE_STAMP_REV = re.compile(r"(?i)\b(?:revision|rev\.)\s*[:#]?\s*$")
+ATTACK_DATE = "2001-09-11"
+STAMP_WINDOW = 90
 RE_DATE_ISO = re.compile(r"\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b")
 RE_DATE_TXT = re.compile(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+((?:19|20)\d{2})\b", re.I)
 RE_MEAS = re.compile(r"(?<![\w.])(<\s*)?(\d+(?:,\d{3})*(?:\.\d+)?)\s*" + UNITS + r"(?![\w/])", re.I)
@@ -152,19 +172,35 @@ def norm_org(s: str) -> str:
     return re.sub(r"[\s,]+", " ", s).strip(" ,&").upper()
 
 
-def regex_mentions(text: str):
+def is_template_stamp(text: str, start: int, norm: str) -> bool:
+    """True when the date at text[start:] is a blank form's own revision/file stamp rather than a
+    date of the record: it predates the attack AND the same line, just before it, carries a file
+    path or a "revision"/"Rev." marker. Post-attack dates are never dropped by this, however they
+    are introduced — a 2002 letter's "Revised 02/15/02" is a real date of that letter."""
+    if norm >= ATTACK_DATE:
+        return False
+    line_start = text.rfind("\n", 0, start) + 1
+    pre = text[max(line_start, start - STAMP_WINDOW):start]
+    return bool(RE_STAMP_PATH.search(pre)) or bool(RE_STAMP_REV.search(pre.rstrip()))
+
+
+def date_mentions(text: str):
     for m in RE_DATE_NUM.finditer(text):
         n = iso(int(m.group(3)), int(m.group(1)), int(m.group(2)))
-        if n:
+        if n and not is_template_stamp(text, m.start(), n):
             yield m.start(), m.end(), "date", m.group(0), n, 0
     for m in RE_DATE_ISO.finditer(text):
         n = iso(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        if n:
+        if n and not is_template_stamp(text, m.start(), n):
             yield m.start(), m.end(), "date", m.group(0), n, 0
     for m in RE_DATE_TXT.finditer(text):
         n = iso(int(m.group(3)), MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
-        if n:
+        if n and not is_template_stamp(text, m.start(), n):
             yield m.start(), m.end(), "date", m.group(0), n, 0
+
+
+def regex_mentions(text: str):
+    yield from date_mentions(text)
     for m in RE_MEAS.finditer(text):
         unit = re.search(UNITS, m.group(0), re.I).group(0).lower()
         yield m.start(), m.end(), "measurement", m.group(0), unit, 0
@@ -387,6 +423,43 @@ def classify_addresses(con: sqlite3.Connection) -> dict:
     }
 
 
+def rescan_dates(con: sqlite3.Connection) -> int:
+    """--rescan-dates: for every page with regex mentions, delete its regex `date` rows and insert
+    the ones `date_mentions()` yields now. Touches no other label, no canonical_* column, and not
+    `pages.regex_done`; prints how many date rows were removed and added and how many pages changed."""
+    before = con.execute("SELECT count(*) FROM mentions WHERE label='date' AND source='regex'").fetchone()[0]
+    done = {(d, p) for d, p in con.execute("SELECT doc, page FROM pages WHERE regex_done > 0")}
+    t0 = time.time()
+    changed = pages_seen = 0
+    for f in sorted(TEXT.rglob("*.pages.jsonl")):
+        doc = f.name[: -len(".pages.jsonl")]
+        for line in f.open():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            page, text = int(row["page"]), row.get("text") or ""
+            if (doc, page) not in done:
+                continue
+            pages_seen += 1
+            old = sorted((s, e, n) for s, e, n in con.execute(
+                'SELECT start, "end", norm FROM mentions WHERE doc=? AND page=? AND label=\'date\' AND source=\'regex\'', (doc, page)))
+            new = [(s, e, lab, txt, n, sc) for s, e, lab, txt, n, sc in date_mentions(text)]
+            if old == sorted((s, e, n) for s, e, _, _, n, _ in new):
+                continue
+            changed += 1
+            con.execute("DELETE FROM mentions WHERE doc=? AND page=? AND label='date' AND source='regex'", (doc, page))
+            con.executemany('INSERT INTO mentions(doc,page,start,"end",label,text,norm,score,source,pii) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                            [(doc, page, s, e, lab, txt, n, sc, "regex", 0) for s, e, lab, txt, n, sc in new])
+        if changed and changed % 50 == 0:
+            con.commit()
+    con.commit()
+    after = con.execute("SELECT count(*) FROM mentions WHERE label='date' AND source='regex'").fetchone()[0]
+    print(json.dumps({"rescan_dates": {"pages_seen": pages_seen, "pages_changed": changed,
+                                       "date_rows_before": before, "date_rows_after": after,
+                                       "seconds": round(time.time() - t0, 1)}}))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gliner", action="store_true")
@@ -401,10 +474,15 @@ def main() -> int:
                           "issue #19 follow-up) on whatever the rule-based tiers left isolated")
     ap.add_argument("--llm-budget-usd", type=float, default=1.0)
     ap.add_argument("--db", default=None, help="override the entities.sqlite path (e.g. for a copy)")
+    ap.add_argument("--rescan-dates", action="store_true",
+                     help="re-derive only the regex date mentions of every page (see docstring), then exit")
     args = ap.parse_args()
 
     db_path = Path(args.db) if args.db else None
     con = connect(db_path)
+
+    if args.rescan_dates:
+        return rescan_dates(con)
 
     if args.canonicalise:
         stats, mappings = canonicalise(con)

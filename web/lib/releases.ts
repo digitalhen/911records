@@ -5,11 +5,18 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.15.1';
+export const APP_VERSION = '0.15.2';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.15.2',
+    date: '2026-09-15',
+    notes: [
+      'A lab form’s own printed template stamp (a file path or “revision” date from before September 2001 in the form’s footer) no longer counts as the page’s date. A TEM worksheet from September 2001 had been showing as 1995-09-22 because of one; about 300 such pages are corrected, and they now show no date rather than a wrong one.',
+    ],
+  },
   {
     version: '0.15.1',
     date: '2026-09-15',
