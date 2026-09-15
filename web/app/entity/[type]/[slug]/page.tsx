@@ -6,6 +6,8 @@ import { getPlaceFile } from '@/lib/map/data';
 import { buildingUrl, decodeBldgClass } from '@/lib/map/types';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { MonthHistogram } from '@/components/ui';
+import { VegaChart } from '@/components/charts/VegaChart';
+import { monthsByAgencySpec } from '@/lib/charts/specs';
 import styles from '@/components/discovery/discovery.module.css';
 export const dynamic = 'force-dynamic';
 type Params = Promise<{type:string;slug:string}>;
@@ -27,6 +29,9 @@ export default async function EntityPage({params}:{params:Params}) {
   const allMonths=[...new Set(rows.flatMap(r=>months(r.dates)))].sort();
   const activity=allMonths.map(month=>({month,rows:rows.filter(r=>months(r.dates).includes(month))}));
   const unknown=rows.filter(r=>!months(r.dates).length);
+  const agencyCells=new Map<string,Set<string>>();
+  for(const a of activity) for(const r of a.rows){const k=`${a.month}|${r.agency||'(no agency)'}`;if(!agencyCells.has(k))agencyCells.set(k,new Set());agencyCells.get(k)!.add(`${r.doc}:${r.page}`)}
+  const agencySpec=new Set(rows.map(r=>r.agency||'(no agency)')).size>1?monthsByAgencySpec([...agencyCells.entries()].map(([k,pages])=>{const [month,agency]=k.split('|') as [string,string];return {month,agency,pages:pages.size}})):null;
   const variants=distribution(entity.variants).filter(([spelling])=>spelling.trim().toLowerCase()!==entity.label.trim().toLowerCase());
   const crumbs = breadcrumbJsonLd([
     { name: 'Home', path: '/' },
@@ -44,6 +49,7 @@ export default async function EntityPage({params}:{params:Params}) {
         caption="Distinct page counts by extracted month, not measurements."
         unit="page"
       />
+      {agencySpec && <VegaChart spec={agencySpec} width={820} label="Source pages per month by agency" caption="The same pages by the agency whose files they were found in."/>}
       {activity.map(a=><details id={`month-${a.month}`} key={a.month}><summary>{a.month} · source pages</summary>{a.rows.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>)}
       {unknown.length>0&&<details><summary>Undated source pages</summary>{unknown.map(r=><p key={`${r.doc}:${r.page}:${r.role}`}><Link href={pageHref(r.doc,r.page)}>{r.title || r.doc} · page {r.page}</Link><Extraction source={r} confidence={null}/></p>)}</details>}
       {variants.length>0&&<><h3>Also read as</h3><p className="small muted">Alternate spellings machine-read from the scans, folded into this one canonical entity.</p><div className={styles.variants}>{variants.map(([spelling,count])=><span key={spelling}>{spelling} · {count}×</span>)}</div></>}

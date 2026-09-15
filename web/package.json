@@ -25,6 +25,8 @@
     "pg": "^8.23.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "vega": "^6.4.0",
+    "vega-lite": "^6.4.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

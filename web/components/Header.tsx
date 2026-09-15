@@ -9,6 +9,7 @@ const NAV = [
   { href: '/entities', label: 'Entities' },
   { href: '/browse', label: 'Browse records' },
   { href: '/case', label: 'Case folder' },
+  { href: '/timeline', label: 'Timeline' },
   { href: '/changes', label: 'Releases & changes' },
 ];
 

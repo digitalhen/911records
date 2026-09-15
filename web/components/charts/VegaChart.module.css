@@ -1,0 +1,6 @@
+.figure{margin:0}
+.chart{overflow-x:auto}
+.chart svg{display:block;max-width:100%;height:auto}
+.chart a{cursor:pointer}
+.chart a:hover path,.chart a:hover rect{stroke:var(--ink);stroke-width:1px}
+.caption{margin-top:8px;font-size:var(--text-sm);color:var(--muted);line-height:var(--leading-snug)}

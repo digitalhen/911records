@@ -9,6 +9,8 @@ import { docTypeLabel } from '@/lib/docTypes';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { socialMeta } from '@/lib/seo/social';
 import { ButtonLink, MonthHistogram } from '@/components/ui';
+import { VegaChart } from '@/components/charts/VegaChart';
+import { buildingTestsSpec } from '@/lib/charts/specs';
 import styles from '@/components/map/map.module.css';
 export const dynamic = 'force-dynamic';
 type Props={params:Promise<{id:string}>};
@@ -41,6 +43,7 @@ export default async function BuildingPage({params}:Props) {
   const monthPages=new Map<string,Set<string>>();
   for(const r of rows) for(const d of r.dates) {const m=d.slice(0,7);if(!monthPages.has(m))monthPages.set(m,new Set());monthPages.get(m)!.add(`${r.doc}:${r.page}`)}
   const activity=[...monthPages.entries()].map(([month,pages])=>({month,count:pages.size}));
+  const testsSpec=buildingTestsSpec(rows.filter(r=>r.has_test));
   // One row per document, grouped by document type (Henry, 2026-09-14: "some of the docs are
   // quality reports etc." — a per-page list hid what each document was). Cover sheets are the
   // folder's separator pages, not records, so they are left out here.
@@ -61,6 +64,10 @@ export default async function BuildingPage({params}:Props) {
     <div className={styles.stats}><span><strong>{p.n_docs}</strong> records</span><span><strong>{p.n_pages}</strong> source pages</span><span><strong>{p.n_test_pages}</strong> test candidate pages</span><span>{p.first_date||'Date not extracted'} — {p.last_date||'date not extracted'}<small>Machine-extracted date span · <a href="#building-records">verify dated source rows</a></small></span></div>
     {activity.length>0 && <section className={styles.section} id="building-activity"><h2>Activity by month</h2>
       <MonthHistogram data={activity} ariaLabel="Source pages by extracted month" caption="Distinct page counts by extracted month, not measurements." unit="page"/>
+    </section>}
+    {testsSpec && <section className={styles.section} id="building-tests-over-time"><h2>Tests over time</h2>
+      <p className={styles.note}>Each dot is a day on which a test candidate page names that substance for this building; bigger dots mean more pages that day. Dates and substances are machine-extracted from the page, and a dot is a page, not a result.</p>
+      <VegaChart spec={testsSpec} width={820} label="Test candidate pages by substance and date"/>
     </section>}
     {facts && <section className={styles.section} id="building-details"><h2>Building details</h2>
       <dl className={styles.facts}>
