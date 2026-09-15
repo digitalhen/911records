@@ -787,7 +787,16 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="process only the first N documents needing work (smoke test)")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--workers", type=int, default=6, help="concurrent Haiku batch calls")
+    ap.add_argument("--redo-models", default="", help="comma-separated model-name prefixes whose existing rows are "
+                    "re-summarised instead of reused (Henry, 2026-09-14: 'skip haiku entirely, do it all in qwen')")
     args = ap.parse_args()
+    redo_prefixes = tuple(p.strip() for p in args.redo_models.split(",") if p.strip())
+    def redo(model: str | None) -> bool:
+        if not redo_prefixes:
+            return False
+        if not model:
+            return "none" in redo_prefixes  # rows that carry a title but no model name
+        return str(model).startswith(redo_prefixes)
     out_path = Path(args.out)
 
     t0 = time.time()
@@ -831,10 +840,12 @@ def main() -> int:
         # 2026-09-14: a null row (title None, model None — written when the budget or the account's
         # usage cap stopped a run) used to match on hash and be skipped forever; 11,744 documents
         # sat untitled across every later run. Reuse only a row that actually carries a title.
-        if cached and cached.get("hash") == h and cached.get("title"):
+        if cached and cached.get("hash") == h and cached.get("title") and not redo(cached.get("model")):
             reused += 1
             continue
         hit = cache.get(h)
+        if hit is not None and hit.get("title") and redo(hit.get("model")):
+            hit = None  # a cached row from a model being replaced is not a hit
         if hit is not None:
             rows[doc] = {"doc": doc, "hash": h, **hit}
             cache_hits += 1

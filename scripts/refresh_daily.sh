@@ -145,8 +145,10 @@ run_stage related_py .venv/bin/python scripts/embed/related.py
 run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
 run_stage places_py .venv/bin/python scripts/embed/places.py
 run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
-# Model-dependent stages (Haiku): non-fatal — an API usage cap must not stop the site build.
-for soft in "summaries_py .venv/bin/python scripts/embed/summaries.py" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
+# Model-dependent stages: non-fatal — a model outage or API usage cap must not stop the site build.
+# Summaries run on the local qwen model via Ollama, one worker (Henry, 2026-09-14: "skip haiku
+# entirely, do it all in qwen"); the daily increment is small enough for the time box below.
+for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
   # Time-boxed (SOFT_STAGE_SECS, default 900 s): a capped API made summaries.py retry for ages.
