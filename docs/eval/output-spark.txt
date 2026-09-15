@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "title": "Chain of custody record, Westchester County labs, DEP environmental samples",
+    "summary": "Chain-of-custody form documenting transfer of Department of Environmental Protection samples for laboratory tracking at Westchester County laboratories.",
+    "confidence": 0.93
+  },
+  {
+    "id": 2,
+    "title": "Chain of custody record, Westchester labs, DEP water transfer",
+    "summary": "Chain-of-custody page for DEP water samples with source identifiers and custodial details for Westchester County lab intake.",
+    "confidence": 0.94
+  },
+  {
+    "id": 3,
+    "title": "Montgomery Watson chain-of-custody record for DEP sample intake",
+    "summary": "Outsourced-lab custody log from Montgomery Watson Laboratories for DEP samples, including sample temperature and receipt information.",
+    "confidence": 0.96
+  },
+  {
+    "id": 4,
+    "title": "Environmental Services sample submission form, Westchester labs, water sampling",
+    "summary": "Sample submission form for environmental services, recording source ID, container selection, and chain-of-custody option for water samples.",
+    "confidence": 0.91
+  },
+  {
+    "id": 5,
+    "title": "Chain of custody record, Westchester labs, DEP sample handling",
+    "summary": "Chain-of-custody document used to track DEP sample logging and custody details at Westchester County Laboratory.",
+    "confidence": 0.92
+  },
+  {
+    "id": 6,
+    "title": "Chain of custody record, Westchester County labs, DEP laboratory transfer",
+    "summary": "Record of DEP sample chain details, including sender/recipient information and transfer tracking at Westchester County Labs and Research.",
+    "confidence": 0.92
+  },
+  {
+    "id": 7,
+    "title": "Environmental Services sample submission form, Westchester labs, NYS-ELAP 10108",
+    "summary": "Form A-70 request for DEP water samples showing source, location, billing, sample containers, and chain-of-custody handling for lab processing.",
+    "confidence": 0.93
+  },
+  {
+    "id": 8,
+    "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+    "summary": "Laboratory report for 9/17/2001 Hillview Reservoir BX3 samples analyzing metals with collection, submission, and chilled-arrival metadata.",
+    "confidence": 0.99
+  },
+  {
+    "id": 9,
+    "title": "Chain of custody record, Westchester County labs, DEP sample tracking",
+    "summary": "Chain-of-custody recordset documenting DEP sample movement and logging at Westchester County Laboratories and Research.",
+    "confidence": 0.93
+  },
+  {
+    "id": 10,
+    "title": "Chain of custody record, Westchester County labs, DEP sampling workflow",
+    "summary": "Custody log tied to DEP sampling activity, capturing lab contact and sample transfer details for Westchester County test intake.",
+    "confidence": 0.92
+  },
+  {
+    "id": 11,
+    "title": "THM analysis report, Hillview Reservoir BX3, September 2001",
+    "summary": "Analysis report for 9/18/2001 Hillview Reservoir BX3 samples measuring trihalomethanes including bromodichloromethane for City DEP DWQC.",
+    "confidence": 0.99
+  },
+  {
+    "id": 12,
+    "title": "Montgomery Watson chain-of-custody record, Westchester labs, DEP samples",
+    "summary": "Chain-of-custody sheet from Montgomery Watson Laboratories for DEP samples, recording login/check-in and sample receipt data.",
+    "confidence": 0.95
+  },
+  {
+    "id": 13,
+    "title": "Chain of custody record, Westchester County labs, DEP sample receipt",
+    "summary": "Record preserving DEP sample custody information and laboratory handling data at the Westchester County Department of Labs and Research.",
+    "confidence": 0.93
+  },
+  {
+    "id": 14,
+    "title": "Chain of custody record, Westchester County labs, DEP analytical samples",
+    "summary": "Custody form for DEP analytical samples, documenting sender/laboratory details and sample identifiers through the Westchester intake chain.",
+    "confidence": 0.92
+  },
+  {
+    "id": 15,
+    "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+    "summary": "Laboratory report for 9/20/2001 Hillview Reservoir BX3 samples with submission timestamps, sample IDs, and silver/aluminum analysis results.",
+    "confidence": 0.99
+  },
+  {
+    "id": 16,
+    "title": "Chain of custody record, Westchester County labs, DEP sample log",
+    "summary": "Custody record for DEP sample batches at Westchester County Laboratories and Research, tracking SDG-linked identifiers and transfer checkpoints.",
+    "confidence": 0.92
+  },
+  {
+    "id": 17,
+    "title": "Chain of custody record, Westchester labs, DEP potable-water sampling",
+    "summary": "Chain-of-custody form for DEP sampling records, used to document sample identification and custody chain at Westchester lab facilities.",
+    "confidence": 0.91
+  },
+  {
+    "id": 18,
+    "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+    "summary": "Report for 9/21/2001 Hillview Reservoir BX3 DEP samples including collection/submission times, chilled transport verification, and metals results.",
+    "confidence": 0.99
+  },
+  {
+    "id": 19,
+    "title": "Chain of custody record, Westchester labs, DEP sample log",
+    "summary": "Chain-of-custody pages documenting DEP field sample tracking and custodial handoff details for Westchester County laboratory testing.",
+    "confidence": 0.92
+  },
+  {
+    "id": 20,
+    "title": "Chain of custody record, Westchester County labs, DEP sample handling",
+    "summary": "Standard form for DEP sample intake and transfer tracking, recording sender, lab contact, and chain-of-custody details.",
+    "confidence": 0.92
+  }
+]

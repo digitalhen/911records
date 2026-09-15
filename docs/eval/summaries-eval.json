@@ -1,0 +1,1341 @@
+{
+ "n_items": 20,
+ "models": {
+  "haiku": {
+   "summary": {
+    "usable": 1.0,
+    "format_ok": 1.0,
+    "grounding": 0.824,
+    "distinct_titles": 0.2,
+    "mean_confidence": 0.818,
+    "faithfulness": 4.3,
+    "specificity": 3.4
+   },
+   "items": [
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples processed through Westchester County Department of Labs and Research.",
+     "confidence": 0.75,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 1,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Year 2001 not stated in excerpt; Westchester County and Labs & Research confirmed but OCR is degraded."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 19,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody record for laboratory samples at Westchester County Department of Labs and Research in Valhalla, New York.",
+     "confidence": 0.8,
+     "grounding": 0.833,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 2,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Year 2001 not stated in excerpt; Valhalla, New York and Westchester County all supported."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Montgomery Watson Laboratories, CA",
+     "summary": "Chain of custody documentation for laboratory samples submitted to Montgomery Watson Laboratories in Pasadena, California.",
+     "confidence": 0.85,
+     "grounding": 0.875,
+     "ungrounded": [
+      "California."
+     ],
+     "id": 3,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt clearly shows Montgomery Watson Laboratories, Pasadena CA, address and phone numbers. All claims supported."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody form for laboratory sample tracking through Westchester County Department of Labs and Research.",
+     "confidence": 0.8,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 4,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Year 2001 not stated in excerpt; Westchester County and Labs & Research confirmed but generic summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples processed at Westchester County Department of Labs and Research.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 5,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Year 2001 not stated; Valhalla mentioned in excerpt but omitted from summary; could be more specific."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 18,
+     "title": "Water quality analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory analysis of water samples from Hillview Reservoir site BX3 testing for metals including silver, aluminum, and arsenic.",
+     "confidence": 0.92,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 6,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt confirms Hillview Reservoir, BX3 site, 09/17/01 collection, and all three metals (silver, aluminum, arsenic)."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody record for laboratory sample tracking from Westchester County Department of Labs and Research.",
+     "confidence": 0.75,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 7,
+     "faithfulness": 4,
+     "specificity": 2,
+     "judge_note": "Year 2001 not stated; Westchester County Labs & Research identifiable despite OCR degradation; very generic summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples at Westchester County Department of Labs and Research.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 8,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Year 2001 not stated; Valhalla appears in excerpt but summary lacks this specific location detail."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Drinking water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory analysis of drinking water samples from Hillview Reservoir BX3 testing for trihalomethanes and disinfection byproducts.",
+     "confidence": 0.93,
+     "grounding": 0.857,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 9,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt confirms Hillview Reservoir BX3, 9/18/2001 dates, 'POT_DW' (potable drinking water), and THM-Bromodichloromethane (trihalomethane)."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Montgomery Watson Laboratories, CA",
+     "summary": "Chain of custody documentation for laboratory samples submitted to Montgomery Watson Laboratories in Pasadena, California.",
+     "confidence": 0.85,
+     "grounding": 0.875,
+     "ungrounded": [
+      "California."
+     ],
+     "id": 10,
+     "faithfulness": 5,
+     "specificity": 4,
+     "judge_note": "Montgomery Watson Laboratories Pasadena CA all supported; specific address and phone in excerpt but not all repeated in summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody record for laboratory sample tracking at Westchester County Department of Labs and Research.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 11,
+     "faithfulness": 4,
+     "specificity": 2,
+     "judge_note": "Year 2001 not stated; Westchester County Labs & Research confirmed but summary is generic; OCR degradation."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Water quality analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory analysis of water samples from Hillview Reservoir BX3 testing for metals including silver and aluminum.",
+     "confidence": 0.91,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 12,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt confirms Hillview Reservoir BX3, 9/20/2001 collection date, silver and aluminum testing."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples at Westchester County Department of Labs and Research.",
+     "confidence": 0.75,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 13,
+     "faithfulness": 4,
+     "specificity": 2,
+     "judge_note": "Year 2001 not stated; Westchester County Labs & Research identifiable despite severe OCR corruption; generic summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody record for laboratory sample tracking at Westchester County Department of Labs and Research.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 14,
+     "faithfulness": 4,
+     "specificity": 2,
+     "judge_note": "Year 2001 not stated in excerpt; minimal identifying details beyond Westchester County department name."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Water quality analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory analysis of water samples from Hillview Reservoir BX3 testing for silver, aluminum, and other metals.",
+     "confidence": 0.9,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 15,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt confirms Hillview Reservoir BX3, 9/21/2001 collection, silver and aluminum and other metals tested."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples at Westchester County Department of Labs and Research.",
+     "confidence": 0.75,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 16,
+     "faithfulness": 4,
+     "specificity": 2,
+     "judge_note": "Year 2001 not stated; Westchester County and Labs & Research identifiable despite OCR errors (NESTCIER); very generic."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 17,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples at Westchester County Department of Labs and Research in Valhalla.",
+     "confidence": 0.82,
+     "grounding": 0.8,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 17,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Year 2001 not stated in excerpt; Valhalla New York and Westchester County confirmed; reasonably specific for a chain of custody form."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody record for laboratory samples at Westchester County Department of Labs and Research.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 18,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Year 2001 not stated; Valhalla visible in excerpt but not mentioned in summary; Westchester County confirmed despite OCR."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Water quality analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory analysis of drinking water samples from Hillview Reservoir BX3 testing for silver, aluminum, and arsenic.",
+     "confidence": 0.93,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 19,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Excerpt confirms Hillview Reservoir BX3, 09/22/01 (Sept 2001) submission, silver aluminum arsenic testing."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester County laboratory, 2001",
+     "summary": "Chain of custody documentation for laboratory samples at Westchester County Department of Labs and Research.",
+     "confidence": 0.75,
+     "grounding": 0.75,
+     "ungrounded": [
+      "2001"
+     ],
+     "id": 20,
+     "faithfulness": 3,
+     "specificity": 1,
+     "judge_note": "Excerpt severely degraded (WESTCI R, LABI, CUSTOO.CORD); can barely confirm Westchester County; year 2001 absent; cannot verify claims reliably."
+    }
+   ]
+  },
+  "luna": {
+   "summary": {
+    "usable": 1.0,
+    "format_ok": 1.0,
+    "grounding": 0.863,
+    "distinct_titles": 0.3,
+    "mean_confidence": 0.841,
+    "faithfulness": 3.8,
+    "specificity": 3.35
+   },
+   "items": [
+    {
+     "valid": 1,
+     "title_words": 6,
+     "summary_words": 13,
+     "title": "Chain-of-custody record for Kensico laboratory samples",
+     "summary": "Records the transfer and receipt of samples submitted to the Westchester County laboratory.",
+     "confidence": 0.82,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 1,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Correctly identifies Kensico (though OCR shows 'EWeKensico') and Westchester County. Faithful to visible text."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Documents the handling and transfer of environmental samples submitted to the Westchester County laboratory.",
+     "confidence": 0.76,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 2,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Accurately reflects chain of custody from Westchester County in Valhalla. 'Environmental samples' is reasonable inference from context."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 11,
+     "title": "Chain-of-custody record for laboratory samples",
+     "summary": "Records sample handling, laboratory receipt, and custody information for DEP-submitted samples.",
+     "confidence": 0.78,
+     "grounding": 0.5,
+     "ungrounded": [
+      "DEP-submitted"
+     ],
+     "id": 3,
+     "faithfulness": 3,
+     "specificity": 3,
+     "judge_note": "Names Montgomery Watson Laboratories (Pasadena, CA) correctly, but summary claims 'DEP-submitted samples' without explicit mention in excerpt."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Documents the transfer and laboratory custody of environmental samples submitted by the City DEP.",
+     "confidence": 0.8,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 4,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Excerpt shows 'DEP-' prefix clearly. Westchester County confirmed. No specific dates or substances visible."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records the custody and laboratory receipt of samples submitted to the Westchester County laboratory.",
+     "confidence": 0.79,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 5,
+     "faithfulness": 5,
+     "specificity": 3,
+     "judge_note": "Accurately reflects Westchester County chain of custody with 'WcDEP' visible in excerpt. Location (Valhalla) confirmed."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Drinking water metals analysis, Hillview Reservoir, September 2001",
+     "summary": "Reports laboratory testing of a Hillview Reservoir drinking-water sample for metals collected on September 17, 2001.",
+     "confidence": 0.98,
+     "grounding": 0.909,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 6,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Precise match: Hillview Reservoir, September 17, 2001, metals analysis (Silver, Aluminum, Arsenic). All details supported."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Documents the transfer and laboratory custody of environmental samples submitted by the City DEP.",
+     "confidence": 0.77,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 7,
+     "faithfulness": 3,
+     "specificity": 2,
+     "judge_note": "Westchester County confirmed but OCR severely degraded. DEP attribution uncertain. Summary generic."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records sampling details and custody transfer for samples submitted to the Westchester County laboratory.",
+     "confidence": 0.82,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 8,
+     "faithfulness": 3,
+     "specificity": 3,
+     "judge_note": "Shows Westchester County and Valhalla. DEP not explicitly visible in degraded excerpt. Moderately generic title/summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 13,
+     "title": "Drinking water chemical analysis, Hillview Reservoir, September 2001",
+     "summary": "Reports laboratory analysis of a Hillview Reservoir drinking-water sample, including volatile disinfection byproducts.",
+     "confidence": 0.96,
+     "grounding": 0.875,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 9,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Accurate: Hillview Reservoir, September 2001 (specifically 9/18), volatile disinfection byproducts (THM-Bromodichloromethane) explicitly mentioned."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 12,
+     "title": "Chain-of-custody record for laboratory samples",
+     "summary": "Documents sample receipt, temperature, and custody handling at the Montgomery Watson laboratory.",
+     "confidence": 0.88,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 10,
+     "faithfulness": 5,
+     "specificity": 4,
+     "judge_note": "Correctly identifies Montgomery Watson Laboratory (Pasadena, CA). Mentions sample receipt, temperature, and custody - all visible in excerpt."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records the transfer and laboratory custody of environmental samples submitted by the City DEP.",
+     "confidence": 0.79,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 11,
+     "faithfulness": 3,
+     "specificity": 2,
+     "judge_note": "Shows Westchester County but DEP not clearly visible in degraded text. Summary assumes DEP without strong supporting evidence."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Drinking water metals analysis, Hillview Reservoir, September 2001",
+     "summary": "Reports laboratory testing of Hillview Reservoir drinking water for metals in samples collected September 20, 2001.",
+     "confidence": 0.98,
+     "grounding": 0.909,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 12,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Precise match: Hillview Reservoir, September 20, 2001 collection, metals analysis (Silver, Aluminum) confirmed."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 15,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Documents sample identification and custody transfer for environmental samples submitted to the Westchester County laboratory.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 13,
+     "faithfulness": 3,
+     "specificity": 2,
+     "judge_note": "Westchester County visible but OCR heavily corrupted. No specific dates or substances. Title assumes DEP without clear evidence."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records the handling and laboratory receipt of environmental samples submitted by the City DEP.",
+     "confidence": 0.78,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 14,
+     "faithfulness": 3,
+     "specificity": 2,
+     "judge_note": "Shows Westchester County lab record but DEP attribution unclear in degraded text. Generic summary."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Drinking water metals analysis, Hillview Reservoir, September 2001",
+     "summary": "Reports laboratory testing of Hillview Reservoir drinking water for metals in samples collected September 21, 2001.",
+     "confidence": 0.98,
+     "grounding": 0.909,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 15,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "Precise match: Hillview Reservoir, September 21, 2001, metals analysis (Silver, Aluminum, Arsenic) confirmed."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for Kensico samples",
+     "summary": "Documents the transfer and laboratory custody of samples associated with the Kensico water supply.",
+     "confidence": 0.87,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 16,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Correctly identifies Kensico (garbled as 'KensolobL') and Westchester County. 'Water supply' is reasonable contextual inference."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records the handling and laboratory receipt of environmental samples submitted by the City DEP.",
+     "confidence": 0.79,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 17,
+     "faithfulness": 3,
+     "specificity": 3,
+     "judge_note": "Westchester County and Valhalla visible. DEP attribution weak ('DUCN&P' is corrupted). Moderately generic."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 13,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Documents custody transfer and laboratory receipt for samples submitted by the City DEP.",
+     "confidence": 0.78,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Documents"
+     ],
+     "id": 18,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Shows 'C- DEP' and Westchester County/Valhalla location. Title and summary reasonably match visible elements."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Drinking water metals analysis, Hillview Reservoir, September 2001",
+     "summary": "Reports laboratory testing of Hillview Reservoir drinking water for metals in samples collected September 22, 2001.",
+     "confidence": 0.96,
+     "grounding": 0.909,
+     "ungrounded": [
+      "Drinking"
+     ],
+     "id": 19,
+     "faithfulness": 3,
+     "specificity": 4,
+     "judge_note": "Date discrepancy: excerpt shows '09/22/00' (collection) but title/summary say September 2001. Submitted date is 09/22/01. Specific substances (metals) confirmed."
+    },
+    {
+     "valid": 1,
+     "title_words": 5,
+     "summary_words": 14,
+     "title": "Chain-of-custody record for DEP samples",
+     "summary": "Records the transfer and laboratory custody of environmental samples submitted by the City DEP.",
+     "confidence": 0.76,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 20,
+     "faithfulness": 2,
+     "specificity": 1,
+     "judge_note": "OCR severely degraded, barely readable. DEP attribution and any specific details cannot be verified from excerpt. Highly generic."
+    }
+   ]
+  },
+  "qwen35b": {
+   "summary": {
+    "usable": 1.0,
+    "format_ok": 1.0,
+    "grounding": 0.725,
+    "distinct_titles": 0.2,
+    "mean_confidence": 0.957,
+    "faithfulness": 4.25,
+    "specificity": 3.8
+   },
+   "items": [
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Document tracking the transfer and receipt of environmental samples at the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 1,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab name and document type supported by excerpt; date 'Oct 2001' not visible in text shown"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 20,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form recording the chain of custody for samples submitted to the Westchester County Department of Labs & Research in Valhalla.",
+     "confidence": 0.95,
+     "grounding": 0.667,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 2,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab name, location (Valhalla), and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 17,
+     "title": "Chain of custody record, Montgomery Watson Laboratories, Oct 2001",
+     "summary": "Document logging sample receipt and chain of custody for samples submitted to Montgomery Watson Laboratories in Pasadena.",
+     "confidence": 0.95,
+     "grounding": 0.778,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 3,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab name, location (Pasadena), and document type clearly visible; date 'Oct 2001' not shown in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody form, Westchester County Lab, Oct 2001",
+     "summary": "Record documenting the transfer of environmental samples to the Westchester County Department of Labs & Research for analysis.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 4,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab name and document type supported; date 'Oct 2001' not visible; 'form' is generic phrasing for chain of custody record"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form tracking the custody and transport of samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 5,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab name, location (Valhalla), and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 7,
+     "summary_words": 17,
+     "title": "Water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory report detailing chemical analysis results for silver, aluminum, and arsenic in water samples from Hillview Reservoir.",
+     "confidence": 0.98,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 6,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "All specifics fully supported: Hillview Reservoir, Valhalla, date 09/17/01, specific analytes (Silver, Aluminum, Arsenic)"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 19,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Document recording the chain of custody for environmental samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 7,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 19,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form tracking the transfer and receipt of samples at the Westchester County Department of Labs & Research in Valhalla.",
+     "confidence": 0.95,
+     "grounding": 0.667,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 8,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab, location (Valhalla), and document type supported; date 'Oct 2001' not visible"
+    },
+    {
+     "valid": 1,
+     "title_words": 7,
+     "summary_words": 18,
+     "title": "Water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory report detailing chemical analysis results for THM compounds and other contaminants in water samples from Hillview Reservoir.",
+     "confidence": 0.98,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 9,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "All specifics clearly present: Hillview Reservoir, Valhalla, date 9/18/2001, specific analyte THM-Bromodichloromethane"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 17,
+     "title": "Chain of custody record, Montgomery Watson Laboratories, Oct 2001",
+     "summary": "Document logging sample receipt and chain of custody for samples submitted to Montgomery Watson Laboratories in Pasadena.",
+     "confidence": 0.95,
+     "grounding": 0.778,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 10,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab name (Montgomery Watson), location (Pasadena), and document type visible; date 'Oct 2001' not shown in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form recording the chain of custody for samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 11,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 7,
+     "summary_words": 19,
+     "title": "Water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory report detailing chemical analysis results for silver and aluminum in water samples from Hillview Reservoir collected in September.",
+     "confidence": 0.98,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 12,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "All specifics present: Hillview Reservoir, Valhalla, date 9/20/2001, specific analytes Silver and Aluminum"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Document tracking the transfer and receipt of environmental samples at the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 13,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form recording the chain of custody for samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 14,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 7,
+     "summary_words": 19,
+     "title": "Water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory report detailing chemical analysis results for silver and aluminum in water samples from Hillview Reservoir collected in September.",
+     "confidence": 0.98,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 15,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "All specifics present: Hillview Reservoir, Valhalla, date 9/21/2001, specific analytes Silver and Aluminum"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Document tracking the transfer and receipt of environmental samples at the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 16,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form recording the chain of custody for samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 17,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "Lab, location (Valhalla), and document type supported; date 'Oct 2001' not visible in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Document tracking the transfer and receipt of environmental samples at the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 18,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' and location Valhalla not mentioned in summary despite being in excerpt"
+    },
+    {
+     "valid": 1,
+     "title_words": 7,
+     "summary_words": 17,
+     "title": "Water analysis report, Hillview Reservoir, Sept 2001",
+     "summary": "Laboratory report detailing chemical analysis results for silver, aluminum, and arsenic in water samples from Hillview Reservoir.",
+     "confidence": 0.98,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 19,
+     "faithfulness": 5,
+     "specificity": 5,
+     "judge_note": "All specifics present: Hillview Reservoir, Valhalla, date 09/22/01 (submission/analysis date), specific analytes Silver, Aluminum, Arsenic; note collection date shows 09/22/00"
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County Lab, Oct 2001",
+     "summary": "Form recording the chain of custody for samples submitted to the Westchester County Department of Labs & Research.",
+     "confidence": 0.95,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Oct",
+      "2001"
+     ],
+     "id": 20,
+     "faithfulness": 4,
+     "specificity": 3,
+     "judge_note": "Lab and document type supported; date 'Oct 2001' not visible; OCR quality severely degraded in this excerpt"
+    }
+   ]
+  },
+  "spark": {
+   "summary": {
+    "usable": 1.0,
+    "format_ok": 1.0,
+    "grounding": 0.674,
+    "distinct_titles": 0.9,
+    "mean_confidence": 0.94,
+    "faithfulness": 2.95,
+    "specificity": 3.25
+   },
+   "items": [
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 17,
+     "title": "Chain of custody record, Westchester County labs, DEP environmental samples",
+     "summary": "Chain-of-custody form documenting transfer of Department of Environmental Protection samples for laboratory tracking at Westchester County laboratories.",
+     "confidence": 0.93,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 1,
+     "faithfulness": 5,
+     "specificity": 4,
+     "judge_note": "Title and summary accurately reflect chain of custody record for DEP at Westchester County labs."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 17,
+     "title": "Chain of custody record, Westchester labs, DEP water transfer",
+     "summary": "Chain-of-custody page for DEP water samples with source identifiers and custodial details for Westchester County lab intake.",
+     "confidence": 0.94,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 2,
+     "faithfulness": 4,
+     "specificity": 4,
+     "judge_note": "'Water' sampling not explicitly stated in excerpt, but DEP lab form confirmed; Valhalla address shown."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Montgomery Watson chain-of-custody record for DEP sample intake",
+     "summary": "Outsourced-lab custody log from Montgomery Watson Laboratories for DEP samples, including sample temperature and receipt information.",
+     "confidence": 0.96,
+     "grounding": 0.875,
+     "ungrounded": [
+      "Outsourced-lab"
+     ],
+     "id": 3,
+     "faithfulness": 3,
+     "specificity": 5,
+     "judge_note": "DEP affiliation not explicitly stated in excerpt; Montgomery Watson Laboratories and Pasadena CA address clearly shown."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 17,
+     "title": "Environmental Services sample submission form, Westchester labs, water sampling",
+     "summary": "Sample submission form for environmental services, recording source ID, container selection, and chain-of-custody option for water samples.",
+     "confidence": 0.91,
+     "grounding": 0.667,
+     "ungrounded": [
+      "Services"
+     ],
+     "id": 4,
+     "faithfulness": 3,
+     "specificity": 3,
+     "judge_note": "'Environmental Services' and 'water sampling' not explicitly visible in fragmentary excerpt header."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 15,
+     "title": "Chain of custody record, Westchester labs, DEP sample handling",
+     "summary": "Chain-of-custody document used to track DEP sample logging and custody details at Westchester County Laboratory.",
+     "confidence": 0.92,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 5,
+     "faithfulness": 5,
+     "specificity": 4,
+     "judge_note": "Matches excerpt showing WCDEP, Westchester County, Valhalla; accurate chain of custody documentation."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County labs, DEP laboratory transfer",
+     "summary": "Record of DEP sample chain details, including sender/recipient information and transfer tracking at Westchester County Labs and Research.",
+     "confidence": 0.92,
+     "grounding": 0.6,
+     "ungrounded": [
+      "Westchester",
+      "Westchester"
+     ],
+     "id": 6,
+     "faithfulness": 2,
+     "specificity": 5,
+     "judge_note": "Title misidentifies document as chain of custody record when excerpt header shows 'REPORT OF ANALYSIS'; Hillview Reservoir BX3 and 09/17/01 dates clearly visible."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 19,
+     "title": "Environmental Services sample submission form, Westchester labs, NYS-ELAP 10108",
+     "summary": "Form A-70 request for DEP water samples showing source, location, billing, sample containers, and chain-of-custody handling for lab processing.",
+     "confidence": 0.93,
+     "grounding": 0.429,
+     "ungrounded": [
+      "Services",
+      "NYS-ELAP",
+      "1010",
+      "70"
+     ],
+     "id": 7,
+     "faithfulness": 1,
+     "specificity": 2,
+     "judge_note": "Form A-70, NYS-ELAP 10108, 'water samples', 'billing', and 'containers' are entirely unsupported by highly fragmentary excerpt."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+     "summary": "Laboratory report for 9/17/2001 Hillview Reservoir BX3 samples analyzing metals with collection, submission, and chilled-arrival metadata.",
+     "confidence": 0.99,
+     "grounding": 0.25,
+     "ungrounded": [
+      "Hillview",
+      "September",
+      "2001",
+      "17",
+      "2001",
+      "Hillview"
+     ],
+     "id": 8,
+     "faithfulness": 1,
+     "specificity": 2,
+     "judge_note": "Hillview Reservoir, BX3, and September 2001 are not present in excerpt, which shows only chain of custody header."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 14,
+     "title": "Chain of custody record, Westchester County labs, DEP sample tracking",
+     "summary": "Chain-of-custody recordset documenting DEP sample movement and logging at Westchester County Laboratories and Research.",
+     "confidence": 0.93,
+     "grounding": 0.429,
+     "ungrounded": [
+      "Westchester",
+      "Chain-of-custody",
+      "Westchester",
+      "Laboratories"
+     ],
+     "id": 9,
+     "faithfulness": 2,
+     "specificity": 5,
+     "judge_note": "Document is 'REPORT OF ANALYSIS' not chain of custody record; Hillview Reservoir BX3, 9/18/2001 dates, and THM-bromodichloromethane analysis clearly shown."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 19,
+     "title": "Chain of custody record, Westchester County labs, DEP sampling workflow",
+     "summary": "Custody log tied to DEP sampling activity, capturing lab contact and sample transfer details for Westchester County test intake.",
+     "confidence": 0.92,
+     "grounding": 0.5,
+     "ungrounded": [
+      "Westchester",
+      "Westchester"
+     ],
+     "id": 10,
+     "faithfulness": 1,
+     "specificity": 2,
+     "judge_note": "Title claims Westchester County labs but excerpt explicitly shows Montgomery Watson Laboratories, Pasadena CA—contradiction in facility identity."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 16,
+     "title": "THM analysis report, Hillview Reservoir BX3, September 2001",
+     "summary": "Analysis report for 9/18/2001 Hillview Reservoir BX3 samples measuring trihalomethanes including bromodichloromethane for City DEP DWQC.",
+     "confidence": 0.99,
+     "grounding": 0.273,
+     "ungrounded": [
+      "THM",
+      "Hillview",
+      "September",
+      "2001",
+      "18",
+      "2001",
+      "Hillview",
+      "DWQC."
+     ],
+     "id": 11,
+     "faithfulness": 1,
+     "specificity": 1,
+     "judge_note": "Hillview Reservoir, BX3, THM analysis, and September 2001 are completely unsupported; excerpt shows only Westchester County chain of custody header."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 15,
+     "title": "Montgomery Watson chain-of-custody record, Westchester labs, DEP samples",
+     "summary": "Chain-of-custody sheet from Montgomery Watson Laboratories for DEP samples, recording login/check-in and sample receipt data.",
+     "confidence": 0.95,
+     "grounding": 0.222,
+     "ungrounded": [
+      "Montgomery",
+      "Watson",
+      "Westchester",
+      "Chain-of-custody",
+      "Montgomery",
+      "Watson",
+      "Laboratories"
+     ],
+     "id": 12,
+     "faithfulness": 1,
+     "specificity": 2,
+     "judge_note": "Title attributes to Montgomery Watson but excerpt is clearly Westchester County analysis report for 9/20/2001 Hillview Reservoir BX3."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 19,
+     "title": "Chain of custody record, Westchester County labs, DEP sample receipt",
+     "summary": "Record preserving DEP sample custody information and laboratory handling data at the Westchester County Department of Labs and Research.",
+     "confidence": 0.93,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 13,
+     "faithfulness": 5,
+     "specificity": 3,
+     "judge_note": "Accurate chain of custody document at Westchester County; specificity limited to location only."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 17,
+     "title": "Chain of custody record, Westchester County labs, DEP analytical samples",
+     "summary": "Custody form for DEP analytical samples, documenting sender/laboratory details and sample identifiers through the Westchester intake chain.",
+     "confidence": 0.92,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 14,
+     "faithfulness": 5,
+     "specificity": 3,
+     "judge_note": "Correctly identified as chain of custody record; Westchester County confirmed; generic beyond location."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 17,
+     "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+     "summary": "Laboratory report for 9/20/2001 Hillview Reservoir BX3 samples with submission timestamps, sample IDs, and silver/aluminum analysis results.",
+     "confidence": 0.99,
+     "grounding": 0.889,
+     "ungrounded": [
+      "IDs"
+     ],
+     "id": 15,
+     "faithfulness": 4,
+     "specificity": 5,
+     "judge_note": "Date discrepancy: summary states '9/20/2001' but excerpt shows '9/21/2001' collection/submission; Hillview Reservoir BX3 and specific metal analysis results clearly visible."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester County labs, DEP sample log",
+     "summary": "Custody record for DEP sample batches at Westchester County Laboratories and Research, tracking SDG-linked identifiers and transfer checkpoints.",
+     "confidence": 0.92,
+     "grounding": 0.857,
+     "ungrounded": [
+      "SDG-linked"
+     ],
+     "id": 16,
+     "faithfulness": 5,
+     "specificity": 3,
+     "judge_note": "Matches chain of custody documentation with SDG identifiers; specificity limited to Westchester County."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 18,
+     "title": "Chain of custody record, Westchester labs, DEP potable-water sampling",
+     "summary": "Chain-of-custody form for DEP sampling records, used to document sample identification and custody chain at Westchester lab facilities.",
+     "confidence": 0.91,
+     "grounding": 1.0,
+     "ungrounded": [],
+     "id": 17,
+     "faithfulness": 3,
+     "specificity": 4,
+     "judge_note": "'Potable-water sampling' is not explicitly stated in excerpt; Westchester County and Valhalla NY address confirmed."
+    },
+    {
+     "valid": 1,
+     "title_words": 8,
+     "summary_words": 17,
+     "title": "Report of analysis, Hillview Reservoir BX3, September 2001",
+     "summary": "Report for 9/21/2001 Hillview Reservoir BX3 DEP samples including collection/submission times, chilled transport verification, and metals results.",
+     "confidence": 0.99,
+     "grounding": 0.333,
+     "ungrounded": [
+      "Hillview",
+      "September",
+      "2001",
+      "21",
+      "2001",
+      "Hillview"
+     ],
+     "id": 18,
+     "faithfulness": 1,
+     "specificity": 1,
+     "judge_note": "Title describes analysis report with Hillview Reservoir BX3 and 9/21/2001, but excerpt shows only chain of custody header with no such details."
+    },
+    {
+     "valid": 1,
+     "title_words": 9,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester labs, DEP sample log",
+     "summary": "Chain-of-custody pages documenting DEP field sample tracking and custodial handoff details for Westchester County laboratory testing.",
+     "confidence": 0.92,
+     "grounding": 0.4,
+     "ungrounded": [
+      "Westchester",
+      "Chain-of-custody",
+      "Westchester"
+     ],
+     "id": 19,
+     "faithfulness": 2,
+     "specificity": 5,
+     "judge_note": "Document type misidentified as chain of custody; excerpt is 'REPORT OF ANALYSIS'; Hillview Reservoir BX3, 09/22/01 dates, specific bottles (4650,8669,7305,7644,0056,8650), analyst YACOUB clearly shown."
+    },
+    {
+     "valid": 1,
+     "title_words": 10,
+     "summary_words": 16,
+     "title": "Chain of custody record, Westchester County labs, DEP sample handling",
+     "summary": "Standard form for DEP sample intake and transfer tracking, recording sender, lab contact, and chain-of-custody details.",
+     "confidence": 0.92,
+     "grounding": 0.75,
+     "ungrounded": [
+      "Standard"
+     ],
+     "id": 20,
+     "faithfulness": 5,
+     "specificity": 2,
+     "judge_note": "Matches chain of custody form; Westchester County confirmed; highly fragmentary excerpt limits detailed specificity beyond location."
+    }
+   ]
+  }
+ }
+}
