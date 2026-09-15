@@ -415,13 +415,41 @@ def extract_json_array(text: str) -> list[dict] | None:
         if text.startswith("json"):
             text = text[4:]
     m = re.search(r"\[.*\]", text, re.S)
-    if not m:
-        return None
-    try:
-        parsed = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, list) else None
+    parsed = None
+    if m:
+        try:
+            parsed = json.loads(m.group(0))
+        except json.JSONDecodeError:
+            parsed = None
+    if not isinstance(parsed, list):
+        # qwen sometimes returns the objects one after another with no enclosing array
+        # (2026-09-14: 12 of 25 batches). The objects themselves are flat, so collect them.
+        objs = []
+        for om in re.finditer(r"\{[^{}]*\}", text, re.S):
+            try:
+                o = json.loads(om.group(0))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(o, dict) and "id" in o:
+                objs.append(o)
+        parsed = objs or None
+    return parsed
+
+
+def align_ids(parsed: list[dict] | None, n_items: int) -> list[dict] | None:
+    """Items are numbered 1..n in the prompt; the model occasionally numbers its reply 0..n-1, which
+    would silently attach every title to the wrong document. Shift such replies, and when a reply
+    has one object per item but ids that match nothing, trust the order instead of the ids."""
+    if not parsed:
+        return parsed
+    rows = [r for r in parsed if isinstance(r, dict)]
+    ids = [r.get("id") for r in rows]
+    if all(isinstance(i, int) for i in ids):
+        if ids and min(ids) == 0 and max(ids) == n_items - 1 and len(set(ids)) == len(ids):
+            return [{**r, "id": r["id"] + 1} for r in rows]
+        if len(rows) == n_items and not any(1 <= i <= n_items for i in ids):
+            return [{**r, "id": k + 1} for k, r in enumerate(rows)]
+    return rows
 
 
 class Budget:
@@ -589,7 +617,7 @@ def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retr
         arr = extract_json_array(text)
         if arr is None:  # say what came back, so a truncated or chatty reply can be diagnosed
             print(f"summaries: ollama reply not a JSON array ({len(text)} chars): {text[:160]!r} … {text[-80:]!r}", file=sys.stderr)
-        return arr, 0.0  # local: no spend
+        return align_ids(arr, len(retry_ids) if retry_ids else len(items)), 0.0  # local: no spend
     if BACKEND == "codex":
         try:
             text = call_codex_cli(prompt)
@@ -851,6 +879,11 @@ def main() -> int:
                                  "model": None, "hash": it["hash"]} for it in futures[fut]]
                 with write_lock:
                     for r in out_rows:
+                        old = rows.get(r["doc"])
+                        if not r.get("title") and old and old.get("title"):
+                            # A redo that failed (malformed reply, privacy rejection) must never
+                            # blank a title we already had: keep it, under the new input hash.
+                            r = {**old, "hash": r["hash"]}
                         rows[r["doc"]] = r
                         model_done += 1
                         since_checkpoint += 1
