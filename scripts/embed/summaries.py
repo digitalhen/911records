@@ -126,7 +126,30 @@ ORG_ALLOW_WORDS = {w.lower() for phrase in AGENCIES for w in re.findall(r"[A-Za-
     "construction", "associates", "services", "inc", "corp", "corporation", "company", "llc", "co",
     "the", "of", "and", "for",
 }
-ALLOWED_WORDS = ALLOWED_PLACE_WORDS | ORG_ALLOW_WORDS
+# Words a record title is made of (record types, actions, substances, dates): a Title-Case pair
+# built from these ("Oct Document", "Chain Of Custody", "Air Sampling") is never a person's name.
+RECORD_WORDS = {
+    "document", "documents", "record", "records", "report", "reports", "form", "forms", "memo",
+    "memorandum", "letter", "letters", "invoice", "invoices", "permit", "permits", "application",
+    "log", "logs", "sheet", "sheets", "list", "lists", "summary", "results", "result", "analysis",
+    "analyses", "notice", "certificate", "request", "inspection", "inspections", "sample", "samples",
+    "sampling", "test", "tests", "chain", "custody", "cover", "fax", "transmittal", "correspondence",
+    "sign", "attendance", "schedule", "data", "table", "tables", "chart", "photo", "photos", "photograph",
+    "photographs", "map", "maps", "plan", "plans", "drawing", "drawings", "survey", "surveys", "spreadsheet",
+    "water", "air", "dust", "bulk", "wipe", "soil", "debris", "asbestos", "lead", "mercury", "dioxin",
+    "pcb", "pcbs", "voc", "vocs", "silica", "fiber", "fibre", "fibers", "particulate", "metals", "metal",
+    "quality", "monitoring", "cleanup", "clean", "cleaning", "abatement", "demolition", "removal",
+    "recovery", "response", "emergency", "site", "sites", "building", "buildings", "residential",
+    "apartment", "apartments", "school", "schools", "street", "avenue", "place", "plaza", "tower",
+    "towers", "world", "trade", "center", "ground", "zero", "lower", "manhattan", "downtown", "city",
+    "new", "york", "state", "federal", "county", "district", "region", "zone", "area", "block", "lot",
+    "reservoir", "aqueduct", "tunnel", "shaft", "plant", "station", "facility", "facilities",
+    "january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
+    "november", "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+    "daily", "weekly", "monthly", "final", "draft", "preliminary", "revised", "interim", "annual",
+    "page", "pages", "batch", "box", "folder", "volume", "no", "number", "id", "ref",
+}
+ALLOWED_WORDS = ALLOWED_PLACE_WORDS | ORG_ALLOW_WORDS | RECORD_WORDS
 
 
 def redact_titlecase(text: str) -> str:
@@ -153,7 +176,11 @@ def _grounded_words(source: str) -> set[str]:
 
 
 def _word_grounded(w: str, grounded: set[str]) -> bool:
-    return w in grounded or (len(w) >= 4 and w[:4] in grounded)
+    """Exact, 4-letter-stem, or abbreviation of a source word ('Oct' for October, 'Dept' for
+    Department, 'Sept', 'Assoc')."""
+    if w in grounded or (len(w) >= 4 and w[:4] in grounded):
+        return True
+    return len(w) >= 3 and any(sw.startswith(w) for sw in grounded)
 
 
 def text_violates(text: str, roles_words: set[str], source: str = "") -> str | None:
@@ -197,15 +224,19 @@ def load_roles_words() -> set[str]:
     for nm in roles_names:
         for w in re.findall(r"[A-Za-z]+", nm):
             wl = w.lower()
-            if len(wl) > 1 and wl not in ALLOWED_WORDS and not displayable(wl, shown) \
+            if len(wl) >= 4 and wl not in ALLOWED_WORDS and not displayable(wl, shown) \
                     and wl not in COMMON_NOT_NAMES and not inflected_dictionary_word(wl):
                 out.add(wl)
     return out
 
 
 # Ordinary words the roles extractor has mistaken for people; never a reason to reject a title.
+# Tokens shorter than 4 letters (initials, 'Nov', 'pH', 'ATC') are never treated as names either:
+# the roles extractor's short tokens are overwhelmingly abbreviations, not people.
 COMMON_NOT_NAMES = {"signed", "dated", "received", "submitted", "approved", "reviewed", "analyzed",
-                    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+                    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+                    "sept", "dept", "fax", "hotline", "corp", "assoc", "bldg", "engr", "asst", "supt",
+                    "attn", "dist", "admin", "mgmt", "envir", "enviro", "environ", "labs", "iiii"}
 
 
 def _dictionary_lower() -> set[str]:
