@@ -140,16 +140,46 @@ def redact_titlecase(text: str) -> str:
     return RE_TITLECASE_PAIR.sub(repl, text or "")
 
 
-def text_violates(text: str, roles_words: set[str]) -> str | None:
-    """Same check topics.py runs on a candidate topic title, applied to a title+summary pair."""
+def _grounded_words(source: str) -> set[str]:
+    """Lower-cased words of the source text plus their 4-letter stems, so an OCR-mangled
+    'Montgomry' still grounds 'Montgomery' and 'Reservoir' grounds 'Reservoirs'."""
+    words: set[str] = set()
+    for w in re.findall(r"[A-Za-z]+", source):
+        w = w.lower()
+        words.add(w)
+        if len(w) >= 4:
+            words.add(w[:4])
+    return words
+
+
+def _word_grounded(w: str, grounded: set[str]) -> bool:
+    return w in grounded or (len(w) >= 4 and w[:4] in grounded)
+
+
+def text_violates(text: str, roles_words: set[str], source: str = "") -> str | None:
+    """Same check topics.py runs on a candidate topic title, applied to a title+summary pair.
+
+    A Title-Case pair ("Westchester County", "Montgomery Watson") is allowed when both words are
+    domain/place words OR both appear in the document's own text/folder/box/agency (OCR-tolerant):
+    the model may repeat a place or company the record names, it may never introduce one. Words
+    that are known person names from the roles table are always rejected, grounded or not, so a
+    redacted person is never reconstructed from a title."""
+    grounded = _grounded_words(source) if source else set()
     for m in RE_TITLECASE_PAIR.finditer(text):
         w1, w2 = m.group(1).lower(), m.group(2).lower()
-        if w1 not in ALLOWED_WORDS or w2 not in ALLOWED_WORDS:
+        allowed = (w1 in ALLOWED_WORDS or _word_grounded(w1, grounded)) and \
+                  (w2 in ALLOWED_WORDS or _word_grounded(w2, grounded))
+        if not allowed:
             return f"contains a name-like phrase ('{m.group(0)}')"
     for w in re.findall(r"[A-Za-z]+", text):
         if w.lower() in roles_words:
             return f"contains a name from the roles table ('{w}')"
     return None
+
+
+def item_source(it: dict) -> str:
+    """Everything the model was shown for one document: the text a title may legitimately repeat."""
+    return " ".join(str(it.get(k) or "") for k in ("excerpt", "folder", "box", "agency"))
 
 
 def load_roles_words() -> set[str]:
@@ -167,9 +197,41 @@ def load_roles_words() -> set[str]:
     for nm in roles_names:
         for w in re.findall(r"[A-Za-z]+", nm):
             wl = w.lower()
-            if len(wl) > 1 and wl not in ALLOWED_WORDS and not displayable(wl, shown):
+            if len(wl) > 1 and wl not in ALLOWED_WORDS and not displayable(wl, shown) \
+                    and wl not in COMMON_NOT_NAMES and not inflected_dictionary_word(wl):
                 out.add(wl)
     return out
+
+
+# Ordinary words the roles extractor has mistaken for people; never a reason to reject a title.
+COMMON_NOT_NAMES = {"signed", "dated", "received", "submitted", "approved", "reviewed", "analyzed",
+                    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+
+
+def _dictionary_lower() -> set[str]:
+    try:
+        with open("/usr/share/dict/words") as fh:
+            return {w.strip() for w in fh if w.strip() and w[0].islower()}
+    except OSError:
+        return set()
+
+
+_DICT_LOWER = _dictionary_lower()
+
+
+def inflected_dictionary_word(w: str) -> bool:
+    """'submitted', 'monitoring', 'analyzed': an -ed/-ing form of a dictionary verb of 5+ letters.
+    Surnames that happen to end the same way ('Harding' = hard+ing) keep a stem under 5 letters
+    and stay in the list."""
+    for suf in ("ed", "ing"):
+        if w.endswith(suf) and len(w) - len(suf) >= 5:
+            stem = w[:-len(suf)]
+            cands = {stem, stem + "e"}
+            if len(stem) > 2 and stem[-1] == stem[-2]:
+                cands.add(stem[:-1])
+            if any(c in _DICT_LOWER for c in cands):
+                return True
+    return False
 
 
 def load_page_status() -> dict[tuple[str, int], str]:
@@ -424,6 +486,7 @@ BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK), "
 CODEX_MODEL = os.environ.get("SUMMARIES_CODEX_MODEL", "gpt-5.3-codex-spark")
 OLLAMA_URL = os.environ.get("SUMMARIES_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("SUMMARIES_OLLAMA_MODEL", "qwen3.5:35b-a3b")
+BACKEND_MODEL = {"codex": CODEX_MODEL, "ollama": OLLAMA_MODEL}.get(BACKEND, MODEL)  # what the row records as its author
 
 
 def call_claude_cli(prompt: str) -> str:
@@ -571,13 +634,13 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
             if not title:
                 continue
             title = clamp_title(title)
-            problem = text_violates(f"{title} {summary}", roles_words)
+            problem = text_violates(f"{title} {summary}", roles_words, item_source(by_id[iid]))
             if problem:
                 violators.add(iid)
                 continue
             conf = row.get("confidence", 0.5)
             cache_val = {"title": title, "summary": summary or None,
-                         "confidence": float(conf) if isinstance(conf, (int, float)) else 0.5, "model": MODEL}
+                         "confidence": float(conf) if isinstance(conf, (int, float)) else 0.5, "model": BACKEND_MODEL}
             results[iid] = {"doc": by_id[iid]["doc"], "hash": by_id[iid]["hash"], **cache_val}
             cache.put(by_id[iid]["hash"], cache_val)
     else:
@@ -607,11 +670,11 @@ def process_batch(client, items: list[dict], roles_words: set[str], budget: Budg
                 if not title:
                     continue
                 title = clamp_title(title)
-                if text_violates(f"{title} {summary}", roles_words):
+                if text_violates(f"{title} {summary}", roles_words, item_source(by_id[iid])):
                     continue  # still bad after one retry: drop to null, never guess
                 conf = row.get("confidence", 0.5)
                 cache_val = {"title": title, "summary": summary or None,
-                             "confidence": float(conf) if isinstance(conf, (int, float)) else 0.5, "model": MODEL}
+                             "confidence": float(conf) if isinstance(conf, (int, float)) else 0.5, "model": BACKEND_MODEL}
                 results[iid] = {"doc": by_id[iid]["doc"], "hash": by_id[iid]["hash"], **cache_val}
                 cache.put(by_id[iid]["hash"], cache_val)
 
