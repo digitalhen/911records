@@ -131,7 +131,14 @@ test('reader metadata preserves the published five-tool contract and exposes a s
   const client = await connect();
   try {
     const tools = (await client.listTools()).tools;
-    assert.deepEqual(tools.map(({ _meta, ...tool }) => tool), contract);
+    const legacy = tools.map(({ _meta, ...tool }) => {
+      if (tool.name !== 'get_document') return tool;
+      const { evidence, ...properties } = tool.inputSchema.properties!;
+      assert.ok(evidence);
+      assert.ok(!tool.inputSchema.required?.includes('evidence'));
+      return { ...tool, inputSchema: { ...tool.inputSchema, properties } };
+    });
+    assert.deepEqual(legacy, contract);
     for (const tool of tools) {
       assert.deepEqual(tool._meta?.ui, tool.name === 'get_document'
         ? { resourceUri: READER_URI, visibility: ['model', 'app'] }
@@ -160,6 +167,13 @@ test('word geometry is widget-only, optional, bounded, and never fetched for rem
     const reader = page._meta?.reader as Record<string, unknown>;
     assert.deepEqual(reader.boxes, boxes);
     assert.equal(reader.pageCount, 11);
+    assert.equal(reader.summary, 'Machine summary');
+    db.getDocument = async key => ({ ...await fixture().getDocument(key), summary: null } as DocumentRow);
+    const withoutSummary = await client.callTool({ name: 'get_page', arguments: { doc, page: 5 } });
+    assert.equal((withoutSummary._meta?.reader as Record<string, unknown>).summary, null);
+    // Restore removed-record handling for the following privacy checks.
+    db.getDocument = fixture().getDocument;
+    reads = 1;
     assert.ok(!JSON.stringify(page.structuredContent).includes('words'));
     assert.ok(!JSON.stringify(page.content).includes('words'));
     await client.callTool({ name: 'get_page', arguments: { doc: removed, page: 5 } });
@@ -184,4 +198,46 @@ test('invalid geometry cannot produce misleading scan overlays', async () => {
   assert.equal(readerBoxes({ ...valid, words: [[-1, 0, 5, 5, 'word']] }, 1), null);
   assert.equal(readerBoxes({ ...valid, words: [[1, 1, Infinity, 5, 'word']] }, 1), null);
   assert.equal(readerBoxes(valid, 1), valid);
+});
+
+
+test('one document call hydrates curated evidence without changing model results', async () => {
+  const db = fixture(); db.getPageText = async (doc, page) => ({ doc, page, text: 'Building exteriors cleaned. 205 PEARL STREET    Completed', source: 'pdf' });
+  const client = await connect(db);
+  try {
+    const brief = { doc, page: 5, label: 'Pearl Street entries', claim: 'Cleanup recorded.', explanation: 'The list marks this address Completed.', limitation: 'Not a sample result.', quote: '205 PEARL STREET Completed' };
+    const response = await client.callTool({ name: 'get_document', arguments: { doc, evidence: [brief, { ...brief, page: 6 }] } });
+    assert.equal(response.isError, undefined);
+    const reader = response._meta?.reader as { evidence: { source: { structuredContent: Record<string, unknown> }; claim: string }[] };
+    assert.equal(reader.evidence.length, 2);
+    assert.equal(reader.evidence[0]!.source.structuredContent.page, 5);
+    assert.equal(reader.evidence[0]!.source.structuredContent.url, `https://911records.nyc/doc/${doc}/p/5`);
+    assert.equal(reader.evidence[0]!.claim, brief.claim);
+    assert.ok(!JSON.stringify(response.structuredContent).includes('Cleanup recorded'));
+    assert.ok(!JSON.stringify(response.content).includes('Cleanup recorded'));
+    const legacy = await client.callTool({ name: 'get_document', arguments: { doc, start_page: 2 } });
+    assert.equal(((legacy._meta?.reader as typeof reader).evidence[0]!.source.structuredContent.page), 2);
+    assert.deepEqual(Object.keys(data(response)).sort(), Object.keys(data(legacy)).sort());
+  } finally { await client.close(); }
+});
+
+test('evidence rejects invented quotes, removed or invalid pages and excessive inputs', async () => {
+  const db = fixture(); const calls: string[] = [];
+  db.getPageText = async (key, page) => { calls.push(key); return { doc: key, page, text: 'Cleaning is proposed.', source: 'pdf' }; };
+  const client = await connect(db);
+  try {
+    const brief = { doc, page: 1, label: 'Proposal', claim: 'Cleaning proposed', explanation: 'A proposal.' };
+    for (const evidence of [
+      [{ ...brief, quote: 'Cleaning completed.' }], [brief, { ...brief, doc: removed }],
+      [{ ...brief, page: 99 }], [brief, brief], Array(4).fill(brief),
+      [{ ...brief, url: 'https://untrusted.example' }], [{ ...brief, explanation: 'x'.repeat(501) }],
+      [{ ...brief, doc: '../../etc/passwd' }], [{ ...brief, doc: 'NYC-WTC_000000002' }],
+    ]) {
+      const r = await client.callTool({ name: 'get_document', arguments: { doc, evidence } });
+      assert.equal(r.isError, true); assert.equal(r._meta, undefined); assert.equal(r.structuredContent, undefined);
+    }
+    assert.ok(!calls.includes(removed));
+    const valid = await client.callTool({ name: 'get_document', arguments: { doc, evidence: [{ ...brief, quote: 'Cleaning is proposed.' }] } });
+    assert.equal(valid.isError, undefined);
+  } finally { await client.close(); }
 });

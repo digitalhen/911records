@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '0.19.1';
+export const APP_VERSION = '1.0.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.0.0', date: '2026-09-16', notes: ['Connected AI answers can now pair a short explanation with the original document scan in one compact evidence panel. Switch between cited pages, check supporting wording, and open the full record on the site.'] },
   { version: '0.19.1', date: '2026-09-16', notes: ['Connected AI answers no longer open a separate document panel for every search and page read.'] },
   { version: '0.19.0', date: '2026-09-16', notes: ['Read cited documents directly in connected AI apps, view scans beside extracted text, highlight matching phrases, and copy exact page citations.'] },
   { version: '0.18.1', date: '2026-09-15', notes: ['Submit a suggested comparison or correction through a private form on the Contradictions page.'] },

@@ -61,92 +61,43 @@ to `http://localhost:3111/mcp`.
 Run `node lib/mcp/smoke.mjs` to check all five tools against the local server
 and real records, or pass a deployed endpoint URL as the first argument.
 
-## Embedded records reader
+## Evidence panel
 
-The five published tool names, descriptions, annotations, input schemas, output schemas,
-`/mcp` endpoint are unchanged. Server instructions separate background research from display. Only `get_document` advertises
-`ui://911records/reader.html` via standard MCP Apps UI metadata and ChatGPT compatibility
-aliases. The resource is self-contained `text/html;profile=mcp-app`: no CDN scripts,
-Next.js chunk URLs, new API credentials, or additional tools. It is a small vanilla widget
-adapted from the documented MCP Apps bridge example, within the existing server.
+Only `get_document` advertises `ui://911records/reader.html`. Research calls stay data-only. The tool adds one optional `evidence` array (1–3 items); all existing names, descriptions, required inputs, output schemas, annotations and text results remain compatible. A refreshed developer connection is required to expose this optional field. No app-store submission is changed by deploying this code; schema changes can be subject to published-app metadata review.
 
-Opening a document renders its page list. The reader also supports search, browse and changes lists when navigated within an existing panel. Selecting a record calls
-the existing `get_document` / `get_page` tools. The compact reader shows scans and extracted
-text, page navigation, zoom, exact-phrase finding, match navigation, citations, and links to
-the full PDF and City's source. Search queries seed the phrase field; directly opened pages
-start with a Find field. These are literal text matches, not model-selected conclusions.
-Mobile uses a source selector; supported hosts can expand the reader. Host themes are honored.
+After researching with search_records and get_page, ChatGPT may call get_document once with the selected pages and question-specific interpretations:
 
-Existing text and `structuredContent` results remain available to non-UI clients. Widget-only
-result `_meta.reader` adds originating tool/arguments and, on page results, the document title,
-page count, PDF URL and validated word boxes. Geometry is obtained through the existing files
-service, after checking removal status. Missing/malformed/oversized boxes do not fail text
-retrieval. Scan highlights require a compatible image aspect ratio, complete OCR, matching
-normalized text/box content and unambiguous occurrence counts; otherwise only text is highlighted.
-Long OCR remains explicitly paginated with the existing `next_offset` contract.
+```json
+{"doc":"NYC-WTC_000150782","evidence":[{"doc":"NYC-WTC_000150782","page":11,"label":"Pearl Street entries","claim":"Cleanup is recorded at five Pearl Street addresses.","explanation":"The list marks 205, 211, 212, 213 and 215 Pearl Street Completed.","limitation":"This is a cleanup record, not an asbestos sample result.","quote":"205 PEARL STREET"}]}
+```
 
-The widget initializes through `ui/initialize`, uses `tools/call`, and accepts tool-result and
-host-context notifications from its parent only. `window.openai` provides compatibility for
-older hosts. User-opened record IDs/page URLs update model context without sending full OCR.
-New requests clear old evidence, late responses are ignored, and errors/removals clear source
-previews. Retrieved strings are inserted as text nodes, never HTML. Resource CSP permits only
-first-party scan assets; no nested frames or direct browser API connections are required.
-External source links use the host's open-link mechanism.
+The first source belongs to `doc`; later sources can be other documents. Quotes are optional, contiguous source wording, verified with NFKC/whitespace normalization against the first 20,000 characters of the page. Mismatches, duplicate pages, unavailable or removed sources reject the entire panel. Interpretations are model-authored and labelled accordingly; quote validation does not validate the model’s conclusions. No model API or extra credentials are used on the server.
 
-### Editing and verification
+Widget-only metadata carries the selected briefs and canonical page data. URLs, scans, Bates identifiers and geometry come from the records backend, never caller-provided URLs. Selecting another source rereads it using get_page so a removal or failure clears the panel. Changed text that no longer supports a quotation also drops that source’s interpretation. No answer-specific data is stored or shared across users. The at-most-one-panel policy is model guidance, not a hard cross-call server cap.
 
-From `web/`:
+Old get_document calls open start_page alongside the existing document summary, explicitly labelled as a whole-document summary. No summary is fabricated if it is absent. Non-UI clients still get the original structured document result.
 
-```sh
+The approved design is `design/mcp-evidence/`. Production has one compact brand bar, source buttons, relevance and optional limitation next to a scan, optional quotation disclosure, exact-page full-record link, scan enlargement, copy citation, collapse and responsive/dark layouts. Full OCR/page browsing lives on the site. ChatGPT owns the surrounding answer and citations; native citations link to the site, while only in-panel source controls switch the widget.
+
+Scan highlights require validated geometry, matching full-page normalized text and image aspect ratio. Otherwise the quotation remains available with an explicit no-overlay fallback. The prototype’s manually placed highlights are not used in production.
+
+### Validation and preview
+
+From web/:
+
+```
 node scripts/build-mcp-reader.mjs
 node scripts/build-mcp-reader.mjs --check
 npx tsc --noEmit
-node --import tsx --test lib/mcp/mcp.test.ts
-node --import tsx scripts/preview-mcp-reader.mjs
+node --import ./scripts/lib/register-server-only-stub.mjs --import tsx --test lib/mcp/mcp.test.ts
+MCP_READER_PREVIEW_PORT=3143 node --import tsx scripts/preview-mcp-reader.mjs
 ```
 
-Edit `lib/mcp/reader/client.ts`, `style.css`, and `shell.html`; regenerate and include
-`generated.ts` in the same change. The committed generated HTML is bundled into the MCP
-server, so production does not depend on filesystem tracing or a separate build step.
-`tool-contract.json` captures the pre-reader published descriptors; tests exclude only the
-new `_meta` and require every other descriptor field to match exactly. Do not regenerate
-that baseline to accommodate an accidental tool-contract change.
+Open the preview in Chrome and run its 15 browser checks. Use `--live` with local Next.js at 3139 and visit `?live&doc=NYC-WTC_000150782` for the real Pearl Street example. Preview scripts are local-only, not production routes.
 
-Open `http://127.0.0.1:3138` and click **Run browser checks**. The local harness exercises the
-actual generated widget with clearly labeled fixtures and a simulated MCP Apps parent.
-Its fixture scan is deliberately substituted locally; it is never shipped in the resource.
-It checks literal matching, scan alignment and zoom, escaping, tool pagination, long OCR,
-removal and stale-response handling, parent validation, mobile layout, host themes and
-fullscreen acknowledgement. This is not a substitute for ChatGPT's own sandbox test.
+After deployment, refresh the developer connection’s metadata and start a new conversation. Check that only get_document has a template and that its optional evidence input is present. Test a normal research request as well as a deterministic evidence payload. No new tool name or endpoint is needed.
 
-For real-record inspection, start `npm run dev -- -p 3139`, then run
-`MCP_READER_PREVIEW_PORT=3140 node --import tsx scripts/preview-mcp-reader.mjs --live`.
-Open `http://127.0.0.1:3140/?live` (or append `&doc=NYC-WTC_000140827` to open a page).
-The local-only host forwards the five read-only calls to the local Next.js `/mcp` endpoint.
-The development harness is not an application route and is not exposed in production.
-
-### Rollout
-
-Keep this resource URI stable for compatible UI updates. Preserve the existing published
-contract while UI metadata is being reviewed. Current official guidance says UI references,
-CSP and tool `_meta` changes undergo continuous automated review, while compatible resource
-content at the same URI can update without a new version submission. This is not a promise
-that the UI becomes available immediately after deployment.
-
-Before release, connect a ChatGPT developer-mode app to the HTTPS development endpoint,
-refresh descriptors, verify scan loading under the declared CSP, host tool calls, actual
-fullscreen and external links, and then check the published integration after automated review.
-No submission, publishing, deployment, or endpoint-origin change is performed by this patch.
-
-References checked 2026-09-16:
-- https://developers.openai.com/plugins/build/chatgpt-ui
-- https://developers.openai.com/apps-sdk/reference
-- https://developers.openai.com/plugins/deploy/app-review#how-published-mcp-metadata-versions-work
-- https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
-
-Proposed release note at merge: “Read cited documents directly in connected AI apps, view
-scans beside extracted text, highlight matching phrases, and copy exact page citations.”
-
-### Rendering policy
-
-Only `get_document` advertises the reader template. Search, page reads (including OCR pagination), collection browsing, and changes are data-only calls; they remain callable from the mounted reader. Server instructions prefer a concise cited answer and, when useful or requested, one final document reader. This is model guidance, not a server-enforced per-turn cap: the stateless endpoint cannot reliably identify answer boundaries. No tool names, schemas, or result fields changed. Refresh connector metadata and start a new chat after deployment.
+Official guidance used:
+- https://developers.openai.com/plugins/build/chatgpt-ui#separate-data-processing-from-ui-rendering
+- https://developers.openai.com/plugins/build/mcp-server
+- https://developers.openai.com/plugins/reference#tool-results

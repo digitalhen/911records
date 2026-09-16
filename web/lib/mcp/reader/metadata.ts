@@ -19,7 +19,7 @@ export const readerResourceMeta = {
   },
   'openai/widgetDomain': 'https://911records.nyc',
   'openai/widgetPrefersBorder': true,
-  'openai/widgetDescription': 'Read public record pages with scans, exact-phrase highlights, extracted text, and Bates citations. Titles and OCR are machine-extracted; verify against the scan.',
+  'openai/widgetDescription': 'One compact evidence panel with question-specific interpretations, cited scans, verified quotations and exact-page links. The panel supports the answer; do not repeat its contents in chat or open a separate panel for each source. Interpretations and OCR may be wrong; verify against the scan.',
   'openai/widgetCSP': { connect_domains: [], resource_domains: ['https://911records.nyc'], redirect_domains: ['https://911records.nyc'] },
 };
 
