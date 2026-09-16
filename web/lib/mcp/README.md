@@ -70,7 +70,7 @@ aliases. The resource is self-contained `text/html;profile=mcp-app`: no CDN scri
 Next.js chunk URLs, new API credentials, or additional tools. It is a small vanilla widget
 adapted from the documented MCP Apps bridge example, within the existing server.
 
-Search, browse, document metadata and changes render source lists. Selecting a record calls
+Opening a document renders its page list. The reader also supports search, browse and changes lists when navigated within an existing panel. Selecting a record calls
 the existing `get_document` / `get_page` tools. The compact reader shows scans and extracted
 text, page navigation, zoom, exact-phrase finding, match navigation, citations, and links to
 the full PDF and City's source. Search queries seed the phrase field; directly opened pages
@@ -146,3 +146,7 @@ References checked 2026-09-16:
 
 Proposed release note at merge: “Read cited documents directly in connected AI apps, view
 scans beside extracted text, highlight matching phrases, and copy exact page citations.”
+
+### Rendering policy
+
+Only `get_document` advertises the reader template. Search, page reads (including OCR pagination), collection browsing, and changes are data-only calls; they remain callable from the mounted reader. Server instructions prefer a concise cited answer and, when useful or requested, one final document reader. This is model guidance, not a server-enforced per-turn cap: the stateless endpoint cannot reliably identify answer boundaries. No tool names, schemas, or result fields changed. Refresh connector metadata and start a new chat after deployment.

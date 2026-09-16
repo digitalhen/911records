@@ -2,6 +2,11 @@ import type { WordBox } from '../../boxes';
 
 export const READER_URI = 'ui://911records/reader.html';
 export const READER_MIME = 'text/html;profile=mcp-app';
+// Data calls remain available inside the reader without creating another iframe.
+export const dataToolMeta = {
+  ui: { visibility: ['model', 'app'] },
+  'openai/widgetAccessible': true,
+};
 export const readerToolMeta = {
   ui: { resourceUri: READER_URI, visibility: ['model', 'app'] },
   'openai/outputTemplate': READER_URI,
