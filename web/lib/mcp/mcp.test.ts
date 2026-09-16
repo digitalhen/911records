@@ -241,3 +241,15 @@ test('evidence rejects invented quotes, removed or invalid pages and excessive i
     assert.equal(valid.isError, undefined);
   } finally { await client.close(); }
 });
+
+
+test('legacy document metadata survives unavailable preview enrichment', async () => {
+  const db = fixture(); db.getPage = async () => { throw new Error('private backend detail'); };
+  const client = await connect(db);
+  try {
+    const r = await client.callTool({ name: 'get_document', arguments: { doc } });
+    assert.equal(r.isError, undefined); assert.equal(data(r).doc, doc);
+    assert.deepEqual((r._meta?.reader as { evidence: unknown[] }).evidence, []);
+    assert.ok(!JSON.stringify(r).includes('private backend detail'));
+  } finally { await client.close(); }
+});

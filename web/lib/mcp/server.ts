@@ -74,8 +74,12 @@ export function createServer(db: Backend) {
     const selected = evidence || (start_page <= (d.page_count ?? 0) ? [{ doc, page: start_page }] : []);
     const evidencePages = [];
     for (const brief of selected) {
-      const source = await readPage(brief.doc, brief.page);
-      if ('isError' in source) return source;
+      const source = await readPage(brief.doc, brief.page).catch(() => error('Source page is temporarily unavailable. Please retry.'));
+      if ('isError' in source) {
+        if (evidence) return source;
+        // Optional preview enrichment must not break legacy metadata retrieval.
+        continue;
+      }
       const quote = 'quote' in brief ? brief.quote : undefined;
       // Match against the actual source excerpt. A late-page quote can be retried
       // without a quotation; never show an unverified quotation as source wording.
