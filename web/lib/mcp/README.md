@@ -64,7 +64,7 @@ and real records, or pass a deployed endpoint URL as the first argument.
 ## Embedded records reader
 
 The five published tool names, descriptions, annotations, input schemas, output schemas,
-server instructions, and `/mcp` endpoint are unchanged. Tool descriptors now advertise
+`/mcp` endpoint are unchanged. Server instructions separate background research from display. Only `get_document` advertises
 `ui://911records/reader.html` via standard MCP Apps UI metadata and ChatGPT compatibility
 aliases. The resource is self-contained `text/html;profile=mcp-app`: no CDN scripts,
 Next.js chunk URLs, new API credentials, or additional tools. It is a small vanilla widget
