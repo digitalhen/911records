@@ -133,7 +133,10 @@ test('reader metadata preserves the published five-tool contract and exposes a s
     const tools = (await client.listTools()).tools;
     assert.deepEqual(tools.map(({ _meta, ...tool }) => tool), contract);
     for (const tool of tools) {
-      assert.deepEqual(tool._meta?.ui, { resourceUri: READER_URI, visibility: ['model', 'app'] });
+      assert.deepEqual(tool._meta?.ui, tool.name === 'get_document'
+        ? { resourceUri: READER_URI, visibility: ['model', 'app'] }
+        : { visibility: ['model', 'app'] });
+      assert.equal(tool._meta?.['openai/outputTemplate'], tool.name === 'get_document' ? READER_URI : undefined);
       assert.equal(tool._meta?.['openai/widgetAccessible'], true);
     }
     assert.equal((await client.listResources()).resources[0]?.uri, READER_URI);
