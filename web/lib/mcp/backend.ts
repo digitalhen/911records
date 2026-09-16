@@ -1,9 +1,10 @@
+import { getPageBoxes } from '../boxes';
 import { queryRead } from '../db';
 import { search } from '../opensearch';
 import { getDocument, getPage, getPageText } from '../site';
 
 export const backend = {
-  search, getDocument, getPage, getPageText,
+  search, getDocument, getPage, getPageText, getPageBoxes,
   async availableDocuments(ids: string[]) {
     if (!ids.length) return [];
     // Check Postgres even if the search index has not caught up with a removal.
@@ -29,4 +30,4 @@ export const backend = {
        ORDER BY date DESC, doc, kind LIMIT $2 OFFSET $3`, [since ?? null, limit + 1, offset]);
   },
 };
-export type Backend = typeof backend;
+export type Backend = Omit<typeof backend, 'getPageBoxes'> & { getPageBoxes?: typeof getPageBoxes };

@@ -124,3 +124,61 @@ test('per-process request limit returns a retry interval', async () => {
   assert.equal(response.status, 429);
   assert.ok(Number(response.headers.get('retry-after')) > 0);
 });
+
+test('reader metadata preserves the published five-tool contract and exposes a self-contained resource', async () => {
+  const { default: contract } = await import('./reader/tool-contract.json');
+  const { READER_URI, READER_MIME } = await import('./reader/metadata');
+  const client = await connect();
+  try {
+    const tools = (await client.listTools()).tools;
+    assert.deepEqual(tools.map(({ _meta, ...tool }) => tool), contract);
+    for (const tool of tools) {
+      assert.deepEqual(tool._meta?.ui, { resourceUri: READER_URI, visibility: ['model', 'app'] });
+      assert.equal(tool._meta?.['openai/widgetAccessible'], true);
+    }
+    assert.equal((await client.listResources()).resources[0]?.uri, READER_URI);
+    const resource = (await client.readResource({ uri: READER_URI })).contents[0]!;
+    assert.equal(resource.mimeType, READER_MIME);
+    assert.ok('text' in resource && resource.text.includes('ui/initialize'));
+    assert.ok('text' in resource && !resource.text.includes('src="http'));
+    const ui = resource._meta?.ui as { csp: Record<string, unknown> };
+    assert.deepEqual(ui.csp, { connectDomains: [], resourceDomains: ['https://911records.nyc'] });
+  } finally { await client.close(); }
+});
+
+test('word geometry is widget-only, optional, bounded, and never fetched for removed records', async () => {
+  const db = fixture(); let reads = 0;
+  const boxes = { page: 5, w: 100, h: 200, words: [[1, 2, 20, 10, 'word']] as [number, number, number, number, string][] };
+  db.getPageBoxes = async () => { reads++; return boxes; };
+  const client = await connect(db);
+  try {
+    const page = await client.callTool({ name: 'get_page', arguments: { doc, page: 5 } });
+    assert.equal(reads, 1);
+    const reader = page._meta?.reader as Record<string, unknown>;
+    assert.deepEqual(reader.boxes, boxes);
+    assert.equal(reader.pageCount, 11);
+    assert.ok(!JSON.stringify(page.structuredContent).includes('words'));
+    assert.ok(!JSON.stringify(page.content).includes('words'));
+    await client.callTool({ name: 'get_page', arguments: { doc: removed, page: 5 } });
+    assert.equal(reads, 1);
+    boxes.words[0]![2] = 1000;
+    const invalid = await client.callTool({ name: 'get_page', arguments: { doc, page: 5 } });
+    assert.equal((invalid._meta?.reader as Record<string, unknown>).boxes, null);
+    db.getPageBoxes = async () => { throw new Error('internal files server secret'); };
+    const unavailable = await client.callTool({ name: 'get_page', arguments: { doc, page: 5 } });
+    assert.equal((unavailable._meta?.reader as Record<string, unknown>).boxes, null);
+    assert.equal(data(unavailable).text_available, true);
+    assert.ok(!JSON.stringify(unavailable).includes('secret'));
+  } finally { await client.close(); }
+});
+
+test('invalid geometry cannot produce misleading scan overlays', async () => {
+  const { readerBoxes } = await import('./reader/metadata');
+  const valid = { page: 1, w: 100, h: 100, words: [[1, 1, 5, 5, 'word']] as [number, number, number, number, string][] };
+  assert.equal(readerBoxes(valid, 2), null);
+  assert.equal(readerBoxes({ ...valid, w: NaN }, 1), null);
+  assert.equal(readerBoxes({ ...valid, words: Array(8001).fill(valid.words[0]) }, 1), null);
+  assert.equal(readerBoxes({ ...valid, words: [[-1, 0, 5, 5, 'word']] }, 1), null);
+  assert.equal(readerBoxes({ ...valid, words: [[1, 1, Infinity, 5, 'word']] }, 1), null);
+  assert.equal(readerBoxes(valid, 1), valid);
+});
