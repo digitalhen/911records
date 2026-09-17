@@ -30,6 +30,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { DATA, PortalStop, REPO, makeClient } from './lib/portal.mjs';
 import { listSnapshots, loadSnapshot } from './lib/catalog.mjs';
+import { catalogChanged } from './lib/download-state.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
@@ -120,7 +121,7 @@ async function fetchOne(row) {
   const have = await exists(pdfPath);
   const sidecar = have ? JSON.parse(await readFile(sidecarPath, 'utf8').catch(() => 'null')) : null;
 
-  if (have && isComplete(row, have, sidecar) && !(REVALIDATE && sidecar?.etag)) return { status: 'skip-size', bytes: 0 };
+  if (have && isComplete(row, have, sidecar) && !REVALIDATE && !catalogChanged(row, sidecar)) return { status: 'skip-size', bytes: 0 };
 
   const headers = {};
   if (have && sidecar?.etag && sidecar.bytes === have.size) headers['If-None-Match'] = sidecar.etag;
@@ -130,6 +131,7 @@ async function fetchOne(row) {
   const headersMs = res.headersAt - res.startedAt;
   if (res.status === 304) {
     res.done();
+    await writeFile(sidecarPath, JSON.stringify({ ...sidecar, catalog_changed_at: row.changed_at || null, manifest_pdf_size: row.pdf_size, url: row.download_url, checked_at: new Date().toISOString() }, null, 2) + '\n');
     return { status: have.size === row.pdf_size ? 'skip-etag' : 'skip-etag-size-differs', bytes: 0, ms: Date.now() - started, etag: sidecar.etag };
   }
   if (!res.ok) {
@@ -179,7 +181,7 @@ async function fetchOne(row) {
     key: row.key, url: row.download_url, etag, last_modified: res.headers.get('last-modified'),
     content_length: declared || null, bytes, sha256: hash.digest('hex'), manifest_pdf_size: row.pdf_size,
     size_matches_manifest: bytes === row.pdf_size, fetched_at: new Date().toISOString(),
-    replaced_previous: !!have,
+    replaced_previous: !!have, catalog_changed_at: row.changed_at || null,
   }, null, 2) + '\n');
   return { status: have ? 'replaced' : 'ok', bytes, ms: Date.now() - started + headersMs, headersMs, bodyMs: Date.now() - started,
     etag, sizeMismatch: bytes !== row.pdf_size };
@@ -201,7 +203,7 @@ async function main() {
     await rm(`${p}.part`, { force: true });
     const s = await exists(p);
     const sc = s ? await readSidecar(p) : null;
-    if (s && isComplete(r, s, sc) && !REVALIDATE) { done++; bytesDone += s.size; } else pending.push(r);
+    if (s && isComplete(r, s, sc) && !REVALIDATE && !catalogChanged(r, sc)) { done++; bytesDone += s.size; } else pending.push(r);
   }
   await logLine(`start pid=${process.pid} manifest=${total} already_done=${done} pending=${pending.length} order=${ORDER} revalidate=${REVALIDATE}`);
 
@@ -277,6 +279,7 @@ async function main() {
   await writeProgress(null);
   await logLine(`end ${status} done=${done}/${total} session_files=${session.files} session_bytes=${session.bytes}`);
   await rm(PIDFILE, { force: true });
+  if (session.errors || stopping) process.exitCode = 1;
 }
 
 main().catch(async (err) => {

@@ -12,6 +12,7 @@ const PORT = Number(process.env.FILES_PORT || 8911);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 
 const ROOTS = {
+  downloads: path.join(DATA_DIR, 'downloads'),
   pdf: path.join(DATA_DIR, 'pdf'),
   page: path.join(DATA_DIR, 'pages'),
   text: path.join(DATA_DIR, 'text'),

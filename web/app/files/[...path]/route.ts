@@ -25,8 +25,10 @@ const FORWARD_RESPONSE = [
 ];
 
 async function proxy(req: NextRequest, path: string[], method: 'GET' | 'HEAD') {
+  // Archives must pass the live catalog check in /api/downloads.
+  if (path[0]?.toLowerCase() === 'downloads') return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   const segments = path.map((s) => encodeURIComponent(decodeURIComponent(s)));
-  if (segments.some((s) => s === '.' || s === '..')) return new Response('Not found', { status: 404 });
+  if (segments.some((s) => s === '.' || s === '..' || /%2f|%5c/i.test(s)) || segments[0]?.toLowerCase() === 'downloads') return new Response('Not found', { status: 404 });
   const headers = new Headers();
   for (const h of FORWARD_REQUEST) { const v = req.headers.get(h); if (v) headers.set(h, v); }
   let upstream: Response;

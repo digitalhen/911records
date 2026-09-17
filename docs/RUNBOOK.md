@@ -240,3 +240,116 @@ Log `data/embed/logs/summaries-pipeline.log`; completed stages in `…/summaries
 line to re-run that stage). The QA report lands in `docs/eval/summaries-qa-report.md`. The daily refresh's
 summaries stage also uses the Ollama backend now (`SUMMARIES_BACKEND=ollama`), so new documents get qwen
 titles the next morning without any API spend. If the watchdog stops a stage for memory, just `start` again.
+
+## Bulk downloads (StudioMac only)
+
+Original PDFs and all ZIP archives live on **StudioMac**. MonsterMac's app holds no
+copy: both app replicas stream from StudioMac's existing `FILES_URL` origin. The
+download page is `/downloads`; archives are in `data/downloads/`. No external
+storage account or second archive server is required. Downloads are unavailable
+if StudioMac's file service is offline, even if the other web replica is healthy.
+
+The daily refresh now runs `scripts/downloads/build.py` after loading Postgres.
+It verifies every current PDF, builds ZIP64 archives for the full collection and
+for each `(agency, volume, box)` group (including missing box labels), and publishes
+`index.json` atomically only when everything is complete. PDFs are stored without
+recompression. Budget roughly twice the PDF collection size for current ZIPs,
+plus up to another two times that size during a replacement build. Unchanged
+archives are reused; obsolete archives are deleted after publication.
+
+The public handler checks `site.meta.built_at` on the **primary** database for each
+request. A catalog swap immediately stops offering old downloads until a matching
+index is published. Missing PDFs, unchecked changed records, build failures, or
+unavailable dependencies fail closed. The raw `/files/downloads/*` path is blocked;
+only files listed in the current index can pass `/api/downloads/<name>`, and a
+valid CAPTCHA grant is required for every GET/HEAD/range request (including JSON inventories). Responses
+use `Cache-Control: private, no-store`; do not override that with an edge cache rule.
+Already-running responses and downloaded copies cannot be recalled.
+
+Deployment order (coordinator):
+
+1. Install the code, then run `node scripts/download.mjs` on StudioMac. Catalog-marked
+   changes now trigger conditional revalidation even if the byte size is unchanged;
+   failed downloads return nonzero. Old copies stay out of the public archives.
+2. Run `python3 scripts/downloads/build.py` against the `data/site/site.sqlite` that
+   was last loaded into Postgres. Do not rebuild the SQLite catalog alone before
+   this step; its `built_at` must match the published database. Previously built,
+   verified archives for this exact catalog can be copied into `data/downloads`.
+3. Configure the CAPTCHA variables on both apps, then deploy the web change with
+   its release version/notes. Verify both replicas block `/files/downloads/*` and
+   require verification at `/api/downloads/*` before exposing archives on the origin.
+   During this first deployment the new download page will show archives unavailable.
+4. Recreate only the host files service under the OrbStack Docker context to add its
+   downloads mount and nginx location:
+   `docker --context orbstack compose --env-file data/host.env -f docker-compose.host.yml up -d --no-deps files`.
+5. Check `/downloads`, the CAPTCHA gate, `/api/health` on both replicas, the release
+   page, and an authorized byte-range request against a listed ZIP.
+
+Manual build: `python3 scripts/downloads/build.py --data data`. It makes no network
+requests. A per-output-directory advisory lock prevents competing builds. The
+builder does not mutate the PDFs or database. It exports only catalog identifiers,
+agencies, volumes, box/source labels, page counts, paths, sizes, and checksums;
+private folder labels and derived text are not copied into inventory metadata.
+
+`/api/downloads/index.json` describes the current archives and ZIP checksums.
+`/api/downloads/manifest.json` lists current PDFs with SHA-256 hashes, and known
+removed document identifiers/dates. Users compare paths and hashes to identify
+additions, replacements and removals. An individual-box ZIP has an inventory for
+that box only; compare the same agency/volume/box in the full inventory. The download
+page explains that the ZIPs contain original PDFs, not OCR, page images, or search
+indexes. `/changes` remains the human-readable history. Capture dates describe our
+observations, not necessarily when the City acted.
+
+Catalog-based refresh cannot detect an unannounced, same-size PDF replacement
+when the City leaves its catalog entry unchanged. A separate operator-triggered
+`node scripts/download.mjs --revalidate` checks all current URLs conditionally;
+servers without ETags are fetched again. Schedule such an audit only with an
+appropriate request budget for the City's portal (24,000+ requests). Do not claim
+that a catalog refresh is a byte-level audit of every City PDF.
+
+
+### CAPTCHA before downloads
+
+Cloudflare Turnstile gates `/api/downloads/*` downloads. Unverified GETs redirect
+to `/downloads/verify?file=…`; unverified HEADs return 403. POST
+`/api/downloads/verify` checks the token at Cloudflare Siteverify, requires the
+`bulk_download` action and `911records.nyc` hostname, and issues a signed,
+HttpOnly, SameSite=Lax cookie scoped to `/api/downloads` for 12 hours. Production
+cookies are Secure. Validation is same-origin, size-limited, time-limited and
+rate-limited. Invalid/replayed/expired tokens never grant access. Every authorized
+file request still checks the current catalog, so CAPTCHA does not bypass removals.
+
+Configure the following **runtime environment variables on both Dokploy apps**
+(`dokploy.cleartextlabs.com` and `dokploy2.cleartextlabs.com`), with identical values:
+
+- `TURNSTILE_SITE_KEY`: widget site key; public in the widget only.
+- `TURNSTILE_SECRET_KEY`: private Siteverify key; never sent to the client.
+- `DOWNLOAD_SESSION_SECRET`: independently generated secret of at least 32
+  characters, shared across replicas so downloads can resume through either app.
+  Generate with `openssl rand -hex 32`; preserve it across deploys. Rotation revokes
+  all existing download grants.
+
+The compose file passes these through at runtime. Missing configuration disables
+downloads rather than skipping CAPTCHA. Production rejects Cloudflare test keys
+and ignores `TURNSTILE_TEST_MODE`. Restrict the widget to `911records.nyc` in
+Cloudflare. No secret belongs in committed files or release notes.
+
+Local preview only: set `TURNSTILE_TEST_MODE=1` plus a local session secret to use
+Cloudflare's official test widget/verification credentials. The page explicitly
+labels test mode; test grants are signed with a separate audience and cannot be
+accepted in production even if the signing secret is accidentally shared. The
+widget's script loads directly from `challenges.cloudflare.com`. Do not proxy it.
+Production testing must use the real domain, not a production widget restricted
+to a different hostname. Verification failures should be retried through the
+widget, never by accepting arbitrary client-side success.
+
+Clients that fetch inventories programmatically now need the verification cookie
+as well. The browser can fetch all boxes and resume range downloads during the
+12-hour grant; after expiry, complete another challenge. In-flight responses are
+not interrupted when the grant expires. Cloudflare's processing and the essential
+cookie are described on `/privacy`.
+
+Implementation references:
+- https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+- https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/
+- https://developers.cloudflare.com/turnstile/troubleshooting/testing/

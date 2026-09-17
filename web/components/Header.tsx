@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { APP_VERSION } from '@/lib/releases';
 import { CaseCountBadge } from '@/components/case/CaseCountBadge';
-import { ShortlinkButton } from '@/components/ShortlinkButton';
 
 const NAV = [
   { href: '/ask', label: 'Ask & search' },
@@ -33,7 +32,6 @@ export function Header({ active, edition }: { active?: string; edition?: string 
           <strong>{edition || 'NYC Law Department release'}</strong>
           <br />
           <span className="edition-detail">Independent mirror · updated as the City releases more · <Link href="/releases" title="Version history">v{APP_VERSION}</Link></span>
-          <div style={{ marginTop: 8 }}><ShortlinkButton /></div>
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">

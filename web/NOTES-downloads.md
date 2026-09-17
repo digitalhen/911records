@@ -1,0 +1,22 @@
+# Downloads implementation report
+
+- Branch/worktree: `feat/downloads`, `/Users/henry/Code/sept11-docs-wt/downloads`.
+- Added `/downloads`, `/api/downloads/index.json`, `/api/downloads/manifest.json`, and `/api/downloads/<archive>` (GET/HEAD).
+- Full collection and 78 box ZIP64 archives built on StudioMac: 24,436 PDFs; full ZIP 36,330,089,068 bytes (36.3 GB).
+- All PDFs/archives stay on StudioMac; both web replicas stream from its existing file origin. No external service.
+- Added box filtering, sizes, document counts, SHA-256 checksums, and inventory comparison instructions.
+- A primary-database check blocks archives built against an outdated catalog; removed records are excluded; raw file-proxy bypasses are blocked.
+- Daily refresh builds archives after publishing Postgres. Changed catalog rows now trigger PDF revalidation even at the same size; download failures return nonzero.
+- Updated files: download routes/library/CSS, archive builder/tests, downloader state helper/test, refresh script, host compose/nginx/dev file service, Browse/footer/sitemap, runbook.
+- Shared changes are implemented by this coordinating session: Browse/footer/sitemap links, file-proxy guard, and the downloads origin mount/location.
+- Verified CRC integrity and document counts in all 79 real ZIPs.
+- Verified: TypeScript; four archive tests; downloader state test; shell/JS syntax; diff whitespace.
+- HTTP at `http://localhost:3117`: current inventory; ZIP HEAD, byte/suffix/multipart ranges, 416; old links 410; encoded bypasses 404; stale catalog 503/no-store.
+- Chrome headless (Browser runtime reported no available browser): `/downloads` desktop and mobile, 78 cards, box filter, no horizontal overflow or page errors.
+- Real archive build used an isolated filesystem clone of the mirror; 30 catalog-marked changes revalidated with City ETags (all unchanged).
+- Deployment: verify the CAPTCHA/proxy gate on both replicas before exposing archives through the origin mount; see docs/RUNBOOK.md.
+- CAPTCHA follow-up: added server-validated Turnstile, 12-hour signed grants on all download requests, private env configuration, and privacy copy. Eight security tests pass.
+- Removed Copy short link from the shared header on all pages.
+- Saved and reloaded TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY, and the same DOWNLOAD_SESSION_SECRET in both Dokploy Web app environments through Chrome on 2026-09-17. Verified all existing values were preserved. No redeploy triggered.
+- Release v1.1.0 records downloads, resumable ZIPs, update inventories, CAPTCHA, and header cleanup. Restored omitted 0.14.12/0.14.17/0.14.23 notes and removed duplicate release entries.
+- Limitation: downloaded copies and in-flight responses cannot be recalled; unannounced PDF changes without a catalog change need a full conditional revalidation audit.

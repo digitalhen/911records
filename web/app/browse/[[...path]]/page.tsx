@@ -91,7 +91,7 @@ export default async function Browse({ params, searchParams }: Props) {
           <div>
             <div className="eyebrow">Browse records</div>
             <h1>The order the City kept.</h1>
-            <p className="subtitle">Follow the collection, box and handwritten folder label to the documents inside.</p>
+            <p className="subtitle">Follow the collection, box and handwritten folder label to the documents inside.</p><p><Link href="/downloads">Download the collection or individual boxes →</Link></p>
           </div>
         </div>
         <div className={styles.columns}>
