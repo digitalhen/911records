@@ -5,11 +5,23 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  {
+    version: '1.1.0',
+    date: '2026-09-17',
+    notes: [
+      'Download the full collection of original City PDFs in one ZIP, or choose individual boxes. Find boxes by agency, volume, or box name, and see file sizes before downloading.',
+      'Downloads include document inventories and SHA-256 checksums so you can check your files and identify additions, replacements, and removals. Interrupted ZIP downloads can be resumed while the archive remains current.',
+      'New downloads follow the current City catalog and exclude withdrawn records. Outdated archives stop being offered when the catalog changes; the download page explains how to keep an existing copy up to date.',
+      'A quick CAPTCHA verification protects bulk downloads. One successful check unlocks downloads in the same browser for 12 hours; the privacy page explains the verification cookie.',
+      'Removed the “Copy short link” button from the header on every page. Existing short links continue to work.',
+      'The release history now includes three previously omitted updates and no longer repeats the same release.',
+    ],
+  },
   { version: '1.0.0', date: '2026-09-16', notes: ['Connected AI answers can now pair a short explanation with the original document scan in one compact evidence panel. Switch between cited pages, check supporting wording, and open the full record on the site.'] },
   { version: '0.19.1', date: '2026-09-16', notes: ['Connected AI answers no longer open a separate document panel for every search and page read.'] },
   { version: '0.19.0', date: '2026-09-16', notes: ['Read cited documents directly in connected AI apps, view scans beside extracted text, highlight matching phrases, and copy exact page citations.'] },
@@ -55,6 +67,11 @@ export const RELEASES: Release[] = [
     ],
   },
   {
+    version: '0.14.23',
+    date: '2026-09-14',
+    notes: ['Building pages show cleaner entries for documents without a title, with the folder label shown once and long labels shortened.'],
+  },
+  {
     version: '0.14.22',
     date: '2026-09-14',
     notes: ['Building pages now list the building’s documents grouped by what they are (lab reports, chain-of-custody forms, memos and letters, permits, forms, invoices), one entry per document with its title, summary, page count and dates, instead of a page-by-page list.'],
@@ -83,6 +100,11 @@ export const RELEASES: Release[] = [
     notes: ['Follow-up questions about a building now find the pages that match what the follow-up newly asks (for example a cost or a contract amount) rather than the pages that match the whole conversation.'],
   },
   {
+    version: '0.14.17',
+    date: '2026-09-14',
+    notes: ['Questions about a building find relevant wording within that building’s records more reliably.'],
+  },
+  {
     version: '0.14.16',
     date: '2026-09-14',
     notes: ['Follow-up questions about a building now read the pages that match the new question before re-reading the previous answer’s pages.'],
@@ -105,6 +127,11 @@ export const RELEASES: Release[] = [
       'Each official’s page has its own browser-tab title (role, organisation and years) instead of one shared title; names still never appear in titles.',
       'The home page’s tab title names the site.',
     ],
+  },
+  {
+    version: '0.14.12',
+    date: '2026-09-14',
+    notes: ['Fixed scrolling on phones so the map and the legend beneath it remain accessible.'],
   },
   {
     version: '0.14.11',
@@ -243,11 +270,6 @@ export const RELEASES: Release[] = [
     notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
   },
   {
-    version: '0.11.0',
-    date: '2026-09-14',
-    notes: ['Ask can now answer with a table: try "which buildings were tested for asbestos" or "which labs tested 114 Liberty Street" — sortable, exportable as CSV, and savable to your case folder.'],
-  },
-  {
     version: '0.10.0',
     date: '2026-09-14',
     notes: ['"What others are reading": notable records picked out, plus what people are actually opening, on the home page and a new /reading page; documents show "Others also read".'],
@@ -286,11 +308,6 @@ export const RELEASES: Release[] = [
     notes: ['Topic map: a zoomable visual map of subjects across the collection, sized by how many pages are about each one — click a topic to zoom into its sub-topics, then into its documents. Each topic page shows which boxes and agencies it spans.'],
   },
   {
-    version: '0.9.0',
-    date: '2026-09-14',
-    notes: ['Topic map: a zoomable visual map of subjects across the collection, sized by how many pages are about each one — click a topic to zoom into its sub-topics, then into its documents. Each topic page shows which boxes and agencies it spans.'],
-  },
-  {
     version: '0.8.1',
     date: '2026-09-14',
     notes: ['While an answer is being written, the Ask box now says the records are being read and roughly how long it takes, instead of appearing to do nothing.'],
@@ -309,11 +326,6 @@ export const RELEASES: Release[] = [
     version: '0.7.3',
     date: '2026-09-14',
     notes: ['Typing a Bates number with a space (for example "NYC WTC 058160") now takes you straight to the record.'],
-  },
-  {
-    version: '0.7.2',
-    date: '2026-09-14',
-    notes: ['Suggested questions on the home page and map now consistently return an answer instead of occasionally hitting a dead end; follow-up questions are only offered when the records can answer them.'],
   },
   {
     version: '0.7.2',

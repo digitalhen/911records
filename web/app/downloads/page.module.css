@@ -1,0 +1,18 @@
+.full { display: flex; justify-content: space-between; align-items: center; gap: 2rem; border: 1px solid var(--line, #ccc); padding: 1.5rem; margin: 1.5rem 0; }
+.full h2, .box h3 { margin-top: 0; }
+.note { max-width: 80ch; margin-bottom: 2.5rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 1rem; }
+.box { border: 1px solid var(--line, #ccc); padding: 1.25rem; min-width: 0; }
+.download { display: inline-flex; gap: 1rem; align-items: center; font-weight: 600; margin-bottom: .5rem; }
+.checksum { margin-top: .7rem; font-size: .75rem; }
+.checksum summary { cursor: pointer; }
+.checksum code { overflow-wrap: anywhere; display: block; max-width: 34rem; margin-top: .5rem; }
+.updates { margin: 3rem 0; max-width: 80ch; }
+.updates li { margin-bottom: .8rem; }
+@media (max-width: 640px) { .full { align-items: flex-start; flex-direction: column; } }
+
+.filter { margin: 1.5rem 0; }
+.filter label { display: block; margin-bottom: .4rem; }
+.filter > div { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.filter input { max-width: 100%; padding: .6rem; border: 1px solid var(--line, #ccc); font: inherit; }
+.filter button { padding: .6rem 1rem; font: inherit; cursor: pointer; }

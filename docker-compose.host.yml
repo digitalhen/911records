@@ -33,6 +33,7 @@ services:
   files:
     image: nginx:1.27-alpine
     volumes:
+      - ./data/downloads:/data/downloads:ro
       - ./data/pdf:/data/pdf:ro
       - ./data/pages:/data/pages:ro
       - ./data/text:/data/text:ro

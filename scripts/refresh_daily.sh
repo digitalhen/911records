@@ -159,6 +159,9 @@ for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/
 done
 run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --related data/embed/related-topics.sqlite
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
+# Publishing the catalog first immediately invalidates old downloads, including withdrawals.
+# Only complete ZIP sets become available; a failed build leaves downloads unavailable.
+run_stage build_downloads .venv/bin/python scripts/downloads/build.py
 run_stage opensearch_setup .venv/bin/python scripts/search/opensearch.py setup
 run_stage opensearch_index .venv/bin/python scripts/search/opensearch.py index
 
