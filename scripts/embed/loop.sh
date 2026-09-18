@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh — keep text, page embeddings and entities current while the mirror downloads.
 #
-# Every INTERVAL seconds (default 1200): extract → render (900s cap) → OCR → page embeddings → entities.
+# Every INTERVAL seconds (default 1200): extract → render (900s cap) → fallback OCR → 300-DPI dual-engine review → page embeddings → entities.
 # Each stage is incremental, so a cycle over nothing new takes seconds. Local only: none of these
 # stages contacts the portal (download.mjs, owned by the mirror, is the only thing that does).
 #
@@ -12,6 +12,7 @@
 # Usage: scripts/embed/loop.sh [INTERVAL_SECONDS]        (run with nohup / in the background)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 INTERVAL="${1:-1200}"
 if [ -f .claudekey ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < .claudekey)"; fi
 LOCK=data/embed/loop.lock
@@ -41,6 +42,11 @@ while true; do
   log "render: $rendered"
   ocr=$(.venv/bin/python scripts/embed/ocr_pages.py 2>&1 | tail -1)
   log "ocr: $ocr"
+  if ! strong=$(.venv/bin/python scripts/embed/ocr_auto.py --lock-owner "$$" 2>&1); then
+    log "automatic OCR FAILED: $strong"; exit 1
+  fi
+  log "automatic OCR: $strong"
+  strong=$(printf '%s\n' "$strong" | tail -1)
   log "pages.py: $(.venv/bin/python scripts/embed/pages.py 2>&1 | tail -1)"
   ent=$(.venv/bin/python scripts/embed/entities.py 2>&1 | grep -E '"run"' -A3 | tr -d '\n' | tr -s ' ')
   log "entities.py: $ent"
@@ -48,7 +54,7 @@ while true; do
   status=$(python3 -c "import json;print(json.load(open('data/download.progress.json')).get('status',''))" 2>/dev/null || echo "")
   log "text docs $before -> $after; download status: ${status:-unknown}"
   if [ "$status" = "finished" ] || [ "$status" = "done" ] || [ "$status" = "complete" ]; then
-    idle=$(python3 -c 'import json,sys; r,o,e=map(json.loads,sys.argv[1:]); print(int(not r.get("timed_out",True) and r.get("errors",1)==0 and r.get("rendered",1)==0 and o.get("errors",1)==0 and o.get("ocr",1)==0 and e.get("error",0)==0))' "$rendered" "$ocr" "$ext" 2>/dev/null || echo 0)
+    idle=$(python3 -c 'import json,sys; r,o,e,s=map(json.loads,sys.argv[1:]); print(int(not r.get("timed_out",True) and r.get("errors",1)==0 and r.get("rendered",1)==0 and o.get("errors",1)==0 and o.get("ocr",1)==0 and e.get("error",0)==0 and s.get("processed",1)==0 and s.get("remaining",1)==0))' "$rendered" "$ocr" "$ext" "$strong" 2>/dev/null || echo 0)
     if [ "$before" = "$after" ] && [ "$idle" = 1 ]; then log "download finished and nothing new; exiting"; exit 0; fi
   fi
   sleep "$INTERVAL"

@@ -18,25 +18,52 @@ queries, and the source `load_site_pg.py` loads from.
 lines to `data/refresh.log`; launchd's own stdout/stderr go to `data/refresh.launchd.{out,err}`
 (should normally be empty — everything real goes through `refresh.log`).
 
-Order: `enumerate.mjs` (catalog snapshot + manifest) → `diff_catalog.mjs` (writes the
-`data/catalog/diff-<A>-to-<B>.json` report `changes` is built from) → `download.mjs` (skipped, with
-a log line, if `data/download.pid` names a live process, or with `--no-download`) → one cycle's
-worth of `scripts/embed/loop.sh`'s stages — `extract_text.mjs`, then (once A1 lands them)
-`render_pages.mjs` and `ocr_pages.py`, then `pages.py`, `entities.py` — skipped, with a log line,
-if `loop.sh`'s own lock (`data/embed/loop.lock`) is held by a live process, since loop.sh is
-already running them on its own interval and refresh_daily.sh has no reason to race it → **`
-build_site_db.py`** → **`load_site_pg.py`** (loads `site.sqlite` into the central Postgres) →
-**`opensearch.py setup` + `index`**.
+Order: catalog snapshot and diff → download new/changed PDFs → extract PDF text →
+render viewer images → fallback OCR → **300-DPI Apple Vision and Tesseract comparison** →
+page embeddings → entities and canonical names → related records, topics, places and document
+types → summaries and facts → build `site.sqlite` → load Postgres → build downloads → index
+OpenSearch → suggested-question checks and reading seeds.
+
+Both the daily refresh and `scripts/embed/loop.sh` run the stronger comparison before page
+embeddings and entities. Every active PDF page is eligible, including readable extracted text.
+The existing quality, cross-engine corroboration and decimal-preservation checks decide whether
+to replace text. Original PDFs and `.pages.jsonl` extractions remain untouched. Approved OCR
+is preserved while its source PDF stamp matches. Failed pages retain their current text.
+
+Review state lives in `data/ocr-auto/state.sqlite`. Unchanged completed comparisons are reused;
+a changed PDF or effective text requeues a page. Failures retry after one hour, doubling to a
+24-hour maximum. Per-run candidates, decisions and original-sidecar backups are under
+`data/ocr-auto/runs/`; `progress.json` and `last-run.json` report progress and the final counts.
+A restarted run resumes from saved comparisons. The comparison requires macOS, Swift/Apple
+Vision, Poppler and Tesseract on PATH. Bump the review policy version when changing its rules.
+
+Daily cycles default to four workers, 500 pages and 900 seconds, checked between waves of up
+to eight pages per worker. A running wave may exceed that time allowance. Configure
+`OCR_AUTO_JOBS`, `OCR_AUTO_MAX_PAGES` and `OCR_AUTO_MAX_SECONDS` to adjust these limits.
+Outstanding pages carry over to later cycles. For a complete backfill, without the cycle caps:
+
+```bash
+OCR_AUTO_JOBS=12 scripts/refresh_daily.sh --reprocess-all-ocr
+```
+
+This finishes the current unreviewed page queue, then reruns the downstream stages and
+publication. Previously approved pages and matching completed comparisons count as reviewed.
+Inspect error/deferred counts: a finished queue does not mean every engine call succeeded.
+The full run uses a two-hour allowance for each summary/fact stage; facts still have a $3 model
+budget. These model stages are non-fatal, so inspect their completion before claiming all
+model-derived data is current. Embeddings and entity stages must succeed before publication.
 
 Flags:
-- `--index-only` — skip everything through the loop cycle; just rebuild `site.sqlite`, load
-  Postgres and (re)index OpenSearch. Use this for a fresh deploy, after fixing a loading/indexing
-  bug, or to point a new OpenSearch node or Postgres at data that's already on disk. It never
-  touches the portal.
-- `--no-download` — run the catalog/loop/build/load/index stages but skip the PDF download.
+- `--reprocess-all-ocr` — full OCR backfill and downstream refresh, without contacting the portal.
+- `--reprocess-ocr DIR` — apply a staged, reviewed OCR set with backups and rerun downstream stages.
+- `--publish-only` — publish already-computed derived data without rerunning extraction or tagging.
+- `--index-only` — skip catalog/download/loop stages, but rerun discovery, summaries and facts before publication.
+- `--no-download` — run a normal refresh but skip PDF downloads.
 
-Any failed stage stops the run immediately (non-zero exit); `refresh_daily.sh` does not continue
-past a failure, so the log always ends with either `done` or a `FAILED` line naming the stage.
+Refresh holds both `data/refresh.lock` and `data/embed/loop.lock` through publication. An active
+ingestion owner stops an overlapping refresh; it does not publish from data being changed.
+Required-stage failures stop the run. Summary/fact and suggested-question failures are logged
+and non-fatal. Check `data/refresh.log` for completion and exceptions.
 
 ### Install the launchd daemon
 
@@ -94,8 +121,9 @@ Reads `data/site/site.sqlite` (run `build_site_db.py` first if it's missing or s
 every one of its tables into the central Postgres, database `sept11`, plus one table Postgres
 alone holds: `page_text(doc, page, text, source)` — built straight from
 `data/text/**/<bates>.pages.jsonl` (`source='pdftotext'`), overridden per-page by
-`data/text/**/<bates>.ocr.jsonl` when `site.sqlite` says that page's `ocr_status='empty'` and an
-OCR line exists for it (`source='ours'`). `site.sqlite` itself carries no page text — the app
+`data/text/**/<bates>.ocr.jsonl` through the shared `page_text.py` selector (`source='ours'`). Valid approved OCR takes
+precedence; rejected or source-stale OCR does not. Legacy fallback applies only to short
+original extractions with sufficient OCR text. `site.sqlite` itself carries no page text — the app
 reads it from Postgres so both HA hosts see the same thing regardless of which one last ran the
 pipeline.
 

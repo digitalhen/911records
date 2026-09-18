@@ -7,11 +7,8 @@
 #   2. diff_catalog.mjs     writes the full data/catalog/diff-<A>-to-<B>.json report
 #   3. download.mjs         mirror new/changed PDFs (contacts the portal); SKIPPED if
 #                           data/download.pid names a live process, or with --no-download
-#   4. one loop.sh cycle's worth of stages (extract_text.mjs, and — once A1 lands them —
-#      render_pages.mjs and ocr_pages.py — then pages.py, entities.py); SKIPPED if
-#      scripts/embed/loop.sh's own lock (data/embed/loop.lock) is held by a live process —
-#      loop.sh is already running these on its own interval, so refresh_daily.sh just logs
-#      and moves on rather than racing it
+#   4. extract -> render -> fallback OCR -> 300-DPI Vision + Tesseract review -> embeddings
+#      and entities. The ingestion lock is held through publication; overlapping runs stop.
 #   5. build_site_db.py     data/site/site.sqlite (build-then-swap)
 #   6. load_site_pg.py      the same tables, plus page_text, into the central Postgres (the app is
 #                           HA across two hosts, so site.sqlite alone isn't enough for it to read —
@@ -26,6 +23,7 @@
 #   --index-only    skip 1-4; just rebuild site.sqlite, load Postgres and (re)index OpenSearch —
 #                   for a fresh deploy, or after fixing an indexing/loading bug, without touching
 #                   the portal or the embedding pipeline
+#   --reprocess-all-ocr  compare every unreviewed PDF page, then refresh derived data and publish.
 #   --publish-only  resume database/index publication from completed derived data; no model calls.
 #   --reprocess-ocr DIR  apply staged OCR with backups, then rerun embeddings, tagging
 #                        and all publication stages without contacting the City portal.
@@ -51,7 +49,7 @@
 # both sides). ANTHROPIC_API_KEY is whatever's already exported below for topics.py (from
 # .claudekey, if present) — suggestions:check simply skips its model-path checks when unset.
 #
-# Usage: scripts/refresh_daily.sh [--index-only | --publish-only | --reprocess-ocr DIR] [--no-download]
+# Usage: scripts/refresh_daily.sh [--index-only | --publish-only | --reprocess-ocr DIR | --reprocess-all-ocr] [--no-download]
 #        (launchd plist: docs/launchd/nyc.911records.refresh.plist, installed per docs/RUNBOOK.md)
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -64,12 +62,14 @@ LOG=data/refresh.log
 LOCK=data/refresh.lock
 INDEX_ONLY=false
 PUBLISH_ONLY=false
+FULL_OCR=false
 NO_DOWNLOAD=false
 REPROCESS_OCR=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --index-only) INDEX_ONLY=true ;;
     --publish-only) INDEX_ONLY=true; PUBLISH_ONLY=true ;;
+    --reprocess-all-ocr) FULL_OCR=true ;;
     --no-download) NO_DOWNLOAD=true ;;
     --reprocess-ocr)
       [ "$#" -ge 2 ] || { echo "--reprocess-ocr requires a staged directory" >&2; exit 64; }
@@ -79,8 +79,12 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if { $FULL_OCR && { $INDEX_ONLY || [ -n "$REPROCESS_OCR" ]; }; } || { [ -n "$REPROCESS_OCR" ] && $INDEX_ONLY; }; then
+  echo "Choose only one refresh mode" >&2; exit 64
+fi
+
 # Bulk OCR processing needs more time for changed summaries and facts than a daily increment.
-if [ -n "$REPROCESS_OCR" ]; then
+if [ -n "$REPROCESS_OCR" ] || $FULL_OCR; then
   SOFT_STAGE_SECS="${SOFT_STAGE_SECS:-7200}"
 fi
 
@@ -118,20 +122,32 @@ run_stage() {
   fi
 }
 
-if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY; then
-  # Hold both scheduler locks throughout application and all derived-data stages.
-  loop_lock=data/embed/loop.lock
-  if [ -e "$loop_lock/pid" ] && pid_is_live "$loop_lock/pid"; then
-    log "cannot reprocess OCR while embedding loop is active"; exit 1
-  fi
-  if [ -d "$loop_lock" ]; then rm -rf "$loop_lock"; fi
-  mkdir "$loop_lock" || exit 1
-  echo $$ > "$loop_lock/pid"
-  trap 'rm -rf "$LOCK" "$loop_lock"' EXIT INT TERM HUP
-  if ! $PUBLISH_ONLY; then
+# Hold both scheduler locks throughout application and all derived-data stages.
+mkdir -p data/embed
+loop_lock=data/embed/loop.lock
+if [ -e "$loop_lock/pid" ] && pid_is_live "$loop_lock/pid"; then
+  log "cannot refresh while another ingestion process is active"; exit 1
+fi
+if [ -d "$loop_lock" ]; then
+  [ -s "$loop_lock/pid" ] || { log "ingestion lock has no owner; inspect before retrying"; exit 1; }
+  rm -rf "$loop_lock"
+fi
+mkdir "$loop_lock" || exit 1
+echo $$ > "$loop_lock/pid"
+trap 'rm -rf "$LOCK" "$loop_lock"' EXIT INT TERM HUP
+
+if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY || $FULL_OCR; then
+  if $FULL_OCR; then
+    run_stage extract_text node scripts/extract_text.mjs --jobs 2
+    run_stage render_pages node scripts/render_pages.mjs --jobs 3 --max-seconds 900
+    run_stage ocr_pages .venv/bin/python scripts/embed/ocr_pages.py
+    run_stage ocr_auto .venv/bin/python scripts/embed/ocr_auto.py --lock-owner "$$" --drain
+  elif ! $PUBLISH_ONLY; then
     run_stage ocr_finalize .venv/bin/python scripts/eval/ocr_finalize.py --staged "$REPROCESS_OCR"
     run_stage ocr_backup .venv/bin/python scripts/eval/ocr_backup.py --out "$REPROCESS_OCR/../backup"
     run_stage ocr_apply .venv/bin/python scripts/eval/ocr_apply.py --staged "$REPROCESS_OCR" --backup "$REPROCESS_OCR/../backup"
+  fi
+  if ! $PUBLISH_ONLY; then
     run_stage pages_py .venv/bin/python scripts/embed/pages.py
     run_stage entities_py .venv/bin/python scripts/embed/entities.py
     run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
@@ -148,24 +164,22 @@ elif ! $INDEX_ONLY; then
     run_stage download node scripts/download.mjs
   fi
 
-  if pid_is_live data/embed/loop.lock/pid; then
-    log "skip loop-cycle stages: scripts/embed/loop.sh lock held (pid $(cat data/embed/loop.lock/pid)); it runs these on its own interval"
+  run_stage extract_text node scripts/extract_text.mjs --jobs 2
+  if [ -f scripts/render_pages.mjs ]; then
+    run_stage render_pages node scripts/render_pages.mjs --jobs 3 --max-seconds 900
   else
-    run_stage extract_text node scripts/extract_text.mjs --jobs 2
-    if [ -f scripts/render_pages.mjs ]; then
-      run_stage render_pages node scripts/render_pages.mjs --jobs 3 --max-seconds 900
-    else
-      log "skip render_pages: scripts/render_pages.mjs not present yet (A1)"
-    fi
-    if [ -f scripts/embed/ocr_pages.py ]; then
-      run_stage ocr_pages .venv/bin/python scripts/embed/ocr_pages.py
-    else
-      log "skip ocr_pages: scripts/embed/ocr_pages.py not present yet (A1)"
-    fi
-    run_stage pages_py .venv/bin/python scripts/embed/pages.py
-    run_stage entities_py .venv/bin/python scripts/embed/entities.py
-    run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
+    log "skip render_pages: scripts/render_pages.mjs not present yet (A1)"
   fi
+  if [ -f scripts/embed/ocr_pages.py ]; then
+    run_stage ocr_pages .venv/bin/python scripts/embed/ocr_pages.py
+  else
+    log "skip ocr_pages: scripts/embed/ocr_pages.py not present yet (A1)"
+  fi
+  run_stage ocr_auto .venv/bin/python scripts/embed/ocr_auto.py --lock-owner "$$"
+  run_stage pages_py .venv/bin/python scripts/embed/pages.py
+  run_stage entities_py .venv/bin/python scripts/embed/entities.py
+  run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
+
 else
   log "--index-only: skipping enumerate/diff/download/loop-cycle stages"
 fi
@@ -185,7 +199,7 @@ run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 # Summaries run on the local qwen model via Ollama, one worker (Henry, 2026-09-14: "skip haiku
 # entirely, do it all in qwen"); the daily increment is small enough for the time box below.
 summary_scope=""
-if [ -n "$REPROCESS_OCR" ]; then summary_scope="--changed-only"; fi
+if [ -n "$REPROCESS_OCR" ] || $FULL_OCR; then summary_scope="--changed-only"; fi
 for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
