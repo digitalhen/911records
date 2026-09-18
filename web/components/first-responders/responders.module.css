@@ -1,0 +1,18 @@
+.intro { max-width: 800px; margin-bottom: 24px; }
+.form { background: var(--soft); border: 1px solid var(--line); padding: 24px; max-width: 900px; }
+.form h2 { margin-bottom: 12px; }
+.form textarea { display: block; width: 100%; resize: vertical; padding: 12px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); font: inherit; line-height: 1.55; margin: 16px 0 8px; }
+.form button { margin-top: 12px; }
+.sectionHead { margin: 36px 0 20px; max-width: 800px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 40px; }
+.group { border-top: 2px solid var(--ink); padding-top: 16px; }
+.group h3 { font-size: var(--text-2xl); margin-bottom: 12px; }
+.group ul { list-style: none; padding: 0; margin: 0; }
+.group li { border-bottom: 1px solid var(--line); }
+.question { display: block; width: 100%; text-align: left; border: 0; padding: 14px 0; background: transparent; color: var(--blue); font: inherit; line-height: 1.55; cursor: pointer; }
+.question:hover { text-decoration: underline; }
+.question:focus-visible, .form textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.guide { max-width: 800px; margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); }
+.guide h2 { margin-bottom: 12px; }
+.guide li { margin-bottom: 10px; }
+@media (max-width: 650px) { .grid { grid-template-columns: 1fr; gap: 24px; } .form { padding: 16px; } }
