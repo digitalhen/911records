@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.2.3';
+export const APP_VERSION = '1.2.4';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.2.4', date: '2026-09-18', notes: ['Search and document text now recover more sideways and hard-to-read pages, with improved text on 2,536 pages. Record tags and related records use the improved text.', 'Fixed generated titles being attached to the wrong record when several records were summarized together.'] },
   { version: '1.2.3', date: '2026-09-18', notes: ['Watch Henry Williams’ 1010 WINS radio interview at /1010-wins.mp4.'] },
   { version: '1.2.2', date: '2026-09-18', notes: ['When retrieved records do not resolve a question, Ask now summarizes what it found with page citations, explains the specific gaps, and describes what evidence would help. It distinguishes the pages reviewed from the full collection.'] },
   { version: '1.2.1', date: '2026-09-18', notes: ['Moved First responders immediately after Contradictions in the main navigation.'] },

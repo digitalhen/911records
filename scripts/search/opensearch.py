@@ -63,6 +63,10 @@ from pathlib import Path
 
 import numpy as np
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'embed'))
+from page_text import effective_rows
+
 REPO = Path(__file__).resolve().parents[2]
 EMB = REPO / "data" / "embed"
 TEXT = REPO / "data" / "text"
@@ -267,10 +271,7 @@ def index(limit: int = 0) -> None:
         m = meta.get(doc, {})
         start_n = int(re.search(r"(\d{6,})", doc).group(1))
         n_rendered = image_ready.get(doc, 0)
-        for line in f.open():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in effective_rows(f):
             page = int(row["page"])
             text = row.get("text") or ""
             e = ents.get((doc, page), {})
@@ -281,7 +282,7 @@ def index(limit: int = 0) -> None:
                 "source": m.get("source"), "box": m.get("box_name"), "folder": m.get("folder_name"),
                 "volume": m.get("production_volume"), "page_count": int(m.get("page_count") or 0) or None,
                 "pdf_size": int(m.get("pdf_size") or 0) or None, "ocr_status": page_status,
-                "ocr_source": "ours" if page_status == "ocr" else "pdftotext",
+                "ocr_source": row["text_source"],
                 "image_ready": page <= n_rendered,
                 "doc_status": m.get("status") or "present", "first_seen": m.get("first_seen"),
                 **{k: sorted(v) for k, v in e.items()},

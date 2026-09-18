@@ -36,6 +36,7 @@ related/near_dupes from --related-src (default data/embed/related.sqlite) unchan
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
 import hashlib
@@ -92,7 +93,7 @@ def load_body(doc: str, page_files: dict) -> str:
     f = page_files.get(doc)
     if not f:
         return ""
-    return " ".join((json.loads(l).get("text") or "") for l in f.open() if l.strip())[:20000]
+    return " ".join(row["text"] for row in effective_rows(f))[:20000]
 
 
 def collect_exclusions(texts: list[str], roles_words: set[str]) -> set[str]:

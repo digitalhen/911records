@@ -88,6 +88,7 @@ data/site/site.sqlite. Prints a one-line JSON summary of row counts and timing.
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
 import csv
@@ -789,6 +790,12 @@ def main() -> int:
     manifest_by_doc = {r["bates_start"]: r for r in manifest}
 
     page_status = load_page_status()
+    ocr_pages = set()
+    for sidecar in (REPO / 'data' / 'text').rglob('*.ocr.jsonl'):
+        source = sidecar.with_name(sidecar.name.removesuffix('.ocr.jsonl') + '.pages.jsonl')
+        if source.exists():
+            doc = source.name.removesuffix('.pages.jsonl')
+            ocr_pages.update((doc, int(row['page'])) for row in effective_rows(source) if row['text_source'] == 'ours')
     status_counts = page_status_counts(page_status)
     doc_pages = pages_by_doc(page_status)
     image_ready_counts = load_image_ready(manifest)
@@ -841,7 +848,7 @@ def main() -> int:
         for p in sorted(page_nums):
             st = page_status.get((doc, p))
             ocr_status = st["status"] if st else None
-            ocr_source = "ours" if ocr_status == "ocr" else "pdftotext"
+            ocr_source = "ours" if (doc, p) in ocr_pages else "pdftotext"
             bates = st["bates"] if st and st.get("bates") else (
                 f"NYC-WTC_{start_n + p - 1:09d}" if start_n is not None else None)
             pages_rows.append((doc, p, bates, st["chars"] if st else None, ocr_status, ocr_source,

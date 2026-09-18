@@ -26,6 +26,9 @@
 #   --index-only    skip 1-4; just rebuild site.sqlite, load Postgres and (re)index OpenSearch —
 #                   for a fresh deploy, or after fixing an indexing/loading bug, without touching
 #                   the portal or the embedding pipeline
+#   --publish-only  resume database/index publication from completed derived data; no model calls.
+#   --reprocess-ocr DIR  apply staged OCR with backups, then rerun embeddings, tagging
+#                        and all publication stages without contacting the City portal.
 #   --no-download   run 1, 2, 4-7 but skip 3 (e.g. the mirror is already fully downloaded for the
 #                   day, or you want catalog/entities/site/index refreshed without a fetch)
 #
@@ -48,7 +51,7 @@
 # both sides). ANTHROPIC_API_KEY is whatever's already exported below for topics.py (from
 # .claudekey, if present) — suggestions:check simply skips its model-path checks when unset.
 #
-# Usage: scripts/refresh_daily.sh [--index-only] [--no-download]
+# Usage: scripts/refresh_daily.sh [--index-only | --publish-only | --reprocess-ocr DIR] [--no-download]
 #        (launchd plist: docs/launchd/nyc.911records.refresh.plist, installed per docs/RUNBOOK.md)
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -60,14 +63,26 @@ if [ -f data/host.env ]; then set -a; . data/host.env; set +a; fi
 LOG=data/refresh.log
 LOCK=data/refresh.lock
 INDEX_ONLY=false
+PUBLISH_ONLY=false
 NO_DOWNLOAD=false
-for a in "$@"; do
-  case "$a" in
+REPROCESS_OCR=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --index-only) INDEX_ONLY=true ;;
+    --publish-only) INDEX_ONLY=true; PUBLISH_ONLY=true ;;
     --no-download) NO_DOWNLOAD=true ;;
-    *) echo "refresh_daily.sh: unknown flag $a" >&2; exit 64 ;;
+    --reprocess-ocr)
+      [ "$#" -ge 2 ] || { echo "--reprocess-ocr requires a staged directory" >&2; exit 64; }
+      REPROCESS_OCR="$2"; shift ;;
+    *) echo "refresh_daily.sh: unknown flag $1" >&2; exit 64 ;;
   esac
+  shift
 done
+
+# Bulk OCR processing needs more time for changed summaries and facts than a daily increment.
+if [ -n "$REPROCESS_OCR" ]; then
+  SOFT_STAGE_SECS="${SOFT_STAGE_SECS:-7200}"
+fi
 
 mkdir -p data
 log() { echo "$(date -u +%FT%TZ) $*" >> "$LOG"; }
@@ -85,7 +100,7 @@ fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT INT TERM HUP
 
-log "start pid $$ index_only=$INDEX_ONLY no_download=$NO_DOWNLOAD"
+log "start pid $$ index_only=$INDEX_ONLY no_download=$NO_DOWNLOAD publish_only=$PUBLISH_ONLY"
 
 pid_is_live() { [ -f "$1" ] && ps -p "$(cat "$1" 2>/dev/null)" >/dev/null 2>&1; }
 
@@ -103,7 +118,25 @@ run_stage() {
   fi
 }
 
-if ! $INDEX_ONLY; then
+if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY; then
+  # Hold both scheduler locks throughout application and all derived-data stages.
+  loop_lock=data/embed/loop.lock
+  if [ -e "$loop_lock/pid" ] && pid_is_live "$loop_lock/pid"; then
+    log "cannot reprocess OCR while embedding loop is active"; exit 1
+  fi
+  if [ -d "$loop_lock" ]; then rm -rf "$loop_lock"; fi
+  mkdir "$loop_lock" || exit 1
+  echo $$ > "$loop_lock/pid"
+  trap 'rm -rf "$LOCK" "$loop_lock"' EXIT INT TERM HUP
+  if ! $PUBLISH_ONLY; then
+    run_stage ocr_finalize .venv/bin/python scripts/eval/ocr_finalize.py --staged "$REPROCESS_OCR"
+    run_stage ocr_backup .venv/bin/python scripts/eval/ocr_backup.py --out "$REPROCESS_OCR/../backup"
+    run_stage ocr_apply .venv/bin/python scripts/eval/ocr_apply.py --staged "$REPROCESS_OCR" --backup "$REPROCESS_OCR/../backup"
+    run_stage pages_py .venv/bin/python scripts/embed/pages.py
+    run_stage entities_py .venv/bin/python scripts/embed/entities.py
+    run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
+  fi
+elif ! $INDEX_ONLY; then
   run_stage enumerate node scripts/enumerate.mjs
   run_stage diff_catalog node scripts/diff_catalog.mjs
 
@@ -137,10 +170,13 @@ else
   log "--index-only: skipping enumerate/diff/download/loop-cycle stages"
 fi
 
+# The publication-only suggestion checks can also need the model credential.
+if [ -f .claudekey ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < .claudekey)"; fi
+
+if ! $PUBLISH_ONLY; then
 # Discovery layer: document vectors, related records, near-duplicates (related.py), then the
 # human-readable topic hierarchy (topics.py, Haiku-named, cached; needs ANTHROPIC_API_KEY from
 # .claudekey), then buildings/places for the map. All local except the topic naming calls.
-if [ -f .claudekey ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < .claudekey)"; fi
 run_stage related_py .venv/bin/python scripts/embed/related.py
 run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
 run_stage places_py .venv/bin/python scripts/embed/places.py
@@ -148,7 +184,9 @@ run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 # Model-dependent stages: non-fatal — a model outage or API usage cap must not stop the site build.
 # Summaries run on the local qwen model via Ollama, one worker (Henry, 2026-09-14: "skip haiku
 # entirely, do it all in qwen"); the daily increment is small enough for the time box below.
-for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
+summary_scope=""
+if [ -n "$REPROCESS_OCR" ]; then summary_scope="--changed-only"; fi
+for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
   # Time-boxed (SOFT_STAGE_SECS, default 900 s): a capped API made summaries.py retry for ages.
@@ -157,6 +195,7 @@ for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/
   if wait "$soft_pid"; then log "-- $name ok --"; else log "-- $name FAILED or timed out (exit $?) -- non-fatal, continuing"; fi
   kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
 done
+fi
 run_stage build_site_db .venv/bin/python scripts/embed/build_site_db.py --related data/embed/related-topics.sqlite
 run_stage load_site_pg .venv/bin/python scripts/embed/load_site_pg.py
 # Publishing the catalog first immediately invalidates old downloads, including withdrawals.

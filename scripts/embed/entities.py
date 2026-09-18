@@ -60,6 +60,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from page_text import effective_rows
 import canonical  # noqa: E402  (address/lab/contractor canonicalisation, issue #19)
 
 REPO = Path(__file__).resolve().parents[2]
@@ -433,10 +434,7 @@ def rescan_dates(con: sqlite3.Connection) -> int:
     changed = pages_seen = 0
     for f in sorted(TEXT.rglob("*.pages.jsonl")):
         doc = f.name[: -len(".pages.jsonl")]
-        for line in f.open():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in effective_rows(f):
             page, text = int(row["page"]), row.get("text") or ""
             if (doc, page) not in done:
                 continue
@@ -518,13 +516,8 @@ def main() -> int:
     stats = collections.Counter()
     for f in files:
         doc = f.name[: -len(".pages.jsonl")]
-        for line in f.open():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in effective_rows(f):
             page, text = int(row["page"]), row.get("text") or ""
-            if len(text.strip()) < 40:
-                continue
             sha = hashlib.sha1(text.encode()).hexdigest()
             prev = state.get((doc, page))
             if prev and prev[0] != sha:

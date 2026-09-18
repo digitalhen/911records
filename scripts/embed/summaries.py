@@ -73,6 +73,7 @@ far, seconds) at every checkpoint and at the end.
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
 import concurrent.futures
@@ -294,28 +295,13 @@ def load_doc_types() -> dict[str, str]:
 
 
 def page_text(doc: str, page: int, page_status: dict[tuple[str, int], str], page_files: dict[str, Path]) -> str:
-    """One page's text, watermark stripped, OCR-overlaid for a page recorded `empty` (same rule as
-    doctypes.py/load_site_pg.py). Empty string if the page doesn't exist or has no text."""
+    """One page's text, watermark stripped, using the shared approved-OCR selection rule. Empty string if the page doesn't exist or has no text."""
     f = page_files.get(doc)
     if not f:
         return ""
-    ocr_path = f.with_name(f"{doc}.ocr.jsonl")
-    ocr_map: dict[int, str] = {}
-    if page_status.get((doc, page)) == "empty" and ocr_path.exists():
-        for line in ocr_path.open():
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            if int(r["page"]) == page:
-                ocr_map[page] = r.get("text") or ""
-                break
-    for line in f.open():
-        if not line.strip():
-            continue
-        row = json.loads(line)
-        if int(row["page"]) == page:
-            text = ocr_map.get(page, row.get("text") or "")
-            return WATERMARK_RE.sub("", text).strip()
+    for row in effective_rows(f):
+        if int(row['page']) == page:
+            return WATERMARK_RE.sub('', row['text']).strip()
     return ""
 
 
@@ -436,20 +422,26 @@ def extract_json_array(text: str) -> list[dict] | None:
     return parsed
 
 
-def align_ids(parsed: list[dict] | None, n_items: int) -> list[dict] | None:
-    """Items are numbered 1..n in the prompt; the model occasionally numbers its reply 0..n-1, which
-    would silently attach every title to the wrong document. Shift such replies, and when a reply
-    has one object per item but ids that match nothing, trust the order instead of the ids."""
+def align_ids(parsed: list[dict] | None, expected_ids: list[int]) -> list[dict] | None:
+    """Preserve prompt IDs, including sparse retry IDs; repair only complete renumberings.
+
+    Never shift a response whose IDs already match the request. A partial response
+    or arbitrary IDs cannot safely be assigned to other documents by row position.
+    """
     if not parsed:
         return parsed
     rows = [r for r in parsed if isinstance(r, dict)]
     ids = [r.get("id") for r in rows]
-    if all(isinstance(i, int) for i in ids):
-        if ids and min(ids) == 0 and max(ids) == n_items - 1 and len(set(ids)) == len(ids):
-            return [{**r, "id": r["id"] + 1} for r in rows]
-        if len(rows) == n_items and not any(1 <= i <= n_items for i in ids):
-            return [{**r, "id": k + 1} for k, r in enumerate(rows)]
-    return rows
+    if not all(type(i) is int for i in ids) or len(set(ids)) != len(ids):
+        return None
+    if set(ids).issubset(expected_ids):
+        return rows
+    n = len(expected_ids)
+    if len(rows) == n:
+        for start in (0, 1):
+            if set(ids) == set(range(start, start + n)):
+                return [{**r, "id": expected_ids[r["id"] - start]} for r in rows]
+    return [r for r in rows if r["id"] in expected_ids] or None
 
 
 class Budget:
@@ -617,7 +609,7 @@ def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retr
         arr = extract_json_array(text)
         if arr is None:  # say what came back, so a truncated or chatty reply can be diagnosed
             print(f"summaries: ollama reply not a JSON array ({len(text)} chars): {text[:160]!r} … {text[-80:]!r}", file=sys.stderr)
-        return align_ids(arr, len(retry_ids) if retry_ids else len(items)), 0.0  # local: no spend
+        return align_ids(arr, [it["id"] for it in items]), 0.0  # local: no spend
     if BACKEND == "codex":
         try:
             text = call_codex_cli(prompt)
@@ -787,6 +779,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="process only the first N documents needing work (smoke test)")
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--workers", type=int, default=6, help="concurrent Haiku batch calls")
+    ap.add_argument("--changed-only", action="store_true", help="refresh changed inputs without retrying unrelated pre-existing missing titles")
     ap.add_argument("--redo-models", default="", help="comma-separated model-name prefixes whose existing rows are "
                     "re-summarised instead of reused (Henry, 2026-09-14: 'skip haiku entirely, do it all in qwen')")
     args = ap.parse_args()
@@ -840,7 +833,9 @@ def main() -> int:
         # 2026-09-14: a null row (title None, model None — written when the budget or the account's
         # usage cap stopped a run) used to match on hash and be skipped forever; 11,744 documents
         # sat untitled across every later run. Reuse only a row that actually carries a title.
-        if cached and cached.get("hash") == h and cached.get("title") and not redo(cached.get("model")):
+        # --changed-only is scoped to an OCR reprocess: unchanged missing titles
+        # remain the daily refresh's work, rather than expanding this run.
+        if cached and cached.get("hash") == h and (cached.get("title") or args.changed_only) and not redo(cached.get("model")):
             reused += 1
             continue
         hit = cache.get(h)
@@ -873,7 +868,7 @@ def main() -> int:
         stop = StopSignal()
 
         def run_one(batch: list[dict]) -> list[dict]:
-            for j, it in enumerate(batch):
+            for j, it in enumerate(batch, start=1):
                 it["id"] = j
             return process_batch(client, batch, roles_words, budget, cache, stop)
 

@@ -22,6 +22,7 @@ Usage: .venv/bin/python scripts/embed/related.py [--k 20] [--min-topic 15]
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
 import json
@@ -128,7 +129,7 @@ def main() -> int:
             f = page_files.get(d)
             body = ""
             if f:
-                body = " ".join((json.loads(l).get("text") or "") for l in f.open() if l.strip())[:20000]
+                body = " ".join(row["text"] for row in effective_rows(f))[:20000]
             texts.append(body)
         tf = TfidfVectorizer(token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]{2,}\b", lowercase=True, sublinear_tf=True,
                              min_df=min(3, max(1, n // 50)), max_df=0.5, stop_words="english")

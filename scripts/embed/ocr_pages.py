@@ -75,6 +75,15 @@ def main():
         if image is None:
             stats['missing_image'] += 1
             continue
+        # A reviewed high-resolution replacement must survive subsequent legacy
+        # fallback passes. Revisit when its original PDF changes.
+        prior = texts.get(page, {})
+        pdf = DATA / 'pdf' / src.parent.relative_to(DATA / 'text') / (doc + '.pdf')
+        if prior.get('accepted_for_index') is True and pdf.exists():
+            pst = pdf.stat()
+            if (prior.get('pdf_mtime_ns'), prior.get('pdf_size')) == (pst.st_mtime_ns, pst.st_size):
+                stats['cached'] += 1
+                continue
         st = image.stat()
         stamp = dict(image=str(image.relative_to(DATA)), image_mtime_ns=st.st_mtime_ns, image_size=st.st_size, psm=args.psm, lang='eng')
         if all(all(record.get(k) == v for k, v in stamp.items()) for record in (texts.get(page, {}), boxes.get(page, {}))):

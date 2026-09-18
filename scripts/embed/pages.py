@@ -13,7 +13,7 @@ dense): CHUNK_CHARS with OVERLAP, so one page may yield several vectors.
 Store: data/embed/pages.sqlite
   pages(doc TEXT, page INT, bates TEXT, chars INT, alpha_ratio REAL, status TEXT,
         text_sha1 TEXT, PRIMARY KEY(doc, page))
-        status ∈ ok | ocr (Tesseract text replacing an empty page) | empty (image-only / <MIN_CHARS) | junk (alpha_ratio < MIN_ALPHA)
+        status ∈ ok | ocr (approved OCR text) | empty (image-only / <MIN_CHARS) | junk (alpha_ratio < MIN_ALPHA)
   chunks(doc TEXT, page INT, chunk INT, start INT, end INT, model TEXT, vec BLOB,
          PRIMARY KEY(doc, page, chunk, model))
   -- vec is float32 little-endian, 768 bytes*4
@@ -33,6 +33,7 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
+from page_text import effective_rows
 
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "data" / "text"
@@ -85,7 +86,9 @@ def main() -> int:
     args = ap.parse_args()
 
     con = connect()
-    known = {(d, p): s for d, p, s in con.execute("SELECT doc, page, text_sha1 FROM pages")}
+    known = {(d, p): (sha, status) for d, p, sha, status in con.execute("SELECT doc, page, text_sha1, status FROM pages")}
+    chunk_counts = {(d, p): n for d, p, n in con.execute(
+        "SELECT doc, page, count(*) FROM chunks WHERE model=? GROUP BY doc, page", (MODEL,))}
     files = sorted(TEXT.rglob("*.pages.jsonl"))
     if args.limit_docs:
         files = files[: args.limit_docs]
@@ -98,6 +101,8 @@ def main() -> int:
         if not pending:
             return
         vecs = embed([p[5] for p in pending])
+        if vecs.shape != (len(pending), 768) or not np.isfinite(vecs).all():
+            raise ValueError('Embedding response has invalid dimensions or values')
         con.executemany('INSERT OR REPLACE INTO chunks(doc,page,chunk,start,"end",model,vec) VALUES (?,?,?,?,?,?,?)',
                         [(p[0], p[1], p[2], p[3], p[4], MODEL, vecs[i].tobytes()) for i, p in enumerate(pending)])
         con.commit()
@@ -107,29 +112,19 @@ def main() -> int:
     for f in files:
         doc = f.name[: -len(".pages.jsonl")]
         stats["docs"] += 1
-        ocr_file = f.with_name(doc + ".ocr.jsonl")
-        ocr_rows = {int(r["page"]): r for line in ocr_file.read_text().splitlines() if line.strip()
-                    for r in [json.loads(line)]} if ocr_file.exists() else {}
-        for line in f.open():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in effective_rows(f):
             page, text = int(row["page"]), row.get("text") or ""
             stats["pages_seen"] += 1
-            used_ocr = False
-            if len(re.sub(r"\s+", " ", text).strip()) < MIN_CHARS:
-                candidate = ocr_rows.get(page, {})
-                if candidate.get("chars", 0) >= MIN_CHARS and candidate.get("text"):
-                    text = candidate["text"]
-                    used_ocr = True
+            used_ocr = row['text_source'] == 'ours'
             sha = hashlib.sha1(text.encode()).hexdigest()
-            if known.get((doc, page)) == sha:
-                continue
             stripped = re.sub(r"\s+", " ", text).strip()
             alpha = sum(ch.isalpha() for ch in stripped) / max(1, len(stripped))
             status = "empty" if len(stripped) < MIN_CHARS else ("junk" if alpha < MIN_ALPHA else "ok")
-            if used_ocr:
+            if used_ocr and len(stripped) >= MIN_CHARS:
                 status = "ocr"
+            expected_chunks = list(chunks_of(stripped)) if status in ('ok', 'ocr') else []
+            if known.get((doc, page)) == (sha, status) and chunk_counts.get((doc, page), 0) == len(expected_chunks):
+                continue
             stats[status] += 1
             stats["pages_new"] += 1
             con.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?,?,?)",
@@ -137,10 +132,10 @@ def main() -> int:
             con.execute("DELETE FROM chunks WHERE doc=? AND page=? AND model=?", (doc, page, MODEL))
             if status not in ("ok", "ocr"):
                 continue
-            for ci, s, e in chunks_of(stripped):
+            for ci, s, e in expected_chunks:
                 pending.append((doc, page, ci, s, e, stripped[s:e]))
-                if len(pending) >= args.batch:
-                    flush()
+            if len(pending) >= args.batch:
+                flush()
     flush()
     con.commit()
     dt = time.time() - t0

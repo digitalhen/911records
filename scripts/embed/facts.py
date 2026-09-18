@@ -80,8 +80,10 @@ Usage:
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
+import datetime
 import hashlib
 import json
 import os
@@ -591,7 +593,7 @@ def index_text_files() -> dict[str, Path]:
 
 
 def doc_pages(f: Path, page_status: dict[tuple[str, int], str]) -> list[tuple[int, str | None, str]]:
-    """[(page, bates, text), ...], OCR-overlaid for pages recorded `empty` — same rule doctypes.py /
+    """[(page, bates, text), ...], using the shared approved-OCR selection rule — same rule doctypes.py /
     load_site_pg.py use, so facts.py reads exactly the same text the rest of the pipeline does.
 
     Deliberately NOT watermark-stripped, unlike doctypes.py's own doc_text(): every mention's
@@ -603,24 +605,10 @@ def doc_pages(f: Path, page_status: dict[tuple[str, int], str]) -> list[tuple[in
     resolve_building_key's new location-label lookback (NYC-WTC_000096024 p4) kept missing a label
     that WAS there, just not where the shifted offset pointed. None of this module's own regex tiers
     (A/B/C's header/line matching) depend on the watermark being absent."""
-    doc = f.name[: -len(".pages.jsonl")]
-    ocr_path = f.with_name(f"{doc}.ocr.jsonl")
-    ocr_map: dict[int, str] = {}
-    if ocr_path.exists():
-        for line in ocr_path.open():
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            ocr_map[int(r["page"])] = r.get("text") or ""
     out = []
-    for line in f.open():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in effective_rows(f):
         page = int(row["page"])
         text = row.get("text") or ""
-        if page_status.get((doc, page)) == "empty" and page in ocr_map:
-            text = ocr_map[page]
         out.append((page, row.get("bates"), text))
     return out
 
@@ -684,6 +672,16 @@ def _parse_response(text: str) -> list[dict]:
     return json.loads(text)
 
 
+def complete_date(value) -> str | None:
+    """A date column needs a known day; never invent one for a partial model date."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return datetime.date.fromisoformat(value).isoformat()
+    except ValueError:
+        return None
+
+
 def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_usd: float) -> tuple[list[dict], dict]:
     """`candidates`: [{doc,page,bates,text,building_key}, ...]. Returns (facts, usage)."""
     usage = {"candidates": len(candidates), "cache_hits": 0, "api_calls": 0, "input_tokens": 0,
@@ -716,7 +714,7 @@ def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_
                 "doc": c["doc"], "page": c["page"], "bates": c["bates"], "building_key": c["building_key"],
                 "substance": normalize_substance(rf.get("substance")) or rf.get("substance"),
                 "sample_type": rf.get("sample_type"), "value": rf.get("value"), "unit": unit,
-                "date": rf.get("date"), "lab": rf.get("lab"), "method": rf.get("method"),
+                "date": complete_date(rf.get("date")), "lab": rf.get("lab"), "method": rf.get("method"),
                 "limit_value": rf.get("limit_value"), "limit_source": rf.get("limit_source"),
                 "result": rf.get("result") if rf.get("result") in ("above", "below") else None,
                 "sample_id": rf.get("sample_id"), "location": rf.get("location"),

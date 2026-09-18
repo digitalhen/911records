@@ -5,10 +5,9 @@ schema; this script is a pure copy of it into Postgres, plus one extra table Pos
 
   page_text(doc, page, text, source, PRIMARY KEY(doc,page))
 
-built straight from data/text/**/<bates>.pages.jsonl (source='pdftotext') and, for a page whose
-site.sqlite `pages.ocr_status='empty'`, overridden by data/text/**/<bates>.ocr.jsonl when that
-file has a line for the page (source='ours') — see docs/briefs/A1-render-boxes-ocr.md. The app
-reads page text from Postgres so both hosts see the same thing; site.sqlite has no text column.
+built from the shared page_text.effective_rows reader: original PDF extraction unless
+an approved replacement or eligible legacy fallback OCR exists (source='ours').
+The app reads page text from Postgres so both hosts see the same thing; site.sqlite has no text column.
 
 Build-then-swap, like build_site_db.py, but at the schema level: every table is created and
 COPY-loaded into a fresh `site_new` schema, indexed there, and only then swapped in — in ONE
@@ -31,6 +30,7 @@ Requires: pip install "psycopg[binary]" into .venv (already done in this repo's 
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import json
 import os
@@ -233,29 +233,13 @@ def load_table(pg_cur, sqlite_con: sqlite3.Connection, table: str, columns: list
 
 
 def page_text_rows(ocr_status: dict[tuple[str, int], str]):
-    """(doc, page, text, source) — pdftotext by default, tesseract OCR ('ours') when the page's
-    status is 'empty' and a matching data/text/**/<bates>.ocr.jsonl line exists (A1's ocr_pages.py;
-    may not exist yet for any document — nothing here breaks if it never has a match)."""
+    """(doc, page, text, source), using the same text as tags and embeddings.
+    The status argument remains for compatibility; status is not an OCR-selection rule.
+    """
     for f in sorted(TEXT_DIR.rglob("*.pages.jsonl")):
-        doc = f.name[: -len(".pages.jsonl")]
-        ocr_path = f.with_name(f"{doc}.ocr.jsonl")
-        ocr_map: dict[int, str] = {}
-        if ocr_path.exists():
-            for line in ocr_path.open():
-                if not line.strip():
-                    continue
-                r = json.loads(line)
-                ocr_map[int(r["page"])] = r.get("text") or ""
-        for line in f.open():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            page = int(row["page"])
-            text = row.get("text") or ""
-            source = "pdftotext"
-            if ocr_status.get((doc, page)) == "empty" and page in ocr_map:
-                text, source = ocr_map[page], "ours"
-            yield (doc, page, text, source)
+        doc = f.name.removesuffix('.pages.jsonl')
+        for row in effective_rows(f):
+            yield doc, int(row['page']), row['text'], row['text_source']
 
 
 def main() -> int:

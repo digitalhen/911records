@@ -96,6 +96,7 @@ seconds) at the end, whether or not anything was reclassified.
 """
 from __future__ import annotations
 
+from page_text import effective_rows
 import argparse
 import collections
 import hashlib
@@ -238,30 +239,14 @@ def load_page_status() -> dict[tuple[str, int], str]:
 
 
 def doc_text(f: Path, page_status: dict[tuple[str, int], str]) -> tuple[str, str, int]:
-    """(page1_text, full_text, n_pages), watermark stripped, OCR-overlaid for pages recorded
-    `empty` (same rule load_site_pg.py uses for site.page_text)."""
-    doc = f.name[: -len(".pages.jsonl")]
-    ocr_path = f.with_name(f"{doc}.ocr.jsonl")
-    ocr_map: dict[int, str] = {}
-    if ocr_path.exists():
-        for line in ocr_path.open():
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            ocr_map[int(r["page"])] = r.get("text") or ""
-
+    """(page1_text, full_text, n_pages), watermark stripped, using the shared approved-OCR selection rule."""
     page1 = ""
     parts: list[str] = []
     n_pages = 0
-    for line in f.open():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in effective_rows(f):
         page = int(row["page"])
         n_pages += 1
         text = row.get("text") or ""
-        if page_status.get((doc, page)) == "empty" and page in ocr_map:
-            text = ocr_map[page]
         text = strip_watermark(text)
         parts.append(text)
         if page == 1:
