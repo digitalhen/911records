@@ -24,6 +24,7 @@ import { allowAskRequest, clientIp } from '@/lib/ask/rateLimit';
 import { FollowUpForm } from '@/components/ask/FollowUpForm';
 import { saveAnswer, getAnswer, findRecentAnswer, markSuperseded, citedBatesPages, EMPTY_ASK_ANSWER } from '@/lib/ask/store';
 import { Callout } from '@/components/ui';
+import { EvidenceSummary } from '@/components/ask/EvidenceSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,7 @@ function InsufficientView({
   pages,
   notEstablished,
   followUps,
+  evidenceSummary = [],
   parentId,
   refreshOf,
 }: {
@@ -98,6 +100,7 @@ function InsufficientView({
   pages: RetrievedPage[];
   notEstablished: string[];
   followUps: string[];
+  evidenceSummary?: AskAnswer['evidenceSummary'];
   /** B17: set when this insufficient turn was itself a follow-up — keeps the
    *  thread's own follow-up box chained onto the last turn that actually
    *  saved an answer, since a non-answer never gets its own permalink. */
@@ -116,30 +119,24 @@ function InsufficientView({
             {refreshOf && <RefreshFailedNote refreshOf={refreshOf} />}
             <div className="empty-note">
               <MachineNote />
-              <h1>
-                These records are not enough
-                <br />
-                to answer that question.
-              </h1>
+              <h1>{q}</h1>
             </div>
-            <div className="citation-rule">
-              <b>If a sentence has no page citation, it is not in the records.</b>
-              <br />
-              This summary can misread scans and OCR. The page is the authority.
-            </div>
+            {evidenceSummary.length > 0 ? <EvidenceSummary sentences={evidenceSummary} pages={pages} /> : (
+              <p>{pages.length === 0
+                ? 'This search did not retrieve any pages to review. That leaves the question unresolved; it does not show that the event did not happen or that no relevant record exists in the collection.'
+                : `The search retrieved ${pages.length} page excerpts, but no description of their contents passed the citation checks for this summary. You can inspect the retrieved pages alongside this explanation.`}</p>
+            )}
             {notEstablished.length > 0 && (
               <section className="limits">
-                <h2>What is missing from the pages read</h2>
-                <ul>
+                <h2>Why the question remains unresolved</h2>
                   {notEstablished.map((n, i) => (
-                    <li key={i}>{n}</li>
+                    <p key={i}>{n}</p>
                   ))}
-                </ul>
               </section>
             )}
             <p className="small muted mt-6">
-              A gap in these pages is not proof that a record does not exist elsewhere. This tool does not determine
-              medical causation or claim eligibility.
+              {pages.length > 0 && `This review covers ${pages.length} retrieved page excerpts, not every record in the collection. `}
+              Missing details in these excerpts do not establish that an event did not happen. Relevant records may use different wording or may not have been retrieved.
             </p>
             <section className="followup">
               {followUps.length > 0 && (
@@ -155,7 +152,7 @@ function InsufficientView({
               <FollowUpForm parentId={parentId} />
             </section>
           </article>
-          <SourceRail pages={pages} q={q} emptyNote="none supported a citeable sentence for this question" />
+          <SourceRail pages={pages} q={q} emptyNote="retrieved for this question; not a complete review of the collection" />
         </div>
       </main>
       <Footer />
@@ -333,6 +330,7 @@ async function renderPlanOutcome(
         q={q}
         pages={pages}
         notEstablished={validated.notEstablished}
+        evidenceSummary={validated.evidenceSummary}
         followUps={validated.followUps}
         parentId={opts.parentId}
         refreshOf={opts.refreshedFrom}

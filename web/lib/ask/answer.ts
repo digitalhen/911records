@@ -18,21 +18,26 @@ function anthropic(): Anthropic {
   return client;
 }
 
-const AskAnswerSchema = z.object({
-  sentences: z.array(
-    z.object({
+const CitedSentenceSchema = z.object({
       text: z.string(),
       /** Bates page ids (e.g. "NYC-WTC_000058160"), must be from the retrieved set. */
       cites: z.array(z.string()),
-    }),
-  ),
+});
+
+const AskAnswerSchema = z.object({
+  sentences: z.array(CitedSentenceSchema),
+  /** Cited context explaining an unresolved question, separate from a direct answer. */
+  evidenceSummary: z.array(CitedSentenceSchema),
   /** "What these records do not establish" — plain statements, no citations required. */
   notEstablished: z.array(z.string()),
   /** Short follow-up questions phrased for the same Ask box. */
   followUps: z.array(z.string()),
 });
 
-export type AskAnswer = z.infer<typeof AskAnswerSchema>;
+// Older stored answers predate evidenceSummary; no database migration is needed.
+export type AskAnswer = Omit<z.infer<typeof AskAnswerSchema>, 'evidenceSummary'> & {
+  evidenceSummary?: z.infer<typeof CitedSentenceSchema>[];
+};
 
 export interface AskAnswerResult {
   answer: AskAnswer;
@@ -43,13 +48,13 @@ export interface AskAnswerResult {
 const SYSTEM = `You write a short answer to a question about New York City's released 9/11 records, using ONLY the numbered page excerpts given to you. This is a citation-discipline tool, not a general assistant.
 
 Rules, absolute:
-- Every sentence in "sentences" MUST carry at least one cite, and every cite MUST be exactly one of the given Bates page ids. A sentence you cannot support with a given excerpt must not be written at all — leave it out rather than guess or generalize beyond the pages.
+- Every sentence in "sentences" and "evidenceSummary" MUST carry at least one cite, and every cite MUST be exactly one of the given Bates page ids. A sentence you cannot support with a given excerpt must not be written at all — leave it out rather than guess or generalize beyond the pages.
 - Never state a fact, date, reading, or name that is not IN the excerpts. OCR text can be garbled; when an excerpt is unclear, say so or omit the point rather than guess.
 - Names may be stated only as they appear in the excerpts — the City redacted these records before release. Never guess, reconstruct or infer a redacted or blacked-out name, and never combine clues to identify someone the excerpts do not name.
-- "notEstablished": 1-4 short plain statements of what these specific pages do NOT show, when relevant (e.g. airborne exposure levels vs. bulk-material results, a specific person's presence). No citations needed — these are about absence.
+- "notEstablished": 1-3 short, connected paragraphs explaining the specific missing link between these excerpts and the question, when relevant. Distinguish a different date, place, type of record, conflicting accounts, or unreadable text ONLY when the excerpts warrant that distinction. Explain what kind of evidence would resolve the gap (for example, a dated unit assignment), without claiming that record exists or has been searched. Scope absence to these retrieved excerpts, never the whole collection. These paragraphs need no citations only because they describe limitations; put all positive facts about record contents in cited "sentences" or "evidenceSummary" instead. Never speculate about why the City omitted a record or equate missing evidence with an event not happening.
 - "followUps": 1-3 short questions the SAME retrieved pages could answer, phrased as something to type back into the Ask box.
 - An excerpt that opens with a bracketed "BUILDING RECORD" note was attributed to the named building by the City's own filing (its folder). Treat it as a record FOR that building even when the page text shows a different address or none — describe what kind of record it is (a lab report, chain of custody, memo, sampling data), who produced it and any date or substance the excerpt shows, and cite it.
-- If the excerpts do not actually support an answer to the question, return an empty "sentences" array — do not force an answer.
+- If the excerpts do not directly answer the question, return an empty "sentences" array and write 2-4 concise cited sentences in "evidenceSummary": summarize the closest relevant records actually retrieved, then explain why their dates, subject matter, or detail do not establish the requested fact. If only unrelated records were retrieved, identify their subject with a citation and explain the mismatch; do not present them as evidence of the requested event. If excerpts are too garbled to summarize reliably, leave "evidenceSummary" empty and explain that specific limitation in "notEstablished". Do not stop at a generic "not enough records" response. For a direct answer, leave "evidenceSummary" empty and use "sentences" plus any relevant limitations.
 - Plain, factual prose. No markdown, no "as an AI", no claim that this cannot be wrong — the page image is the authority, not this summary.`;
 
 export async function answerQuestion(question: string, pages: RetrievedPage[]): Promise<AskAnswerResult> {
@@ -95,7 +100,10 @@ export function validateAnswer(answer: AskAnswer, retrievedBatesPages: Set<strin
   const sentences = answer.sentences.filter(
     (s) => s.cites.length > 0 && s.cites.every((c) => retrievedBatesPages.has(c)),
   );
-  return { ...answer, sentences };
+  const evidenceSummary = (answer.evidenceSummary ?? []).filter(
+    (s) => s.cites.length > 0 && s.cites.every((c) => retrievedBatesPages.has(c)),
+  );
+  return { ...answer, sentences, evidenceSummary };
 }
 
 const MAX_FOLLOW_UPS = 3;
