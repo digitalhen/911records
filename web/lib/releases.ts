@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.2.1';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.2.1', date: '2026-09-18', notes: ['Moved First responders immediately after Contradictions in the main navigation.'] },
   { version: '1.2.0', date: '2026-09-18', notes: ['A new First responders page helps FDNY, NYPD, PAPD, EMS, and other responders research unit assignments, shifts, work sites, protective equipment, and recovery operations. Click any of 24 suggested questions to ask the records immediately, or write your own question with a unit, date, or location.'] },
   {
     version: '1.1.0',

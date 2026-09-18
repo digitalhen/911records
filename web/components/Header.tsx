@@ -4,12 +4,12 @@ import { CaseCountBadge } from '@/components/case/CaseCountBadge';
 
 const NAV = [
   { href: '/ask', label: 'Ask & search' },
-  { href: '/first-responders', label: 'First responders' },
   { href: '/map', label: 'Building map' },
   { href: '/timeline', label: 'Timeline' },
   { href: '/topics', label: 'Topic map' },
   { href: '/entities', label: 'Entities' },
   { href: '/contradictions', label: 'Contradictions' },
+  { href: '/first-responders', label: 'First responders' },
   { href: '/browse', label: 'Browse records' },
   { href: '/case', label: 'Case folder' },
   { href: '/changes', label: 'Releases & changes' },
