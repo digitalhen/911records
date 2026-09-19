@@ -1,4 +1,4 @@
-# web/ — 911records.nyc app
+# web/ — 911records.org app
 
 Next.js 15 (App Router, TypeScript). This is workstream B1 of `docs/PLAN.md`: the
 foundation — layout, design system ported from `design/astra/`, search, the
@@ -79,7 +79,7 @@ npm run dev          # Next dev server, picks a free port if 3000 is busy
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Query embedding; in prod, route through `FILES_URL/ollama` |
 | `REPLICA_NAME` | unset | This instance's name, reported by `/api/health` |
 | `GIT_SHA` | unset | Reported by `/api/health`; set at build time in Docker |
-| `NEXT_PUBLIC_SITE_URL` | `https://911records.nyc` | Canonical origin for metadata/sitemaps |
+| `NEXT_PUBLIC_SITE_URL` | `https://911records.org` | Canonical origin for metadata/sitemaps |
 
 ## How the pieces connect
 

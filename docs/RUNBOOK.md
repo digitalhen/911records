@@ -244,7 +244,7 @@ being added) — `setup` prefers an in-place mapping update specifically to avoi
 | `NEXT_PUBLIC_SITE_URL`, `OLLAMA_URL`, `ANTHROPIC_API_KEY`, `ASK_MODEL`, `ASK_DAILY_USD_CAP`, `GIT_SHA` | the app (`web/`) | — | See `docs/PLAN.md`'s deployment steps; not consumed by the pipeline scripts in this document. |
 
 ## Maintenance page during deploys (Cloudflare Worker, 2026-09-14)
-`cloudflare/maintenance/` is a Worker on the `911records.nyc/*` route. It passes every response
+`cloudflare/maintenance/` is a Worker on the `911records.org/*` and `www.911records.org/*` routes (legacy `.nyc` routes remain configured). It passes every response
 through untouched except Traefik's deploy-time plain-text "404 page not found" and HTML/plain
 5xx or tunnel errors, which become a 503 maintenance page that reloads itself every 15 s.
 Deploy changes with `npx wrangler deploy` in that directory (Wrangler OAuth login as
@@ -341,7 +341,7 @@ that a catalog refresh is a byte-level audit of every City PDF.
 Cloudflare Turnstile gates `/api/downloads/*` downloads. Unverified GETs redirect
 to `/downloads/verify?file=…`; unverified HEADs return 403. POST
 `/api/downloads/verify` checks the token at Cloudflare Siteverify, requires the
-`bulk_download` action and `911records.nyc` hostname, and issues a signed,
+`bulk_download` action and `911records.org` hostname, and issues a signed,
 HttpOnly, SameSite=Lax cookie scoped to `/api/downloads` for 12 hours. Production
 cookies are Secure. Validation is same-origin, size-limited, time-limited and
 rate-limited. Invalid/replayed/expired tokens never grant access. Every authorized
@@ -359,7 +359,7 @@ Configure the following **runtime environment variables on both Dokploy apps**
 
 The compose file passes these through at runtime. Missing configuration disables
 downloads rather than skipping CAPTCHA. Production rejects Cloudflare test keys
-and ignores `TURNSTILE_TEST_MODE`. Restrict the widget to `911records.nyc` in
+and ignores `TURNSTILE_TEST_MODE`. The widget allows `911records.org` and the legacy `911records.nyc` hostname in
 Cloudflare. No secret belongs in committed files or release notes.
 
 Local preview only: set `TURNSTILE_TEST_MODE=1` plus a local session secret to use
@@ -381,3 +381,27 @@ Implementation references:
 - https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
 - https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/
 - https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+
+
+### Canonical domain (2026-09-19)
+
+The canonical site is `https://911records.org`. Both Dokploy Web app services
+serve `911records.org` and `www.911records.org` on service `app`, port 3000.
+Cloudflare terminates HTTPS; retain the existing HTTP origin routing. Both apps
+set `NEXT_PUBLIC_SITE_URL=https://911records.org`; changing it requires a rebuild.
+The shared `ubuntu-production-dokploy` tunnel routes both names to
+`http://dokploy-traefik` and has a healthy connector on each host.
+
+Cloudflare's `.nyc` zone has the active Single Redirect **Permanent move to
+911records.org**: match `http.host in {"911records.nyc" "www.911records.nyc"}`,
+dynamic target `concat("https://911records.org", http.request.uri.path)`, status
+308, preserve query string enabled. Keep both legacy DNS names proxied. The app
+also redirects the legacy names and `www.911records.org` to the canonical origin.
+The existing `911records-maintenance` Worker covers both new names, and the
+`911records Download` Turnstile widget allows both apex domains. No keys rotated.
+
+Release 1.2.6 was deployed on both hosts (commit `f35a488`). Health checks,
+HTTPS, canonical metadata, old path/query redirects, and document rendering
+were verified. At cutover the LAN router still cached NXDOMAIN for the new
+registration; Cloudflare and Google public DNS resolved correctly. This cache
+expires independently of the deployment.
