@@ -42,7 +42,9 @@ Types, in the priority order rules are tried (first match wins):
                       "asbestos abatement notification" (26+ hits). Confidence 0.6 — this vocabulary
                       also shows up in narrative memos *about* permits, hence the lower score than
                       chain_of_custody/sign_in_sheet's exact-phrase matches.
-  lab_report         Two or more of a basket of analytical-report signals in the SAME document:
+  lab_report         An airborne-asbestos-analysis / laboratory-results heading with two nearby
+                      labelled laboratory fields scores 0.8. Otherwise, two or more analytical-report
+                      signals in the SAME document:
                       "certificate of analysis", "laboratory report", "analytical report",
                       "sample id:"/"lab sample no.", "method detection limit", "reporting limit",
                       "PLM/TEM method|analysis", "% asbestos", "asbestos content", "f/cc" /
@@ -73,12 +75,10 @@ Every page of the mirror carries a "NYC 9/11 Public Portal Document" watermark l
 City's portal itself — it is NOT a signal for anything here (5,562 of 6,206 sampled one-page
 documents carry it and are NOT cover sheets) and every regex below ignores it.
 
-Text source: data/text/<agency>/<volume>/<bates>.pages.jsonl (one {page,bates,chars,text} per
-line, extract_text.mjs). For a page recorded as `empty` in data/embed/pages.sqlite (image-only
-scan), a same-page line from the sibling <bates>.ocr.jsonl overlays it when present — same rule
-load_site_pg.py uses for site.page_text. All of a document's pages are concatenated (with the
-watermark stripped) for classification; page 1 alone decides `cover_sheet` (must be single-page)
-and carries slightly more weight for memo_letter's header check.
+Text source: the shared page_text.effective_rows selector uses source-valid approved OCR,
+falling back to the original extraction under the same rules as indexing and publication.
+All pages are concatenated after removing the portal watermark. Page 1 alone decides
+cover_sheet (must be single-page) and carries memo_letter's header check.
 
 Incremental: data/embed/p3-doctypes.jsonl caches a sha1 of each document's classified text
 (watermark stripped) alongside its row; a document whose text hash AND RULES_VERSION both match
@@ -115,7 +115,7 @@ OUT_PATH = EMB / "p3-doctypes.jsonl"
 # Bumped whenever a rule (any RE_* above or classify()'s logic) changes, so a cached row keyed only
 # on text_sha1 doesn't silently survive a rule fix forever — a document's text is unchanged but its
 # classification should not be. load_existing() only reuses a row whose rules_version also matches.
-RULES_VERSION = 3
+RULES_VERSION = 4
 
 WATERMARK_RE = re.compile(r"NYC\s*9[\/\s]*1+1?\s*Public\s*Portal\s*Document", re.I)
 
@@ -164,6 +164,29 @@ RE_LAB_SIGNALS: list[tuple[str, re.Pattern]] = [
     ("results of analysis", re.compile(r"\bresults?\s*of\s*analysis\b", re.I)),
 ]
 
+# Report headings plus at least two nearby, labelled lab fields. A heading alone
+# can occur in correspondence; method names alone also occur in guidance documents.
+RE_LAB_HEADING = re.compile(
+    r"^[ \t]*(?:airborne\s+asbestos\s+analysis\b[^\n]*|laboratory\s+results[ \t]*[:.]?)[ \t]*$",
+    re.I | re.M,
+)
+RE_LAB_FIELDS = [
+    ("laboratory ID", re.compile(r"^[ \t]*lab(?:oratory)?\.?[ \t]+(?:id|no\.?|number)[ \t]*[#:]", re.I | re.M)),
+    ("analysis date", re.compile(r"^[ \t]*date[ \t]+of[ \t]+analys(?:is|es)[ \t]*:", re.I | re.M)),
+    ("analytical methodology", re.compile(r"^[ \t]*analyt(?:ical|\.)?[ \t]+method(?:ology)?[ \t]*:", re.I | re.M)),
+    ("filter area", re.compile(r"^[ \t]*(?:effective[ \t]+)?filter[ \t]+area\b[^\n:]{0,30}:", re.I | re.M)),
+]
+
+
+def lab_report_structure(full: str) -> list[str]:
+    for heading in RE_LAB_HEADING.finditer(full):
+        nearby = full[max(0, heading.start() - 800):heading.end() + 1600]
+        fields = [name for name, pattern in RE_LAB_FIELDS if pattern.search(nearby)]
+        if len(fields) >= 2:
+            return fields
+    return []
+
+
 # ---- memo_letter --------------------------------------------------------------
 RE_FROM = re.compile(r"(?m)^\s*From\s*:", re.I)
 RE_TO = re.compile(r"(?m)^\s*To\s*:", re.I)
@@ -203,6 +226,10 @@ def classify(page1: str, full: str, n_pages: int) -> tuple[str, float, str]:
     if RE_PERMIT.search(full):
         m = RE_PERMIT.search(full)
         return ("permit_application", 0.6, f"permit/notification vocabulary ({m.group(0)!r})")
+
+    lab_fields = lab_report_structure(full)
+    if lab_fields:
+        return ("lab_report", 0.8, "lab report heading with labelled fields: " + ", ".join(lab_fields))
 
     lab_hits = [name for name, pat in RE_LAB_SIGNALS if pat.search(full)]
     if lab_hits:
