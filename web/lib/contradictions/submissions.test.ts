@@ -3,7 +3,7 @@ import test from 'node:test';
 import { submissionHandler } from './submissions';
 
 const valid = { kind: 'correction', sources: 'NYC-WTC_000145371', note: 'Please check the attribution on this page.' };
-const request = (data: unknown, origin = 'https://911records.nyc') => new Request('https://911records.nyc/api/contradictions', { method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+const request = (data: unknown, origin = 'https://911records.org') => new Request('https://911records.org/api/contradictions', { method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 test('accepts a private submission and returns only its receipt', async () => {
   let saved: unknown;
   const handler = submissionHandler(async data => { saved = data; return 'receipt'; });

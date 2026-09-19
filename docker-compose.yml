@@ -1,4 +1,4 @@
-# 911records.nyc app for Dokploy — EXTERNAL services variant, modeled on
+# 911records.org app for Dokploy — EXTERNAL services variant, modeled on
 # ~/Code/prospect/docker-compose.yml: this app runs HA across TWO Dokploy
 # instances (StudioMac and MonsterMac) behind one Cloudflare tunnel, with
 # Dokploy auto-deploying this compose from `main` on each. That rules out a
@@ -15,7 +15,7 @@ services:
       context: ./web
       dockerfile: ../Dockerfile
       args:
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://911records.nyc}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://911records.org}
         # The Google Analytics measurement id, and the off switch for the tag
         # (modeled on ~/Code/prospect's issue #982). No `:-` here,
         # deliberately: unlike NEXT_PUBLIC_SITE_URL above, this ARG has a

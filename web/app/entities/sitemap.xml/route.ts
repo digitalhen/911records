@@ -5,7 +5,7 @@ function xml(value:string){return value.replace(/&/g,'&amp;').replace(/</g,'&lt;
 export async function GET(request:Request){
  const raw=new URL(request.url).searchParams.get('chunk')||'0';
  if(!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw))||Number(raw)>100000)return new Response('Invalid chunk',{status:400});
- const origin=(process.env.NEXT_PUBLIC_SITE_URL||'https://911records.nyc').replace(/\/$/,'');
+ const origin=(process.env.NEXT_PUBLIC_SITE_URL||'https://911records.org').replace(/\/$/,'');
  const paths=await discoverySitemapPaths(Number(raw)*5000,5000);
  // /entities/<type> panel-listing pages added alongside the per-entity pages already in discoverySitemapPaths.
  const typeListings=[...ENTITY_TYPES,'signatory'].map(t=>`/entities/${t}`);

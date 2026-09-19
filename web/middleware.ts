@@ -1,26 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-// www.911records.nyc -> https://911records.nyc, 301, path + query kept. The
-// retired holding page's nginx did this; now that the Next app is the only
-// thing behind Cloudflare + Traefik, it has to. Cloudflare/Traefik terminate
-// TLS and proxy inbound, so the public host the visitor actually typed is in
-// x-forwarded-host, not necessarily the raw Host header — check that first.
-// /api/health is exempt: health checks must never be redirected.
-const SITE_ORIGIN = (() => {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc').origin;
-  } catch {
-    return 'https://911records.nyc';
-  }
-})();
+// Canonical domain migration. 308 preserves methods/bodies as well as paths and queries.
+// Internal health probes use localhost/container hostnames, so they are never redirected.
+const SITE_ORIGIN = 'https://911records.org';
+const LEGACY_HOSTS = new Set(['911records.nyc', 'www.911records.nyc', 'www.911records.org']);
 
-function wwwRedirect(req: NextRequest): NextResponse | null {
-  const { pathname, search } = req.nextUrl;
-  if (pathname === '/api/health') return null;
+export function canonicalRedirect(req: NextRequest): NextResponse | null {
   const forwardedHost = req.headers.get('x-forwarded-host');
-  const host = ((forwardedHost || req.headers.get('host') || '').split(',')[0] ?? '').trim().toLowerCase();
-  if (!host.startsWith('www.')) return null;
-  return NextResponse.redirect(new URL(pathname + search, SITE_ORIGIN), 301);
+  const host = ((forwardedHost || req.headers.get('host') || req.nextUrl.hostname).split(',')[0] ?? '').trim().toLowerCase().replace(/:\d+$/, '');
+  if (!LEGACY_HOSTS.has(host)) return null;
+  const target = new URL(SITE_ORIGIN);
+  target.pathname = req.nextUrl.pathname;
+  target.search = req.nextUrl.search;
+  return NextResponse.redirect(target, 308);
 }
 
 // Removed-by-the-City documents are not served publicly (docs/PLAN.md rule
@@ -77,7 +69,7 @@ export const config = {
 };
 
 export async function middleware(req: NextRequest) {
-  const redirect = wwwRedirect(req);
+  const redirect = canonicalRedirect(req);
   if (redirect) return redirect;
 
   const { pathname } = req.nextUrl;

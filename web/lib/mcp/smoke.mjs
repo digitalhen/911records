@@ -25,7 +25,7 @@ try {
     if (name === 'get_page') {
       assert.equal(data.bates, 'NYC-WTC_000140827');
       assert.match(data.text, /clearinghouse/i);
-      assert.equal(data.url, 'https://911records.nyc/doc/NYC-WTC_000140827');
+      assert.equal(data.url, 'https://911records.org/doc/NYC-WTC_000140827');
     }
     if (name === 'search_records') assert.ok(data.hits.length > 0);
     if (name === 'browse_collection') assert.equal(data.documents.length, 2);

@@ -103,7 +103,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
   const hasImage = await fileExists(pageImageUrl(agency, volume, doc, page));
   const bates = sitePage?.bates || doc;
 
-  const citation = `NYC Law Department, ${bates}. Mirrored by 911records.nyc (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
+  const citation = `NYC Law Department, ${bates}. Mirrored by 911records.org (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
 
   const jsonLdBreadcrumb = breadcrumbJsonLd([
     { name: 'Home', path: '/' },

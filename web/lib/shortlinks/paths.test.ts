@@ -18,9 +18,11 @@ test('document shortlinks round-trip exact document and page identifiers', () =>
 
 test('saved links preserve filters and anchors and reject external or service targets', () => {
   const target = '/search?q=asbestos&address=140%20West%20Street#results';
-  assert.equal(normalizeTarget(`https://911records.nyc${target}`), target);
+  for (const host of ['911records.org', 'www.911records.org', '911records.nyc', 'www.911records.nyc']) {
+    assert.equal(normalizeTarget(`https://${host}${target}`), target);
+  }
   assert.equal(shortDocumentTarget('/doc/NYC-WTC_000140827#page'), null);
-  for (const bad of ['https://evil.example/search', '//evil.example/search', '/api/health', '/mcp', '/s/d1', 'javascript:alert(1)', '/search\\evil', 'https://user@911records.nyc/search']) {
+  for (const bad of ['https://evil.example/search', '//evil.example/search', '/api/health', '/mcp', '/s/d1', 'javascript:alert(1)', '/search\\evil', 'https://user@911records.org/search']) {
     assert.throws(() => normalizeTarget(bad), bad);
   }
 });

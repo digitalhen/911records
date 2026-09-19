@@ -1,18 +1,18 @@
 # 911records MCP
 
-Read-only MCP endpoint: `https://911records.nyc/mcp` after deployment.
+Read-only MCP endpoint: `https://911records.org/mcp` after deployment.
 Transport: stateless Streamable HTTP, JSON responses. No API key or session
 affinity required. GET/DELETE return 405; clients must use Streamable HTTP,
 not the legacy SSE transport. No additional database or indexing job.
 
 ## Connect
 
-In a client supporting remote MCP, add `https://911records.nyc/mcp` as the
+In a client supporting remote MCP, add `https://911records.org/mcp` as the
 server URL with HTTP transport. Example generic client configuration
 (the exact configuration file varies by client):
 
 ```json
-{"mcpServers":{"911records":{"url":"https://911records.nyc/mcp","type":"http"}}}
+{"mcpServers":{"911records":{"url":"https://911records.org/mcp","type":"http"}}}
 ```
 
 Try: "Search for 125 Cedar Street, read the relevant pages, and give me a
@@ -40,7 +40,7 @@ an authoritative transcription. Titles and summaries are labelled machine-extrac
 ## Operations and checks
 
 Uses existing DATABASE_URL/DATABASE_READ_URL, OPENSEARCH and OLLAMA settings.
-No new secrets. Public citation URLs always use https://911records.nyc;
+No new secrets. Public citation URLs always use https://911records.org;
 they do not depend on internal proxy host headers or the /page redirect.
 This does not fix the existing /page redirect itself.
 

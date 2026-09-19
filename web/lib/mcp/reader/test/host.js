@@ -12,7 +12,7 @@ const geo = boxes(words);
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="white"/>' + geo.words.map(w=>'<text x="'+w[0]+'" y="'+(w[1]+11)+'" font-family="monospace" font-size="10">'+w[4]+'</text>').join('') + '<text x="12" y="440" font-family="Arial" font-size="11">TEST FIXTURE — NOT AN ORIGINAL RECORD</text></svg>';
 const asset = URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
 function result(name,args={}) {
-  const url = 'https://911records.nyc/doc/'+(args.doc||doc);
+  const url = 'https://911records.org/doc/'+(args.doc||doc);
   const row = {doc, page:1, bates:doc, agency:'Test collection',machine_extracted_title:'Proposed cleaning scope',url,short_url:url};
   let data;
   let meta = {tool:name,input:args};
@@ -20,10 +20,10 @@ function result(name,args={}) {
   if(name==='search_records') data={hits:[row,{...row,doc:other,bates:other,machine_extracted_title:'Site visit observations'}],indexed_page_total:3,page:args.page||1,next_page:args.page?null:2};
   if(name==='get_page') {
     const text=args.offset?'Remaining extracted text.':words;
-    data={doc:args.doc||doc,page:args.page||1,bates:args.doc||doc,text,text_available:true,offset:args.offset||0,next_offset:null,total_chars:text.length,url,short_url:url,scan_url:'https://911records.nyc/files/fixture.webp',official_url:'https://example.org/source'};
-    meta={...meta,title:args.doc===other?'Site visit observations':'Proposed cleaning scope',pageCount:3,summary:'A proposed scope, not a completion record.',boxes:geo,pdfUrl:'https://911records.nyc/files/fixture.pdf'};
+    data={doc:args.doc||doc,page:args.page||1,bates:args.doc||doc,text,text_available:true,offset:args.offset||0,next_offset:null,total_chars:text.length,url,short_url:url,scan_url:'https://911records.org/files/fixture.webp',official_url:'https://example.org/source'};
+    meta={...meta,title:args.doc===other?'Site visit observations':'Proposed cleaning scope',pageCount:3,summary:'A proposed scope, not a completion record.',boxes:geo,pdfUrl:'https://911records.org/files/fixture.pdf'};
   }
-  if(name==='get_document') data={...row,page_count:3,machine_extracted_summary:'A proposed scope, not a completion record.',pages:[{doc,page:1,url},{doc,page:2,url}],next_page:args.start_page?null:3,pdf_url:'https://911records.nyc/files/fixture.pdf',official_url:'https://example.org/source'};
+  if(name==='get_document') data={...row,page_count:3,machine_extracted_summary:'A proposed scope, not a completion record.',pages:[{doc,page:1,url},{doc,page:2,url}],next_page:args.start_page?null:3,pdf_url:'https://911records.org/files/fixture.pdf',official_url:'https://example.org/source'};
   if(name==='browse_collection') data={documents:[{...row,page:undefined,page_count:3}],next_after:args.after?null:other};
   if(name==='get_changes') data={changes:[{doc:other,date:'2026-09-16',kind:'removed'},{...row,page:undefined,date:'2026-09-15',kind:'added'}],next_offset:args.offset?null:2};
   if(name==='get_document') meta.evidence=[
@@ -41,7 +41,7 @@ window.addEventListener('message', async event=>{
  if(m.method==='ui/initialize') {
    const proto=frame.contentWindow.HTMLImageElement.prototype;
    const descriptor=Object.getOwnPropertyDescriptor(proto,'src');
-   if (!live) Object.defineProperty(proto,'src',{...descriptor,set(value){descriptor.set.call(this,value==='https://911records.nyc/files/fixture.webp'?asset:value);}});
+   if (!live) Object.defineProperty(proto,'src',{...descriptor,set(value){descriptor.set.call(this,value==='https://911records.org/files/fixture.webp'?asset:value);}});
    frame.contentWindow.addEventListener('error', e=>errors.push(e.message));
    frame.contentWindow.addEventListener('unhandledrejection', e=>errors.push(String(e.reason)));
    frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,result:{protocolVersion:'2026-01-26',hostCapabilities:{},hostInfo:{name:'fixture-host',version:'1'},hostContext:{theme:'light',displayMode:'inline',availableDisplayModes:['inline','fullscreen']}}},location.origin);

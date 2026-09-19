@@ -3,7 +3,7 @@ import { PageShell } from '@/components/info/PageShell';
 import { pageMetadata } from '@/lib/info/metadata';
 
 export async function generateMetadata() {
-  return pageMetadata('Terms of Service', 'Terms for using 911records.nyc and its connected research tools, operated by Cleartext Labs.', '/terms');
+  return pageMetadata('Terms of Service', 'Terms for using 911records.org and its connected research tools, operated by Cleartext Labs.', '/terms');
 }
 
 export default function Terms() {
@@ -14,7 +14,7 @@ export default function Terms() {
 
       <section>
         <h2>Using this service</h2>
-        <p>These terms apply to 911records.nyc and its connected research tools, including the MCP service. Cleartext Labs operates this independent project. It is not affiliated with or endorsed by the City of New York, the World Trade Center Health Program, or the September 11th Victim Compensation Fund.</p>
+        <p>These terms apply to 911records.org and its connected research tools, including the MCP service. Cleartext Labs operates this independent project. It is not affiliated with or endorsed by the City of New York, the World Trade Center Health Program, or the September 11th Victim Compensation Fund.</p>
         <p>By using the service, you agree to these terms. If you do not agree, please stop using the service. Access is currently free and does not require an account. A third-party application used to connect to the service may have its own fees and terms.</p>
       </section>
 

@@ -1,7 +1,7 @@
 import HomeMap, { mapMetadata } from '@/components/map/HomeMap';
 import { getMeta } from '@/lib/site';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata() {

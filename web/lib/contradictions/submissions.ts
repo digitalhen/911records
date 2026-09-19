@@ -12,7 +12,7 @@ export function submissionHandler(save: (data: Submission) => Promise<string>) {
   return async (req: Request) => {
     const reply = (body: object, status: number) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'https://911records.nyc' && !(process.env.NODE_ENV !== 'production' && origin === new URL(req.url).origin)) return reply({ error: 'Submit from this site.' }, 403);
+    if (origin && origin !== 'https://911records.org' && !(process.env.NODE_ENV !== 'production' && origin === new URL(req.url).origin)) return reply({ error: 'Submit from this site.' }, 403);
     if (!req.headers.get('content-type')?.startsWith('application/json')) return reply({ error: 'Expected JSON.' }, 415);
     const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     const now = Date.now();

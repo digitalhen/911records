@@ -49,7 +49,7 @@ test('official client discovers and calls all five tools over stateless HTTP', a
     const search = await client.callTool({ name: 'search_records', arguments: { query: 'Cedar Street', limit: 1 } });
     const s = search.structuredContent as { hits: { url: string }[]; next_page: number };
     assert.equal(s.hits.length, 1);
-    assert.equal(s.hits[0]?.url, `https://911records.nyc/doc/${doc}/p/5`);
+    assert.equal(s.hits[0]?.url, `https://911records.org/doc/${doc}/p/5`);
     assert.equal(s.next_page, 2);
     assert.ok(!JSON.stringify(search).includes('Never disclose'));
     const document = await client.callTool({ name: 'get_document', arguments: { doc, start_page: 5, limit: 2 } });
@@ -67,7 +67,7 @@ test('official client discovers and calls all five tools over stateless HTTP', a
     assert.equal(data(browse).next_after, doc);
     const changes = await client.callTool({ name: 'get_changes', arguments: { since: '2026-09-14', limit: 1 } });
     assert.equal(data(changes).next_offset, 1);
-    assert.deepEqual(data(changes).changes, [{ doc: removed, date: '2026-09-15', kind: 'removed', url: `https://911records.nyc/doc/${removed}`, short_url: documentShortUrl(removed) }]);
+    assert.deepEqual(data(changes).changes, [{ doc: removed, date: '2026-09-15', kind: 'removed', url: `https://911records.org/doc/${removed}`, short_url: documentShortUrl(removed) }]);
   } finally { await client.close(); }
 });
 
@@ -152,7 +152,7 @@ test('reader metadata preserves the published five-tool contract and exposes a s
     assert.ok('text' in resource && resource.text.includes('ui/initialize'));
     assert.ok('text' in resource && !resource.text.includes('src="http'));
     const ui = resource._meta?.ui as { csp: Record<string, unknown> };
-    assert.deepEqual(ui.csp, { connectDomains: [], resourceDomains: ['https://911records.nyc'] });
+    assert.deepEqual(ui.csp, { connectDomains: [], resourceDomains: ['https://911records.org', 'https://911records.nyc'] });
   } finally { await client.close(); }
 });
 
@@ -211,7 +211,7 @@ test('one document call hydrates curated evidence without changing model results
     const reader = response._meta?.reader as { evidence: { source: { structuredContent: Record<string, unknown> }; claim: string }[] };
     assert.equal(reader.evidence.length, 2);
     assert.equal(reader.evidence[0]!.source.structuredContent.page, 5);
-    assert.equal(reader.evidence[0]!.source.structuredContent.url, `https://911records.nyc/doc/${doc}/p/5`);
+    assert.equal(reader.evidence[0]!.source.structuredContent.url, `https://911records.org/doc/${doc}/p/5`);
     assert.equal(reader.evidence[0]!.claim, brief.claim);
     assert.ok(!JSON.stringify(response.structuredContent).includes('Cleanup recorded'));
     assert.ok(!JSON.stringify(response.content).includes('Cleanup recorded'));

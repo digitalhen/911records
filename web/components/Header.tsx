@@ -20,7 +20,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
     <header className="masthead">
       <div className="mast-top">
         <Link className="brand" href="/" aria-label="9/11 Records home">
-          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.nyc" className="brand-logo" />
+          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.org" className="brand-logo" />
         </Link>
         {/* issue #32 item 4: at narrow phone widths .mast-top is a flex row with no wrap, and a
             flex item's default min-width:auto keeps it from shrinking past its widest unbreakable

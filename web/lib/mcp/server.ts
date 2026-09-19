@@ -20,7 +20,7 @@ const evidenceSchema = z.array(z.object({
 }).strict()).min(1).max(3).describe('Optional final evidence panel. After reading source pages, select 1–3 pages relevant to the question. Explain what each establishes; include an exact contiguous quotation when available. Do not invent quotations, findings, or limitations. The first source must belong to doc.');
 const normalizeQuote = (value: string) => value.normalize('NFKC').replace(/\s+/gu, ' ').trim();
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const origin = 'https://911records.nyc';
+const origin = 'https://911records.org';
 const url = (doc: string, page?: number) => `${origin}/doc/${doc}${page && page > 1 ? `/p/${page}` : ''}`;
 const result = (data: Record<string, unknown>, reader: Record<string, unknown>) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data) }], structuredContent: data, _meta: { reader } });
 const error = (message: string) => ({ isError: true, content: [{ type: 'text' as const, text: message }] });

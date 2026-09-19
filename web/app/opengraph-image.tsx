@@ -3,7 +3,7 @@ import { ImageResponse } from 'next/og';
 export const runtime = 'edge';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
-export const alt = '9/11 Records — 911records.nyc';
+export const alt = '9/11 Records — 911records.org';
 
 // docs/PLAN.md SEO section: an og-image. No `sharp` in package.json, so this
 // is the documented fallback — an SVG-shaped image built with next/og's
@@ -38,7 +38,7 @@ export default function Image() {
           />
         </svg>
         <div style={{ display: 'flex', fontSize: 60, fontWeight: 700, marginTop: 28, letterSpacing: -1 }}>9/11 City Records</div>
-        <div style={{ display: 'flex', fontSize: 26, opacity: 0.75, marginTop: 12, letterSpacing: 2 }}>911records.nyc</div>
+        <div style={{ display: 'flex', fontSize: 26, opacity: 0.75, marginTop: 12, letterSpacing: 2 }}>911records.org</div>
         <div style={{ display: 'flex', fontSize: 20, opacity: 0.6, marginTop: 20 }}>Independent records explorer</div>
       </div>
     ),

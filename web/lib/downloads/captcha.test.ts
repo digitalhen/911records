@@ -8,7 +8,7 @@ import {
 const key = 'unit-test-session-key-with-at-least-thirty-two-characters';
 const config: CaptchaConfig = {
   siteKey: 'real-site-key', secretKey: 'real-secret-key', sessionSecret: key,
-  production: true, testMode: false, origin: 'https://911records.nyc',
+  production: true, testMode: false, origin: 'https://911records.org',
 };
 const file = `box-${'a'.repeat(64)}.zip`;
 const request = (body: unknown = { token: 'valid-token', file }, origin = config.origin) =>
@@ -16,7 +16,7 @@ const request = (body: unknown = { token: 'valid-token', file }, origin = config
     method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body),
   });
 const provider = (result: object, status = 200) => (async () => Response.json(result, { status })) as typeof fetch;
-const accepted = { success: true, action: ACTION, hostname: '911records.nyc' };
+const accepted = { success: true, action: ACTION, hostname: '911records.org' };
 
 test('grants expire, reject tampering, and work across replicas sharing a key', () => {
   const now = 100000;

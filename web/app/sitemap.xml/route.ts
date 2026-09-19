@@ -3,7 +3,7 @@ import { getDocumentCount } from '@/lib/site';
 import { SITEMAP_CHUNK_SIZE } from '@/lib/sitemap';
 import { discoverySitemapCount } from '@/lib/discovery/sitemap';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 const DISCOVERY_CHUNK_SIZE = 5000;
 
 // Depends on a live doc count from Postgres — must not be statically

@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.2.5';
+export const APP_VERSION = '1.2.6';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.2.6', date: '2026-09-19', notes: ['Our permanent home is now 911records.org. Existing 911records.nyc links take you to the same pages on the new domain, including document citations and downloads.'] },
   { version: '1.2.5', date: '2026-09-18', notes: ['Improved recognition of airborne asbestos laboratory reports that were previously labeled “other”.'] },
   { version: '1.2.4', date: '2026-09-18', notes: ['Search and document text now recover more sideways and hard-to-read pages, with improved text on 2,536 pages. Record tags and related records use the improved text.', 'Fixed generated titles being attached to the wrong record when several records were summarized together.'] },
   { version: '1.2.3', date: '2026-09-18', notes: ['Watch Henry Williams’ 1010 WINS radio interview at /1010-wins.mp4.'] },

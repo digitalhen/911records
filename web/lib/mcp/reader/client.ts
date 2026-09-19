@@ -20,7 +20,7 @@
   const normalize = (s: string) => s.normalize('NFKC').replace(/\s+/gu, ' ').trim();
   function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] { const n = document.createElement(tag); n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function button(label: string, fn: () => void, cls = '') { const b = el('button', cls, label); b.type = 'button'; b.onclick = fn; return b; }
-  function safeUrl(value: unknown): string | null { if (typeof value !== 'string') return null; try { const u = new URL(value); return u.origin === 'https://911records.nyc' && !u.username && !u.password ? u.href : null; } catch { return null; } }
+  function safeUrl(value: unknown): string | null { if (typeof value !== 'string') return null; try { const u = new URL(value); if (!['https://911records.org', 'https://911records.nyc'].includes(u.origin) || u.username || u.password) return null; u.hostname = '911records.org'; return u.href; } catch { return null; } }
   function link(label: string, value: unknown, cls = '') { const href = safeUrl(value); if (!href) return null; const a = el('a', cls, label); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
   function notify(method: string, params: unknown) { if (window.parent !== window) window.parent.postMessage({ jsonrpc: '2.0', method, params }, parentOrigin); }
   function request(method: string, params: unknown, timeout = 30000): Promise<unknown> { return new Promise((resolve, reject) => {

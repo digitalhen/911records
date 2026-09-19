@@ -1,4 +1,4 @@
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 
 export interface Crumb {
   name: string;

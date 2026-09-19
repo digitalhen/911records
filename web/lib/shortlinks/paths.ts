@@ -1,10 +1,10 @@
-export const SITE_ORIGIN = 'https://911records.nyc';
+export const SITE_ORIGIN = 'https://911records.org';
 const roots = new Set(['', 'doc', 'page', 'search', 'browse', 'building', 'map', 'timeline', 'topics', 'entities', 'entity', 'signatory', 'a', 'ask', 'case', 'reading', 'contradictions', 'changes', 'releases', 'about', 'privacy', 'terms', 'personal-information', 'support', 'styleguide', 'gone']);
 
 export function normalizeTarget(input: string): string {
   if (input.length > 4096 || /[\\\u0000-\u001f\u007f]/.test(input)) throw new Error('Invalid page URL.');
   const u = new URL(input, SITE_ORIGIN);
-  if (u.origin !== SITE_ORIGIN || u.username || u.password) throw new Error('Only 911records.nyc pages can be shortened.');
+  if (![SITE_ORIGIN, 'https://911records.nyc', 'https://www.911records.nyc', 'https://www.911records.org'].includes(u.origin) || u.username || u.password) throw new Error('Only 911records.org pages can be shortened.');
   if (!roots.has(decodeURIComponent(u.pathname.split('/')[1] || ''))) throw new Error('Not a supported app page.');
   return u.pathname + u.search + u.hash;
 }

@@ -14,13 +14,13 @@ export const readerToolMeta = {
 };
 export const readerResourceMeta = {
   ui: {
-    domain: 'https://911records.nyc', prefersBorder: true,
-    csp: { connectDomains: [], resourceDomains: ['https://911records.nyc'] },
+    domain: 'https://911records.org', prefersBorder: true,
+    csp: { connectDomains: [], resourceDomains: ['https://911records.org', 'https://911records.nyc'] },
   },
-  'openai/widgetDomain': 'https://911records.nyc',
+  'openai/widgetDomain': 'https://911records.org',
   'openai/widgetPrefersBorder': true,
   'openai/widgetDescription': 'One compact evidence panel with question-specific interpretations, cited scans, verified quotations and exact-page links. The panel supports the answer; do not repeat its contents in chat or open a separate panel for each source. Interpretations and OCR may be wrong; verify against the scan.',
-  'openai/widgetCSP': { connect_domains: [], resource_domains: ['https://911records.nyc'], redirect_domains: ['https://911records.nyc'] },
+  'openai/widgetCSP': { connect_domains: [], resource_domains: ['https://911records.org', 'https://911records.nyc'], redirect_domains: ['https://911records.org', 'https://911records.nyc'] },
 };
 
 /** Malformed/oversized geometry must never become a plausible highlight. */

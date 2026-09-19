@@ -7,6 +7,8 @@ main = "src/worker.js"
 compatibility_date = "2026-09-01"
 workers_dev = false
 routes = [
+  { pattern = "911records.org/*", zone_name = "911records.org" },
+  { pattern = "www.911records.org/*", zone_name = "911records.org" },
   { pattern = "911records.nyc/*", zone_name = "911records.nyc" },
   { pattern = "www.911records.nyc/*", zone_name = "911records.nyc" },
 ]

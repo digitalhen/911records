@@ -11,7 +11,7 @@ const reject = (status: number, message: string, headers = {}) => Response.json(
 export function createHandler(db: Backend) {
   return async (req: Request): Promise<Response> => {
     const origin = req.headers.get('origin');
-    const allowedOrigins = new Set(['https://911records.nyc', 'https://www.911records.nyc']);
+    const allowedOrigins = new Set(['https://911records.org', 'https://www.911records.org', 'https://911records.nyc', 'https://www.911records.nyc']);
     if (process.env.NODE_ENV !== 'production') {
       const requestUrl = new URL(req.url);
       if (['localhost', '127.0.0.1', '[::1]'].includes(requestUrl.hostname)) allowedOrigins.add(requestUrl.origin);

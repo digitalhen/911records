@@ -1,4 +1,4 @@
-# Multi-stage build for the 911records.nyc Next.js app (web/). Build context
+# Multi-stage build for the 911records.org Next.js app (web/). Build context
 # is web/ (see docker-compose.yml); this file lives at the repo root per
 # docs/PLAN.md workstream B1 so it sits beside docker-compose.yml.
 #
@@ -17,7 +17,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG NEXT_PUBLIC_SITE_URL=https://911records.nyc
+ARG NEXT_PUBLIC_SITE_URL=https://911records.org
 # NEXT_PUBLIC_GA_ID's default is deliberately NON-EMPTY, the live measurement
 # id, because for this flag UNSET MUST MEAN UNCHANGED (see ~/Code/prospect's
 # issue #982, the pattern this follows). A `||` fallback in lib/analytics.ts

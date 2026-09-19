@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Analytics from '@/components/Analytics';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

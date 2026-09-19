@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.nyc';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 
 // docs/PLAN.md SEO section: allow everything except /ask, /a/, /case, /api/,
 // /gone (the 410 notice — never worth indexing) and /files/ (raw PDFs and
