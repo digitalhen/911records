@@ -76,8 +76,8 @@ export default function Privacy() {
         <h2>How long we keep it</h2>
         <ul>
           <li><strong>ChatGPT and assistant app requests:</strong> not stored; discarded when the response is sent. Rate-limit addresses: about one minute, in memory only.</li>
-          <li><strong>Server and network logs:</strong> kept only as long as needed to operate and secure the service, not as a long-term archive. Cloudflare keeps its logs as described in its policy.</li>
-          <li><strong>Google Analytics:</strong> event data is deleted automatically after the retention period set in Google Analytics, which is no longer than 14 months.</li>
+          <li><strong>Server and network logs:</strong> kept for up to 30 days to operate and secure the service, then deleted. Cloudflare keeps its logs as described in its policy.</li>
+          <li><strong>Google Analytics:</strong> detailed event data is deleted automatically after 2 months. Aggregate reports, such as total page views, are not linked to individual visitors.</li>
           <li><strong>Ask questions and answers, and short links:</strong> kept so their permalinks keep working, until deleted on request or when the feature is retired.</li>
           <li><strong>Reports and Contradictions submissions:</strong> kept until review is complete and the submission is removed, or until deleted on request.</li>
           <li><strong>Download cookie:</strong> expires after 12 hours.</li>
@@ -92,7 +92,7 @@ export default function Privacy() {
           <li>Opt out of Google Analytics with <a href="https://tools.google.com/dlpage/gaoptout">Google’s opt-out browser add-on</a>, or block scripts from googletagmanager.com and google-analytics.com in your browser.</li>
           <li>Turn off personalized ads in <a href="https://adssettings.google.com/">Google Ads Settings</a> or at <a href="https://www.aboutads.info/choices/">aboutads.info</a>.</li>
           <li>Clear case-folder saves and cookies at any time in your browser.</li>
-          <li>To ask about, correct or delete an Ask answer, short link or submission, email <a href="mailto:henry@digitalhen.com">henry@digitalhen.com</a> with the permalink or receipt reference. Because we hold no accounts, we need that reference to find it. Depending on where you live, you may have further rights to access or delete personal information; contact us at the same address to use them.</li>
+          <li>To ask about, correct or delete an Ask answer, short link or submission, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a> with the permalink or receipt reference. Because we hold no accounts, we need that reference to find it. Depending on where you live, you may have further rights to access or delete personal information; contact us at the same address to use them.</li>
         </ul>
       </section>
 
@@ -120,7 +120,7 @@ export default function Privacy() {
 
       <section>
         <h2>Changes and contact</h2>
-        <p>If this policy changes, we will update this page and the date at the top. For privacy questions or requests, email <a href="mailto:henry@digitalhen.com">henry@digitalhen.com</a>. Cleartext Labs is independent and not affiliated with the City of New York.</p>
+        <p>If this policy changes, we will update this page and the date at the top. For privacy questions or requests, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a>. Cleartext Labs is independent and not affiliated with the City of New York.</p>
       </section>
     </PageShell>
   );

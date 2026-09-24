@@ -48,7 +48,7 @@ export default function Terms() {
       <section>
         <h2>Changes and contact</h2>
         <p>We may update these terms as the service changes. Updates will appear on this page with a revised date and apply to use after publication.</p>
-        <p>For questions about these terms or support, email <a href="mailto:henry@digitalhen.com">henry@digitalhen.com</a>. Please do not send sensitive personal documents.</p>
+        <p>For questions about these terms or support, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a>. Please do not send sensitive personal documents.</p>
       </section>
     </PageShell>
   );
