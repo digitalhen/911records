@@ -232,6 +232,22 @@ small,
   font-weight: 400;
   color: var(--ink);
 }
+.bmac {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #ffdd00;
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.bmac:hover {
+  background: #ffcc00;
+}
 .nav {
   display: flex;
   align-items: center;

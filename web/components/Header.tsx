@@ -33,6 +33,8 @@ export function Header({ active, edition }: { active?: string; edition?: string 
           <strong>{edition || 'NYC Law Department release'}</strong>
           <br />
           <span className="edition-detail">Independent mirror · updated as the City releases more · <Link href="/releases" title="Version history">v{APP_VERSION}</Link></span>
+          <br />
+          <a className="bmac" href="https://buymeacoffee.com/digitalhen" target="_blank" rel="noopener">☕ Buy me a coffee</a>
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">
