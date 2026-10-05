@@ -41,7 +41,7 @@ export async function generateMetadata({
     ? `Document results for “${q}” in New York City's released 9/11 records.`
     : "Search New York City's released 9/11 records by keyword, address or Bates number.";
   const path = q ? `/search?q=${encodeURIComponent(q)}` : '/search';
-  return { title, description, alternates: { canonical: path }, robots: { index: false }, ...socialMeta(title, description, path) };
+  return { title, description, alternates: { canonical: path }, robots: { index: false, follow: false }, ...socialMeta(title, description, path) };
 }
 
 const PAGE_SIZE = 20;
@@ -89,7 +89,7 @@ function FacetGroup({
         {selected && (
           <label className="check">
             <span>✕ {selected}</span>
-            <Link className="facet-count" href={searchHref(sp, { [filterKey]: null })}>
+            <Link className="facet-count" rel="nofollow" href={searchHref(sp, { [filterKey]: null })}>
               clear
             </Link>
           </label>
@@ -98,7 +98,7 @@ function FacetGroup({
           .filter((b) => b.key !== selected)
           .map((b) => (
             <label className="check" key={b.key}>
-              <Link className="facet-link" href={searchHref(sp, { [filterKey]: b.key })}>
+              <Link className="facet-link" rel="nofollow" href={searchHref(sp, { [filterKey]: b.key })}>
                 <span>{b.key}</span>
                 <span className="facet-count">{b.count}</span>
               </Link>
@@ -125,12 +125,12 @@ function CoverSheetsToggle({ sp, includeCoverSheets, hidden }: { sp: SearchParam
           {includeCoverSheets ? (
             <>
               <span>✕ Including cover sheets</span>
-              <Link className="facet-count" href={searchHref(sp, { covers: null })}>
+              <Link className="facet-count" rel="nofollow" href={searchHref(sp, { covers: null })}>
                 hide again
               </Link>
             </>
           ) : (
-            <Link className="facet-link" href={searchHref(sp, { covers: '1' })}>
+            <Link className="facet-link" rel="nofollow" href={searchHref(sp, { covers: '1' })}>
               <span>Include folder cover sheets</span>
               {hidden > 0 && <span className="facet-count">{hidden}</span>}
             </Link>
@@ -269,7 +269,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <div className="facet-head">
               <h2>Filter documents</h2>
               {FILTER_KEYS.some((k) => getStr(sp, k)) && (
-                <Link href={searchHref(sp, Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))}>Reset</Link>
+                <Link rel="nofollow" href={searchHref(sp, Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))}>Reset</Link>
               )}
             </div>
             <FacetGroup aggKey="source" buckets={result.facets.source || []} sp={sp} selected={filters.source} />
@@ -367,12 +367,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               </span>
               <div className="actions">
                 {page > 1 && (
-                  <ButtonLink variant="secondary" size="small" href={searchHref(sp, { page: String(page - 1) })}>
+                  <ButtonLink variant="secondary" size="small" rel="nofollow" href={searchHref(sp, { page: String(page - 1) })}>
                     ← Previous
                   </ButtonLink>
                 )}
                 {page < totalPages && (
-                  <ButtonLink variant="secondary" size="small" href={searchHref(sp, { page: String(page + 1) })}>
+                  <ButtonLink variant="secondary" size="small" rel="nofollow" href={searchHref(sp, { page: String(page + 1) })}>
                     Next →
                   </ButtonLink>
                 )}

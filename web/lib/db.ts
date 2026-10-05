@@ -64,7 +64,7 @@ export interface ReadPoolState {
 }
 let lastFallbackAt: number | null = null;
 
-/** A read-only query. Prefers the standby; falls back to the primary (and remembers it, for /api/health) on any error. */
+/** A read-only query. Prefers the standby; falls back to the primary (and remembers it, for /api/health) on errors other than invalid SQL. */
 export async function queryRead<T = Record<string, unknown>>(
   text: string,
   params: readonly unknown[] = [],
@@ -74,6 +74,8 @@ export async function queryRead<T = Record<string, unknown>>(
       const res = await readPool.query(text, params as unknown[]);
       return res.rows as T[];
     } catch (err) {
+      // Both pools receive identical SQL. A syntax error cannot succeed on retry.
+      if (typeof err === 'object' && err !== null && (err as { code?: string }).code === '42601') throw err;
       lastFallbackAt = Date.now();
       console.warn('[db] read replica query failed, falling back to primary', err instanceof Error ? err.message : err);
     }

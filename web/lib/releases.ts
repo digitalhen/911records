@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.2.7';
+export const APP_VERSION = '1.2.8';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.2.8', date: '2026-10-05', notes: ['Fixed the “More like this” list of similar records on document pages, which was failing to load.'] },
   { version: '1.2.7', date: '2026-09-24', notes: ['The privacy page now explains exactly what the 9/11 Records ChatGPT app receives and returns, and sets out for the whole site what is collected, why, who receives it, how long it is kept, and how to opt out or ask for deletion.'] },
   { version: '1.2.6', date: '2026-09-19', notes: ['Our permanent home is now 911records.org. Existing 911records.nyc links take you to the same pages on the new domain, including document citations and downloads.'] },
   { version: '1.2.5', date: '2026-09-18', notes: ['Improved recognition of airborne asbestos laboratory reports that were previously labeled “other”.'] },

@@ -9,6 +9,8 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
 export function GET() {
   const body = `User-agent: *
 Allow: /
+Disallow: /search
+Disallow: /doc/*/versions
 Disallow: /ask
 Disallow: /a/
 Disallow: /case

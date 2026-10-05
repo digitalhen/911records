@@ -11,6 +11,10 @@
 #     docker-compose.host.yml. Dokploy never builds or starts that file.
 services:
   app:
+    # Shared Dokploy VM: contain runaway traffic after the 2026-10-05 crawl incident.
+    mem_limit: 3g
+    memswap_limit: 3g
+    cpus: 2
     build:
       context: ./web
       dockerfile: ../Dockerfile
@@ -35,11 +39,12 @@ services:
         # report `"commit": null` rather than a guessed value.
         GIT_SHA: ${GIT_SHA:-}
     environment:
+      NODE_OPTIONS: --max-old-space-size=2048
       # Primary Postgres (writes, and reads with no standby configured).
       # e.g. postgres://sept11:<password>@192.168.200.51:5433/sept11
       DATABASE_URL: ${DATABASE_URL:?set the Postgres connection string}
       # Optional streaming standby for read traffic (lib/db.ts falls back to
-      # the primary on any error). Unset = every read goes to the primary.
+      # the primary except on SQL syntax errors). Unset = reads use the primary.
       DATABASE_READ_URL: ${DATABASE_READ_URL:-}
       # This instance's stable name, reported by /api/health as `replica` —
       # set per Dokploy instance (e.g. `studiomac`, `monstermac`), same

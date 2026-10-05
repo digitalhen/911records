@@ -27,7 +27,7 @@ export async function moreLikeThis(doc:string,page:number):Promise<{hits:MoreLik
   // #37): title/summary read by name, gated on documentsHaveTitles() like every other explicit
   // site.documents.title/summary reference — see that function's comment in lib/site.ts.
   const withTitles=await documentsHaveTitles();
-  const titleCols=withTitles?'d.title,d.summary,':'NULL::text AS title,NULL::text AS summary,';
+  const titleCols=withTitles?'d.title,d.summary':'NULL::text AS title,NULL::text AS summary';
   // Cover sheets (issue #28) are excluded here too, like every other discovery-layer list — a
   // folder cover sheet has no content of its own to be "more like" anything.
   const visible=await queryReadSafe<{doc:string;page:number;box:string|null;title:string|null;summary:string|null}>(`SELECT p.doc,p.page,d.box,${titleCols}

@@ -1,5 +1,58 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+// Per-process fixed window: 20 requests/minute, bounded to 50k clients.
+// Protect the shared VM from the 2026-10-05 faceted-search crawl.
+const CRAWL_WINDOW_MS = 60_000;
+const CRAWL_REQUEST_LIMIT = 20;
+const CRAWL_MAX_CLIENTS = 50_000;
+const CRAWLER_UA = /bot|crawl|spider|slurp|facebookexternalhit|bytespider|gptbot|claudebot|ccbot|amazonbot|petalbot|semrush|ahrefs|mj12|dotbot|dataforseo|python-requests|go-http-client|curl|wget|scrapy|httpx|headless/i;
+type CrawlClient = { start: number; count: number; loggedAt: number | null };
+const crawlClients = new Map<string, CrawlClient>();
+let nextCrawlPrune = 0;
+let overflowLoggedAt: number | null = null;
+
+export function crawlGuard(req: NextRequest, now = Date.now()): NextResponse | null {
+  const path = req.nextUrl.pathname;
+  if (!/^\/search\/?$/.test(path) && !/^\/doc\/[^/]+\/versions\/?$/.test(path)) return null;
+  if (now >= nextCrawlPrune) {
+    for (const [ip, client] of crawlClients) {
+      if (now - client.start >= CRAWL_WINDOW_MS && (client.loggedAt === null || now - client.loggedAt >= CRAWL_WINDOW_MS)) crawlClients.delete(ip);
+    }
+    nextCrawlPrune = now + CRAWL_WINDOW_MS;
+  }
+  const ip = req.headers.get('cf-connecting-ip')?.trim() || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ua = req.headers.get('user-agent') || '';
+  let client = crawlClients.get(ip);
+  if (!client && crawlClients.size < CRAWL_MAX_CLIENTS) {
+    client = { start: now, count: 0, loggedAt: null };
+    crawlClients.set(ip, client);
+  }
+  if (client && now - client.start >= CRAWL_WINDOW_MS) {
+    client.start = now;
+    client.count = 0;
+  }
+  if (client) client.count = Math.min(client.count + 1, CRAWL_REQUEST_LIMIT + 1);
+  const crawler = req.nextUrl.searchParams.size > 0 && CRAWLER_UA.test(ua);
+  // Fail closed for new clients at capacity; do not evict active rate/log limits.
+  if (!crawler && client && client.count <= CRAWL_REQUEST_LIMIT) return null;
+  const status = crawler ? 403 : 429;
+  const loggedAt = client ? client.loggedAt : overflowLoggedAt;
+  if (loggedAt === null || now - loggedAt >= CRAWL_WINDOW_MS) {
+    console.warn(`[crawl-guard] ${status} ip=${JSON.stringify(ip.slice(0, 128))} ua=${JSON.stringify(ua.slice(0, 256))}`);
+    if (client) client.loggedAt = now;
+    else overflowLoggedAt = now;
+  }
+  return new NextResponse(status === 403 ? 'Forbidden\n' : 'Too many requests\n', {
+    status,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Robots-Tag': 'noindex',
+      'Cache-Control': 'no-store',
+      ...(status === 429 ? { 'Retry-After': '60' } : {}),
+    },
+  });
+}
+
 // Canonical domain migration. 308 preserves methods/bodies as well as paths and queries.
 // Internal health probes use localhost/container hostnames, so they are never redirected.
 const SITE_ORIGIN = 'https://911records.org';
@@ -69,6 +122,8 @@ export const config = {
 };
 
 export async function middleware(req: NextRequest) {
+  const blocked = crawlGuard(req);
+  if (blocked) return blocked;
   const redirect = canonicalRedirect(req);
   if (redirect) return redirect;
 
