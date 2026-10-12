@@ -1,6 +1,10 @@
+import type { ReactNode } from 'react';
+import { AskVerification } from '@/components/ask/AskVerification';
+import { captchaConfig } from '@/lib/downloads/captcha';
+import { consumeAskGrant } from '@/lib/ask/grant';
 import { WhatOthersAreReading } from '@/components/reading/WhatOthersAreReading';
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
@@ -309,7 +313,7 @@ async function renderPlanOutcome(
     answer = result.answer;
     answerUsage = result.usage as unknown as Record<string, unknown>;
     model = result.model;
-    void recordSpend(estimateCostUsd(result.usage));
+    await recordSpend(estimateCostUsd(result.usage));
   } catch (err) {
     console.error('[ask] answer call failed', err);
     redirect(searchFallbackUrl(q, 'ask-failed'));
@@ -366,13 +370,14 @@ async function renderPlanOutcome(
  * for an unknown/expired refresh id so the caller can fall through to the
  * ordinary q flow.
  */
-async function handleRefresh(oldId: string) {
+async function handleRefresh(oldId: string, sp: SearchParamsInput, verified: boolean) {
   const oldRow = await getAnswer(oldId).catch(() => null);
   if (!oldRow) return null;
 
   if (!askConfigured()) {
     redirect(searchFallbackUrl(oldRow.q, 'ask-unavailable'));
   }
+  if (!verified) return verificationView(sp, oldRow.q);
   const hdrs = await headers();
   const ip = clientIp(hdrs);
   if (!allowAskRequest(ip)) {
@@ -392,7 +397,7 @@ async function handleRefresh(oldId: string) {
         const result = await planFollowUp(parentRow.plan, parentCited, oldRow.q);
         plan = result.plan;
         planUsage = result.usage as unknown as Record<string, unknown>;
-        void recordSpend(estimateCostUsd(result.usage));
+        await recordSpend(estimateCostUsd(result.usage));
       } catch (err) {
         console.error('[ask] refresh follow-up plan call failed', err);
         redirect(searchFallbackUrl(oldRow.q, 'ask-failed'));
@@ -414,12 +419,17 @@ async function handleRefresh(oldId: string) {
 
 export default async function AskPage({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   const sp = await searchParams;
+  const verified = await consumeAskGrant(sp, (await cookies()).get('ask_verified')?.value);
+  return executeAsk(sp, verified);
+}
+
+async function executeAsk(sp: SearchParamsInput, verified: boolean): Promise<ReactNode> {
 
   // B24: /ask?refresh=<old answer id> — handled before the `q` requirement
   // below, since a refresh URL carries no q of its own.
   const refreshId = (getStr(sp, 'refresh') || '').trim();
   if (refreshId) {
-    const refreshed = await handleRefresh(refreshId);
+    const refreshed = await handleRefresh(refreshId, sp, verified);
     if (refreshed) return refreshed;
     // Unknown/expired refresh id with no q: falls through to redirect('/search') below, same as
     // any other empty-q request.
@@ -443,6 +453,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       if (!askConfigured()) {
         redirect(searchFallbackUrl(q, 'ask-unavailable'));
       }
+      if (!verified) return verificationView(sp, q);
       const hdrs = await headers();
       const ip = clientIp(hdrs);
       if (!allowAskRequest(ip)) {
@@ -463,7 +474,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
         // the planner labels 'search' still gets a written answer.
         if (forceQuestion && plan.kind === 'search') plan = { ...plan, kind: 'question' };
         planUsage = result.usage as unknown as Record<string, unknown>;
-        void recordSpend(estimateCostUsd(result.usage));
+        await recordSpend(estimateCostUsd(result.usage));
       } catch (err) {
         console.error('[ask] follow-up plan call failed', err);
         redirect(searchFallbackUrl(q, 'ask-failed'));
@@ -507,6 +518,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     redirect(searchFallbackUrl(q, 'ask-unavailable'));
   }
 
+  if (!verified) return verificationView(sp, q);
   const hdrs = await headers();
   const ip = clientIp(hdrs);
   if (!allowAskRequest(ip)) {
@@ -527,11 +539,19 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     // still stand. (2026-09-14: a map chip bounced to an empty document search instead.)
     if (forceQuestion && plan.kind === 'search') plan = { ...plan, kind: 'question' };
     planUsage = result.usage as unknown as Record<string, unknown>;
-    void recordSpend(estimateCostUsd(result.usage));
+    await recordSpend(estimateCostUsd(result.usage));
   } catch (err) {
     console.error('[ask] plan call failed', err);
     redirect(searchFallbackUrl(q, 'ask-failed'));
   }
 
   return renderPlanOutcome(q, plan, planUsage);
+}
+
+/** The POST verification endpoint issues a single-use, request-bound grant. */
+function verificationView(sp: SearchParamsInput, q: string) {
+  const config = captchaConfig();
+  const input = Object.fromEntries(['q', 'parent', 'refresh', 'mode'].map(k => [k, getStr(sp, k)]));
+  return <AskVerification input={input} siteKey={config?.siteKey} testMode={config?.testMode ?? false}
+    question={q} header={<Header active="/ask" />} footer={<Footer />} />;
 }

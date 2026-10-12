@@ -55,14 +55,13 @@ export async function underDailyCap(): Promise<boolean> {
   try {
     return (await getTodaySpendUsd()) < ASK_DAILY_USD_CAP;
   } catch (err) {
-    // Fail open on a metering failure — a broken spend table must not take
-    // Ask down entirely, only its own cap enforcement.
-    console.error('[ask] spend check failed, allowing the call', err);
-    return true;
+    // Fail closed: unavailable metering must never permit unbudgeted AI calls.
+    console.error('[ask] spend check failed, blocking the call', err);
+    return false;
   }
 }
 
-/** Fire-and-forget: never let a metering failure fail the Ask turn itself. */
+/** Await before continuing so a redirect cannot discard the usage write. */
 export async function recordSpend(usd: number): Promise<void> {
   try {
     await ensureRuntimeSchema();
