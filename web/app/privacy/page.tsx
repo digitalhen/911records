@@ -50,7 +50,7 @@ export default function Privacy() {
           <li><strong>Ask questions.</strong> When you use Ask on the website, your question and selected record excerpts are sent to our answer provider, Anthropic, to prepare a cited answer. The question and answer are stored with a shareable permalink. We do not store your IP address with them.</li>
           <li><strong>Reports and submissions.</strong> The personal-information report form stores the Bates page, location and note you enter, with a receipt reference and time. The Contradictions form stores the submission type, source references, note, receipt reference, time and review status. Neither asks for your name or email address, and submissions are not published automatically.</li>
           <li><strong>Short links.</strong> When you create a short link, we store the destination page address, including its search terms, so the link continues to work. Anyone with the link can open that destination.</li>
-          <li><strong>Download verification.</strong> Bulk downloads use Cloudflare Turnstile to help prevent automated abuse; Cloudflare processes browser and connection information to perform this check. After a successful check we set a signed, essential cookie that authorizes downloads for 12 hours. It contains an expiry time and a random identifier, not your name or email address, and is not used for advertising.</li>
+          <li><strong>Human verification.</strong> New AI answers and bulk downloads use Cloudflare Turnstile to help prevent automated abuse; Cloudflare processes browser and connection information to perform this check. Each new AI answer requires a fresh check. A short-lived, essential cookie authorizes only that one question for up to two minutes. After a successful download check we set a signed, essential cookie that authorizes downloads for 12 hours. It contains an expiry time and a random identifier, not your name or email address, and is not used for advertising.</li>
           <li><strong>Your browser.</strong> Case-folder saves and notes stay in your own browser and are not sent to us. A link to the case-folder page does not share them.</li>
         </ul>
       </section>
@@ -63,7 +63,7 @@ export default function Privacy() {
       <section>
         <h2>Who receives it</h2>
         <ul>
-          <li><strong>Cloudflare</strong> delivers and protects the website and app endpoint, and runs download verification. <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>.</li>
+          <li><strong>Cloudflare</strong> delivers and protects the website and app endpoint, and runs human verification for AI answers and downloads. <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>.</li>
           <li><strong>Google</strong> provides analytics on the website and advertising on some website pages, described below. <a href="https://policies.google.com/privacy">Google’s privacy policy</a>.</li>
           <li><strong>Anthropic</strong> receives Ask questions from the website with record excerpts to prepare answers. It does not receive anything from the ChatGPT app. <a href="https://www.anthropic.com/legal/privacy">Anthropic’s privacy policy</a>.</li>
           <li><strong>The AI assistant you use</strong>, such as OpenAI’s ChatGPT, receives the results of the tools it calls.</li>

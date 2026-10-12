@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS app.contradiction_submissions (
   status TEXT NOT NULL DEFAULT 'new'
 );
 
+-- Short-lived, single-use CAPTCHA grants shared by both web replicas.
+CREATE TABLE IF NOT EXISTS app.ask_captcha_grants (
+  token_hash TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ask_captcha_grants_expiry_idx ON app.ask_captcha_grants (expires_at);
+
 -- B3 (Ask): frozen answers, permalinked at /a/<id>. Only a validated,
 -- non-empty answer is ever written here — see lib/ask/store.ts.
 CREATE TABLE IF NOT EXISTS app.answers (

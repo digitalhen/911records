@@ -405,3 +405,28 @@ HTTPS, canonical metadata, old path/query redirects, and document rendering
 were verified. At cutover the LAN router still cached NXDOMAIN for the new
 registration; Cloudflare and Google public DNS resolved correctly. This cache
 expires independently of the deployment.
+
+
+### CAPTCHA before paid Ask requests (2026-10-12)
+
+`/ask` shows human verification before a new AI answer, follow-up or refresh.
+Keyword/Bates searches and saved answers do not require it. The browser posts to
+`/api/ask/verify`; Siteverify must accept a fresh token for action `ask_ai` and
+hostname `911records.org`. Existing Turnstile runtime keys are reused. Missing
+configuration, invalid tokens and verification/database outages block AI calls.
+
+A successful check sets an HttpOnly, Secure, SameSite=Strict cookie for `/ask`,
+valid for two minutes and one exact question/parent/refresh/mode combination.
+Only its hash is stored in `app.ask_captcha_grants`. A primary-database atomic
+DELETE consumes it once across both replicas; expired grants are pruned when
+issuing another grant. Preview grants cannot authorize production. The schema
+must be installed before deployment (the runtime initializer also creates it).
+No CAPTCHA token or grant is placed in a URL. Each new turn requires a new check.
+
+The existing $5 daily Ask cap is still an estimate and can overshoot under
+concurrency. It now blocks calls if the spend lookup fails, and usage writes
+are awaited. Background pipeline calls are separate from this cap and CAPTCHA.
+Verification tests: `node --import ./scripts/lib/register-server-only-stub.mjs
+--import tsx --test lib/ask/captcha.test.ts lib/ask/grant.test.ts` from `web/`.
+The grant database test additionally requires `RUN_ASK_GRANT_DB_TESTS=1` and
+configured database/Turnstile preview environment; it never calls a paid model.
