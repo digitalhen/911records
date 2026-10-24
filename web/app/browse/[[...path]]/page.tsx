@@ -9,14 +9,20 @@ import { AdUnit } from '@/components/ads/AdUnit';
 import { breadcrumbJsonLd } from '@/lib/seo/breadcrumb';
 import { ButtonLink, Button, Callout } from '@/components/ui';
 import styles from '@/components/info/info.module.css';
+import { docTypeLabel } from '@/lib/docTypes';
 export const dynamic = 'force-dynamic';
-type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<{ source?: string; page?: string; agency?: string; volume?: string }> };
+type Props = { params: Promise<{ path?: string[] }>; searchParams: Promise<{ source?: string; page?: string; agency?: string; volume?: string; type?: string }> };
 export async function generateMetadata({ params, searchParams }: Props) {
   const { path = [] } = await params; const { source } = await searchParams;
   return pageMetadata('Browse records', 'Follow the City’s collection and box to the folder labels and Bates-numbered documents inside — filter by agency or production volume.', browseUrl(path.map(unsegment), source));
 }
 interface Group { label: string | null; documents: number; pages: number }
 interface BoxRow { label: string | null; agency: string | null; volume: string | null; documents: number; pages: number }
+interface TypeGroup { doc_type: string | null; documents: number; pages: number }
+/** City-provided collection label, or plain wording for records the City released without one. */
+const collectionName = (label: string | null | undefined) => label || 'No collection listed by the City';
+/** `?type=` value for documents not yet classified (doc_type IS NULL). */
+const UNCLASSIFIED = '~';
 interface Doc { doc: string; bates_end: string | null; page_count: number; status: string; removed_at: DatabaseDate | null; title: string | null; summary: string | null }
 
 /** Index-level (no agency/volume/box/folder path chosen) box grouping — the
@@ -52,12 +58,27 @@ export default async function Browse({ params, searchParams }: Props) {
   const { path: raw = [] } = await params;
   if (raw.length > 4) notFound();
   const path = raw.map(unsegment);
-  const { source, page: pageInput, agency: agencyFilter, volume: volumeFilter } = await searchParams;
+  const { source, page: pageInput, agency: agencyFilter, volume: volumeFilter, type: typeInput } = await searchParams;
   const page = Math.max(1, Math.min(100000, Number(pageInput) || 1)) | 0;
   const atIndex = path.length === 0;
-  const { where, params: values } = filters(path, source);
+  const base = filters(path, source);
+  // Folder-level document listings can be narrowed by the machine-extracted document type — the
+  // only way through records the City released without box or folder labels (NYC-WTC0008).
+  const typeFilter = path.length === 4 && typeInput ? typeInput : undefined;
+  const values = [...base.params];
+  let where = base.where;
+  if (typeFilter) {
+    const clause = typeFilter === UNCLASSIFIED ? 'doc_type IS NULL' : `doc_type = $${values.push(typeFilter)}`;
+    where = where ? `${where} AND ${clause}` : `WHERE ${clause}`;
+  }
+  // Query string for pager/type links; keeps ?source= from browseUrl().
+  const listUrl = (extra: { type?: string; page?: number }) => {
+    const url = browseUrl(path, source);
+    const qs = [extra.type ? `type=${encodeURIComponent(extra.type)}` : '', extra.page && extra.page > 1 ? `page=${extra.page}` : ''].filter(Boolean).join('&');
+    return qs ? `${url}${url.includes('?') ? '&' : '?'}${qs}` : url;
+  };
   let groups: Group[] = [], collections: Group[] = [], docs: Doc[] = [], total: Group | undefined, unavailable = false;
-  let boxes: BoxRow[] = [], agencyOptions: string[] = [], volumeOptions: string[] = [];
+  let boxes: BoxRow[] = [], agencyOptions: string[] = [], volumeOptions: string[] = [], types: TypeGroup[] = [];
   try {
     const results = await Promise.all([
       queryRead<Group>(`SELECT COUNT(*) AS documents, COALESCE(SUM(page_count),0) AS pages FROM site.documents ${where}`, values),
@@ -67,8 +88,9 @@ export default async function Browse({ params, searchParams }: Props) {
       atIndex ? boxIndex(source, agencyFilter, volumeFilter) : Promise.resolve([]),
       atIndex ? distinctValues('agency', source) : Promise.resolve([]),
       atIndex ? distinctValues('volume', source) : Promise.resolve([]),
+      path.length === 4 ? queryRead<TypeGroup>(`SELECT doc_type, COUNT(*) AS documents, COALESCE(SUM(page_count),0) AS pages FROM site.documents ${base.where} GROUP BY doc_type ORDER BY COUNT(*) DESC`, base.params) : Promise.resolve([]),
     ]);
-    [total] = results[0]; collections = results[1]; groups = results[2]; docs = results[3]; boxes = results[4]; agencyOptions = results[5]; volumeOptions = results[6];
+    [total] = results[0]; collections = results[1]; groups = results[2]; docs = results[3]; boxes = results[4]; agencyOptions = results[5]; volumeOptions = results[6]; types = results[7] as TypeGroup[];
   } catch (e) { console.error("[browse] query failed", e); unavailable = true; }
   if (!unavailable && !atIndex && !total?.documents && (raw.length || source !== undefined)) notFound();
   // An index-level agency/volume filter with no matches falls through to the "No boxes match
@@ -77,10 +99,18 @@ export default async function Browse({ params, searchParams }: Props) {
   const boxTotals = boxes.reduce((acc, b) => ({ documents: acc.documents + Number(b.documents), pages: acc.pages + Number(b.pages) }), { documents: 0, pages: 0 });
   const boxLabelCounts = new Map<string, number>();
   boxes.forEach((b) => { const k = b.label ?? ''; boxLabelCounts.set(k, (boxLabelCounts.get(k) || 0) + 1); });
+  // Boxes with no City label are told apart by agency (and volume, when one agency has several).
+  const unlabelled = new Map<string, number>();
+  boxes.forEach((b) => { if (!b.label) unlabelled.set(b.agency ?? '', (unlabelled.get(b.agency ?? '') || 0) + 1); });
+  const boxName = (b: BoxRow) => {
+    if (b.label) return `${b.label}${(boxLabelCounts.get(b.label) || 0) > 1 ? ` — ${b.volume || 'volume not recorded'}` : ''}`;
+    const agency = b.agency || 'agency not recorded';
+    return `No box listed — ${agency}${(unlabelled.get(b.agency ?? '') || 0) > 1 ? `, ${b.volume || 'volume not recorded'}` : ''}`;
+  };
   const crumbs = breadcrumbJsonLd([
     { name: 'Home', path: '/' },
     { name: 'Browse records', path: '/browse' },
-    ...(source !== undefined ? [{ name: source || 'Not recorded', path: browseUrl([], source) }] : []),
+    ...(source !== undefined ? [{ name: collectionName(source), path: browseUrl([], source) }] : []),
     ...path.map((part, i) => ({ name: part || `${levels[i]} not recorded`, path: browseUrl(path.slice(0, i + 1), source) })),
   ]);
   return (
@@ -100,7 +130,7 @@ export default async function Browse({ params, searchParams }: Props) {
             <Link href="/browse">All collections</Link>
             {collections.map((c) => (
               <Link key={c.label} href={browseUrl([], c.label || '')} aria-current={source === c.label ? 'page' : undefined}>
-                {c.label || 'Collection not recorded'}
+                {collectionName(c.label)}
                 <br />
                 <span className="small muted">{number(c.documents)} documents · {number(c.pages)} pages</span>
               </Link>
@@ -110,7 +140,7 @@ export default async function Browse({ params, searchParams }: Props) {
           <section>
             <nav className="bread" aria-label="Breadcrumb">
               <Link href="/browse">Collection</Link>
-              {source !== undefined && <Link href={browseUrl([], source)}>{source || 'Not recorded'}</Link>}
+              {source !== undefined && <Link href={browseUrl([], source)}>{collectionName(source)}</Link>}
               {path.map((part, i) => (
                 <Link key={i} href={browseUrl(path.slice(0, i + 1), source)}>
                   {part || `${levels[i]} not recorded`}
@@ -152,13 +182,12 @@ export default async function Browse({ params, searchParams }: Props) {
                   </Button>
                   {(agencyFilter || volumeFilter) && <Link href={browseUrl([], source)}>Reset</Link>}
                 </form>
-                <h2>Boxes{source !== undefined ? ` in ${source || 'this collection'}` : ''}</h2>
+                <h2>Boxes{source !== undefined ? ` in ${collectionName(source)}` : ''}</h2>
                 <p className={styles.note}>{number(boxTotals.documents)} documents · {number(boxTotals.pages)} pages</p>
                 {boxes.map((b) => (
                   <div className={styles.row} key={`${b.agency ?? ''}|${b.volume ?? ''}|${b.label ?? ''}`}>
                     <Link href={browseUrl([b.agency, b.volume, b.label], source)}>
-                      {b.label || 'Not recorded'}
-                      {(boxLabelCounts.get(b.label ?? '') || 0) > 1 ? ` — ${b.volume || 'volume not recorded'}` : ''} →
+                      {boxName(b)} →
                     </Link>
                     <span className="small muted">{number(b.documents)} documents · {number(b.pages)} pages</span>
                   </div>
@@ -169,6 +198,23 @@ export default async function Browse({ params, searchParams }: Props) {
               <>
                 <h2>{path.length === 4 ? 'Documents in this folder' : ['Agencies', 'Volumes', 'Boxes', 'Folders'][path.length]}</h2>
                 {path.length === 4 && <p className="subtitle">Folder label / City-provided: {path[3] || 'Not recorded'}</p>}
+                {path.length === 4 && path[2] == null && path[3] == null && (
+                  <p className="small">The City released these records without box or folder labels. Narrow them by document type below, or <Link href="/search">search their text</Link>.</p>
+                )}
+                {path.length === 4 && types.length > 1 && (
+                  <nav className={styles.filterRow} aria-label="Document type">
+                    <span className="small muted">Document type (machine-extracted):</span>
+                    <Link href={listUrl({})} aria-current={typeFilter ? undefined : 'page'} style={typeFilter ? undefined : { fontWeight: 600 }}>All</Link>
+                    {types.map((t) => {
+                      const value = t.doc_type ?? UNCLASSIFIED;
+                      return (
+                        <Link key={value} href={listUrl({ type: value })} aria-current={typeFilter === value ? 'page' : undefined} style={typeFilter === value ? { fontWeight: 600 } : undefined}>
+                          {t.doc_type ? docTypeLabel(t.doc_type) : 'Not yet classified'} <span className="small muted">({number(t.documents)})</span>
+                        </Link>
+                      );
+                    })}
+                  </nav>
+                )}
                 <p className={styles.note}>{number(total?.documents)} documents · {number(total?.pages)} pages</p>
                 {groups.map((g) => (
                   <div className={styles.row} key={segment(g.label)}>
@@ -200,12 +246,12 @@ export default async function Browse({ params, searchParams }: Props) {
                 {path.length === 4 && (
                   <nav aria-label="Document pages" className={`${styles.pager} actions`}>
                     {page > 1 && (
-                      <ButtonLink variant="secondary" size="small" href={`${browseUrl(path, source)}${source === undefined ? '?' : '&'}page=${page - 1}`}>
+                      <ButtonLink variant="secondary" size="small" href={listUrl({ type: typeFilter, page: page - 1 })}>
                         ← Previous
                       </ButtonLink>
                     )}
                     {docs.length > 100 && (
-                      <ButtonLink variant="secondary" size="small" href={`${browseUrl(path, source)}${source === undefined ? '?' : '&'}page=${page + 1}`}>
+                      <ButtonLink variant="secondary" size="small" href={listUrl({ type: typeFilter, page: page + 1 })}>
                         Next →
                       </ButtonLink>
                     )}
