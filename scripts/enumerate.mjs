@@ -137,11 +137,20 @@ async function readManifest() {
   return text ? text.split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 }
 
+// The portal's facets list only documents that HAVE a value for the field, so a blank field
+// (e.g. the whole of NYC-WTC0008, released 2026-10-16 with no source/box/folder) never appears
+// as a facet entry. Its expected count is implied: total documents (the production_volume facet
+// sums to every document) minus the documents the field's facet does list. Blank records are
+// still counted and still compared, never dropped.
 function compareFacets(stats, facets) {
   if (!facets) return null;
   const out = { mismatches: 0 };
+  const sum = (o) => Object.values(o ?? {}).reduce((a, b) => a + b, 0);
+  const total = sum(facets.production_volume?.counts);
   for (const [field, statKey] of [['production_volume', 'by_volume'], ['agency', 'by_agency'], ['source', 'by_source']]) {
-    const f = facets[field]?.counts ?? {};
+    const f = { ...(facets[field]?.counts ?? {}) };
+    const implied = total - sum(f);
+    if (!facets[field]?.truncated && implied > 0 && !('(null)' in f)) f['(null)'] = implied;
     const ours = stats[statKey];
     const keys = [...new Set([...Object.keys(f), ...Object.keys(ours)])].sort();
     out[field] = Object.fromEntries(keys.map((k) => {
