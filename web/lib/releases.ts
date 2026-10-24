@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.2.9';
+export const APP_VERSION = '1.3.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.3.0', date: '2026-10-24', notes: ['Records the City released without box or folder labels can now be narrowed by document type, such as lab reports or chain-of-custody forms, when browsing. Boxes the City did not name are listed by agency instead of all appearing as “Not recorded”, and records with no City collection are shown as “No collection listed by the City”.'] },
   { version: '1.2.9', date: '2026-10-12', notes: ['New AI answers, follow-up questions and answer refreshes now require a human verification check. Search and previously saved answers remain available without verification.'] },
   { version: '1.2.8', date: '2026-10-05', notes: ['Fixed the “More like this” list of similar records on document pages, which was failing to load.'] },
   { version: '1.2.7', date: '2026-09-24', notes: ['The privacy page now explains exactly what the 9/11 Records ChatGPT app receives and returns, and sets out for the whole site what is collected, why, who receives it, how long it is kept, and how to opt out or ask for deletion.'] },
