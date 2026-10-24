@@ -70,6 +70,18 @@ like any other bucket. A mismatch still stops the run before download (enumerate
 Required-stage failures stop the run. Summary/fact and suggested-question failures are logged
 and non-fatal. Check `data/refresh.log` for completion and exceptions.
 
+### Runs from `main` (2026-10-24)
+
+StudioMac runs the refresh from cron in `/Users/henry/Code/sept11-docs`, which stays on `main`:
+
+```
+30 3 * * * cd /Users/henry/Code/sept11-docs && { [ "$(git branch --show-current)" = main ] && git pull -q --ff-only origin main; /bin/bash scripts/refresh_daily.sh; } >> data/refresh.cron.log 2>&1
+```
+
+Each run fast-forwards to `origin/main` first, so pipeline fixes merged to `main` take effect the
+next night. Do feature work in a separate worktree, not that checkout. If it is left on another
+branch, or cannot fast-forward, the pull is skipped and the refresh runs the code it has.
+
 ### Install the launchd daemon
 
 ```bash
