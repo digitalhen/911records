@@ -49,7 +49,8 @@ OCR_AUTO_JOBS=12 scripts/refresh_daily.sh --reprocess-all-ocr
 This finishes the current unreviewed page queue, then reruns the downstream stages and
 publication. Previously approved pages and matching completed comparisons count as reviewed.
 Inspect error/deferred counts: a finished queue does not mean every engine call succeeded.
-The full run uses a two-hour allowance for each summary/fact stage; facts still have a $3 model
+A daily run gives each summary/fact stage one hour (`SOFT_STAGE_SECS`, default 3600); unfinished
+work resumes the next day. The full run uses a two-hour allowance for each summary/fact stage; facts still have a $3 model
 budget. These model stages are non-fatal, so inspect their completion before claiming all
 model-derived data is current. Embeddings and entity stages must succeed before publication.
 
@@ -62,6 +63,10 @@ Flags:
 
 Refresh holds both `data/refresh.lock` and `data/embed/loop.lock` through publication. An active
 ingestion owner stops an overlapping refresh; it does not publish from data being changed.
+The catalog cross-check compares per-volume, agency and source counts with the portal's search
+facets. Facets omit documents with a blank field (all of NYC-WTC0008, added 2026-10-16, has no
+source, box or folder), so the expected blank count is derived from the volume total and compared
+like any other bucket. A mismatch still stops the run before download (enumerate exit 2).
 Required-stage failures stop the run. Summary/fact and suggested-question failures are logged
 and non-fatal. Check `data/refresh.log` for completion and exceptions.
 
