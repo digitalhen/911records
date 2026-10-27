@@ -28,6 +28,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
+from page_text import catalog_text_files
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import summaries as S  # noqa: E402  (shares backends, redaction, privacy check, paths)
@@ -82,7 +83,7 @@ def build_items() -> dict[str, dict]:
     manifest = [json.loads(l) for l in (S.REPO / "data" / "manifest.jsonl").open() if l.strip()]
     doc_types = S.load_doc_types()
     page_status = S.load_page_status()
-    page_files = {f.name[: -len(".pages.jsonl")]: f for f in S.TEXT.rglob("*.pages.jsonl")}
+    page_files = {f.name[: -len(".pages.jsonl")]: f for f in catalog_text_files(S.TEXT)}
     items: dict[str, dict] = {}
     for m in manifest:
         doc = m["bates_start"]

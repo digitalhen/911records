@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from page_text import catalog_text_files
 
 import numpy as np
 
@@ -45,7 +46,7 @@ def build() -> None:
     con.execute("CREATE VIRTUAL TABLE pages USING fts5(doc UNINDEXED, page UNINDEXED, bates UNINDEXED, text, "
                 "tokenize='porter unicode61')")
     n = 0
-    for f in sorted(TEXT.rglob("*.pages.jsonl")):
+    for f in catalog_text_files(TEXT):
         doc = f.name[: -len(".pages.jsonl")]
         rows = []
         for line in f.open():

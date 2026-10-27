@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from page_text import catalog_text_files
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / 'data'
@@ -57,7 +58,7 @@ def main():
     con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
     rows = con.execute("SELECT doc,page,bates FROM pages WHERE status IN ('empty','ocr') ORDER BY doc,page").fetchall()
     con.close()
-    paths = {p.name[:-len('.pages.jsonl')]: p for p in (DATA / 'text').rglob('*.pages.jsonl')}
+    paths = {p.name[:-len('.pages.jsonl')]: p for p in catalog_text_files(DATA / 'text')}
     docs, tasks = {}, []
     for doc, page, bates in rows:
         if args.limit and len(tasks) >= args.limit:

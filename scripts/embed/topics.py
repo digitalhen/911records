@@ -36,7 +36,7 @@ related/near_dupes from --related-src (default data/embed/related.sqlite) unchan
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import hashlib
@@ -276,7 +276,7 @@ def main() -> int:
     V = np.stack([np.mean(acc[d], axis=0) for d in docs]).astype(np.float32)
     V /= np.linalg.norm(V, axis=1, keepdims=True)
 
-    page_files = {f.name[: -len(".pages.jsonl")]: f for f in TEXT.rglob("*.pages.jsonl")}
+    page_files = {f.name[: -len(".pages.jsonl")]: f for f in catalog_text_files(TEXT)}
     texts = [load_body(d, page_files) for d in docs]
 
     shown = shown_vocab()

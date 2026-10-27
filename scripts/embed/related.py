@@ -22,7 +22,7 @@ Usage: .venv/bin/python scripts/embed/related.py [--k 20] [--min-topic 15]
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import json
@@ -123,7 +123,7 @@ def main() -> int:
                       random_state=911).fit_transform(V)
         hd = HDBSCAN(min_cluster_size=args.min_topic, min_samples=5).fit(X)
         labels, probs = hd.labels_, hd.probabilities_
-        page_files = {f.name[: -len(".pages.jsonl")]: f for f in TEXT.rglob("*.pages.jsonl")}
+        page_files = {f.name[: -len(".pages.jsonl")]: f for f in catalog_text_files(TEXT)}
         texts = []
         for d in docs:
             f = page_files.get(d)

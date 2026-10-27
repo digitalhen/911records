@@ -96,7 +96,7 @@ seconds) at the end, whether or not anything was reclassified.
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import hashlib
@@ -310,7 +310,7 @@ def main() -> int:
     page_status = load_page_status()
     existing = load_existing(out_path)
 
-    files = sorted(TEXT.rglob("*.pages.jsonl"))
+    files = catalog_text_files(TEXT)
     if args.limit:
         files = files[: args.limit]
 
