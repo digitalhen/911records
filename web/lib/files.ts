@@ -9,12 +9,7 @@
 // see lib/site.ts), not a filesystem path.
 export const FILES_URL = process.env.FILES_URL || 'http://127.0.0.1:8911';
 
-/**
- * The six agencies in the corpus map to fixed on-disk directory codes under
- * data/pdf, data/text and data/pages. Stable for the life of the corpus
- * (README "Snapshot 2026-09-13"); a new agency in a future release needs a
- * line added here.
- */
+/** Stable launch-agency codes; new labels use the same slug as scripts/lib/portal.mjs. */
 export const AGENCY_DIR: Record<string, string> = {
   'Environmental Protection, Dept. of': 'DEP',
   'Citywide Administrative Services, Dept. of': 'DCAS',
@@ -25,8 +20,8 @@ export const AGENCY_DIR: Record<string, string> = {
 };
 
 export function agencyDir(agency: string | null | undefined): string {
-  if (!agency) return 'unknown';
-  return AGENCY_DIR[agency] ?? agency;
+  if (!agency) return '_unknown-agency';
+  return AGENCY_DIR[agency] ?? agency.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 // Public paths — what the BROWSER should request. These go through Next's
