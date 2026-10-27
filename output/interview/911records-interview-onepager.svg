@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="11in" height="8.5in" viewBox="0 0 792 612" role="img" aria-labelledby="title desc">
+<title id="title">911records.org: From scanned records to cited answers</title>
+<desc id="desc">Flowchart of ingestion, OCR, NLP, embeddings, LLM enrichment, publication, hybrid search and cited answers.</desc>
+<rect x="0" y="0" width="792" height="612" rx="0" fill="#FFFFFF" stroke="none" stroke-width=".7"/>
+<text x="32" y="29" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#126F70">HENRY WILLIAMS  /  911RECORDS.ORG</text>
+<text x="32" y="58" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#172B37">From scanned records to cited answers.</text>
+<text x="32" y="77" font-family="Arial, sans-serif" font-size="10.5" font-weight="400" fill="#526773">An independent research platform for New York City&#x27;s released September 11 records.</text>
+<rect x="32" y="91" width="220" height="24" rx="4" fill="#F5F8F8" stroke="none" stroke-width=".7"/>
+<text x="42" y="107" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">64,385</text>
+<text x="107" y="107" font-family="Arial, sans-serif" font-size="9" font-weight="400" fill="#526773">PDFs available</text>
+<rect x="264" y="91" width="232" height="24" rx="4" fill="#F5F8F8" stroke="none" stroke-width=".7"/>
+<text x="274" y="107" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">231,104</text>
+<text x="339" y="107" font-family="Arial, sans-serif" font-size="9" font-weight="400" fill="#526773">catalog pages</text>
+<rect x="508" y="91" width="252" height="24" rx="4" fill="#F5F8F8" stroke="none" stroke-width=".7"/>
+<text x="518" y="107" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Nightly</text>
+<text x="566" y="107" font-family="Arial, sans-serif" font-size="9" font-weight="400" fill="#526773">catalog refresh + change tracking</text>
+<text x="32" y="134" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#126F70">01  /  BUILD THE EVIDENCE LAYER</text>
+<rect x="32" y="144" width="160" height="79" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="32" y="144" width="3" height="79" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="44" y="160" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">INGESTION</text>
+<text x="44" y="176" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">City catalog + PDFs</text>
+<text x="44" y="191" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">Snapshot and diff; track changes</text>
+<text x="44" y="203" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">and withdrawals. Preserve</text>
+<text x="44" y="215" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">source files and Bates page IDs.</text>
+<rect x="212" y="144" width="324" height="79" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="212" y="144" width="3" height="79" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="224" y="160" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">OCR  /  LOCAL</text>
+<text x="224" y="176" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Extract text + recover scans</text>
+<text x="224" y="191" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">Embedded text &gt; Tesseract fallback &gt; 300-DPI Apple Vision / Tesseract</text>
+<text x="224" y="203" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">comparison. Readability, cross-engine agreement and</text>
+<text x="224" y="215" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">number-preservation gates control replacements.</text>
+<rect x="556" y="144" width="204" height="79" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="556" y="144" width="3" height="79" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="568" y="160" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">PROVENANCE</text>
+<text x="568" y="176" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Selected page text</text>
+<text x="568" y="191" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">Use the current catalog copy and approved</text>
+<text x="568" y="203" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">OCR. Keep each page linked to its original</text>
+<text x="568" y="215" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#526773">scan.</text>
+<polyline points="192,183 208,183" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="208,183 204.48966975243852,184.91770215441682 204.48966975243852,181.08229784558318" fill="#B9C7CD"/>
+<polyline points="536,183 552,183" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="552,183 548.4896697524385,184.91770215441682 548.4896697524385,181.08229784558318" fill="#B9C7CD"/>
+<polyline points="658,223 658,236 148,236" fill="none" stroke="#B9C7CD" stroke-width="0.9"/>
+<polyline points="148,236 148,251" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="148,251 146.08229784558318,247.48966975243852 149.91770215441682,247.48966975243852" fill="#B9C7CD"/>
+<polyline points="396,236 396,251" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="396,251 394.0822978455832,247.48966975243852 397.9177021544168,247.48966975243852" fill="#B9C7CD"/>
+<polyline points="644,236 644,251" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="644,251 642.0822978455832,247.48966975243852 645.9177021544168,247.48966975243852" fill="#B9C7CD"/>
+<rect x="32" y="254" width="232" height="85" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="32" y="254" width="3" height="85" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="44" y="270" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">NLP / LANGUAGE PROCESSING</text>
+<text x="44" y="286" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Structured information</text>
+<text x="44" y="301" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">Python regex + dictionaries extract addresses,</text>
+<text x="44" y="313" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">labs, dates and measurements. Fuzzy matching</text>
+<text x="44" y="325" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">resolves names; rules classify record types.</text>
+<rect x="280" y="254" width="232" height="85" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="280" y="254" width="3" height="85" rx="1" fill="#235C9D" stroke="none" stroke-width=".7"/>
+<text x="292" y="270" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#235C9D">ML</text>
+<text x="292" y="286" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Meaning + discovery</text>
+<text x="292" y="301" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">Local nomic-embed-text: 768-D vectors from</text>
+<text x="292" y="313" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">page chunks. Similarity search, related records</text>
+<text x="292" y="325" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">and scikit-learn topic clustering.</text>
+<rect x="528" y="254" width="232" height="85" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="528" y="254" width="3" height="85" rx="1" fill="#7451A0" stroke="none" stroke-width=".7"/>
+<text x="540" y="270" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#7451A0">LLMs</text>
+<text x="540" y="286" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Readable descriptions</text>
+<text x="540" y="301" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">Local Qwen: titles and summaries. Claude Haiku:</text>
+<text x="540" y="313" font-family="Arial, sans-serif" font-size="9.5" font-weight="400" fill="#526773">topic labels, fallback facts and entity cleanup.</text>
+<polyline points="148,339 148,351" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="148,351 146.08229784558318,347.4896697524385 149.91770215441682,347.4896697524385" fill="#B9C7CD"/>
+<polyline points="396,339 396,351" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="396,351 394.0822978455832,347.4896697524385 397.9177021544168,347.4896697524385" fill="#B9C7CD"/>
+<polyline points="644,339 644,351" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="644,351 642.0822978455832,347.4896697524385 645.9177021544168,347.4896697524385" fill="#B9C7CD"/>
+<rect x="32" y="355" width="728" height="32" rx="5" fill="#172B37" stroke="none" stroke-width=".7"/>
+<text x="44" y="375" font-family="Arial, sans-serif" font-size="8.5" font-weight="700" fill="#B7DADA">PUBLISH</text>
+<text x="100" y="375" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#FFFFFF">PostgreSQL: metadata + text   |   OpenSearch: text + vectors   |   Next.js: two hosts behind Cloudflare</text>
+<text x="32" y="411" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#126F70">02  /  SEARCH, EXPLAIN, VERIFY</text>
+<polyline points="542,387 542,425" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="542,425 540.0822978455832,421.4896697524385 543.9177021544168,421.4896697524385" fill="#B9C7CD"/>
+<text x="550" y="410" font-family="Arial, sans-serif" font-size="8" font-weight="400" fill="#526773">serves retrieval</text>
+<rect x="32" y="428" width="166" height="90" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="32" y="428" width="3" height="90" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="44" y="444" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">INPUT</text>
+<text x="44" y="460" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Researcher asks</text>
+<text x="44" y="475" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Bates ID: open the record.</text>
+<text x="44" y="487" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Keywords: search directly.</text>
+<text x="44" y="499" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Question: use an LLM plan.</text>
+<rect x="214" y="428" width="166" height="90" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="214" y="428" width="3" height="90" rx="1" fill="#7451A0" stroke="none" stroke-width=".7"/>
+<text x="226" y="444" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#7451A0">ROUTING</text>
+<text x="226" y="460" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Plan + retrieve</text>
+<text x="226" y="475" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Haiku plans question terms and</text>
+<text x="226" y="487" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">filters. Embed the query locally</text>
+<text x="226" y="499" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">using the same nomic model.</text>
+<rect x="396" y="428" width="174" height="90" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="396" y="428" width="3" height="90" rx="1" fill="#235C9D" stroke="none" stroke-width=".7"/>
+<text x="408" y="444" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#235C9D">HYBRID SEARCH</text>
+<text x="408" y="460" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Rank the evidence</text>
+<text x="408" y="475" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Filter eligible pages; rank with</text>
+<text x="408" y="487" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">OpenSearch BM25 + k-NN.</text>
+<text x="408" y="499" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Normalize and blend: 40% keyword</text>
+<text x="408" y="511" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">/ 60% semantic.</text>
+<rect x="586" y="428" width="174" height="90" rx="6" fill="#FFFFFF" stroke="#B9C7CD" stroke-width=".7"/>
+<rect x="586" y="428" width="3" height="90" rx="1" fill="#126F70" stroke="none" stroke-width=".7"/>
+<text x="598" y="444" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#126F70">USER EXPERIENCE</text>
+<text x="598" y="460" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#172B37">Results you can check</text>
+<text x="598" y="475" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Search: snippets + filters. Ask:</text>
+<text x="598" y="487" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">Haiku uses up to 12 excerpts with</text>
+<text x="598" y="499" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">checked citation IDs. Verify in the</text>
+<text x="598" y="511" font-family="Arial, sans-serif" font-size="9.3" font-weight="400" fill="#526773">scan + OCR viewer.</text>
+<polyline points="198,473 210,473" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="210,473 206.48966975243852,474.9177021544168 206.48966975243852,471.0822978455832" fill="#B9C7CD"/>
+<polyline points="380,473 392,473" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="392,473 388.4896697524385,474.9177021544168 388.4896697524385,471.0822978455832" fill="#B9C7CD"/>
+<polyline points="570,473 582,473" fill="none" stroke="#B9C7CD" stroke-width="1"/>
+<polygon points="582,473 578.4896697524385,474.9177021544168 578.4896697524385,471.0822978455832" fill="#B9C7CD"/>
+<text x="32" y="540" font-family="Arial, sans-serif" font-size="8.5" font-weight="700" fill="#172B37">EXPERIENCE DEMONSTRATED</text>
+<text x="32" y="559" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#235C9D">ML</text>
+<text x="66" y="559.0" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">Embedding pipelines, clustering and OCR</text>
+<text x="66" y="570.5" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">quality evaluation.</text>
+<text x="280" y="559" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#126F70">NLP</text>
+<text x="314" y="559.0" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">Information extraction, canonicalization and</text>
+<text x="314" y="570.5" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">document classification.</text>
+<text x="528" y="559" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#7451A0">LLMs</text>
+<text x="562" y="559.0" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">Local inference, structured outputs and</text>
+<text x="562" y="570.5" font-family="Arial, sans-serif" font-size="9.2" font-weight="400" fill="#172B37">retrieval-augmented generation.</text>
+<polyline points="32,588 760,588" fill="none" stroke="#B9C7CD" stroke-width="0.6"/>
+<text x="32" y="601" font-family="Arial, sans-serif" font-size="8" font-weight="400" fill="#526773">Pretrained models integrated into a production system. Original scans remain the evidence.</text>
+<text x="619" y="601" font-family="Arial, sans-serif" font-size="8" font-weight="400" fill="#526773">Corpus: October 27, 2026</text>
+</svg>
