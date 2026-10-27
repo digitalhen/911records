@@ -80,7 +80,7 @@ Usage:
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import datetime
@@ -589,7 +589,7 @@ def load_all_page_mentions() -> dict[tuple[str, int], dict[str, list[dict]]]:
 
 
 def index_text_files() -> dict[str, Path]:
-    return {p.name[: -len(".pages.jsonl")]: p for p in TEXT.rglob("*.pages.jsonl")}
+    return {p.name[: -len(".pages.jsonl")]: p for p in catalog_text_files(TEXT)}
 
 
 def doc_pages(f: Path, page_status: dict[tuple[str, int], str]) -> list[tuple[int, str | None, str]]:

@@ -33,7 +33,7 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "data" / "text"
@@ -89,7 +89,7 @@ def main() -> int:
     known = {(d, p): (sha, status) for d, p, sha, status in con.execute("SELECT doc, page, text_sha1, status FROM pages")}
     chunk_counts = {(d, p): n for d, p, n in con.execute(
         "SELECT doc, page, count(*) FROM chunks WHERE model=? GROUP BY doc, page", (MODEL,))}
-    files = sorted(TEXT.rglob("*.pages.jsonl"))
+    files = catalog_text_files(TEXT)
     if args.limit_docs:
         files = files[: args.limit_docs]
 

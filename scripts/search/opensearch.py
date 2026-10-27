@@ -65,7 +65,7 @@ import numpy as np
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'embed'))
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 
 REPO = Path(__file__).resolve().parents[2]
 EMB = REPO / "data" / "embed"
@@ -263,7 +263,7 @@ def index(limit: int = 0) -> None:
             sent += len(lines) // 2
             lines = []
 
-    files = sorted(TEXT.rglob("*.pages.jsonl"))
+    files = catalog_text_files(TEXT)
     if limit:
         files = files[:limit]
     for f in files:

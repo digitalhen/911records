@@ -29,6 +29,7 @@ import random
 import re
 import sqlite3
 from pathlib import Path
+from page_text import catalog_text_files
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_DB = REPO / "data" / "embed" / "p4-facts.sqlite"
@@ -67,7 +68,7 @@ def tier_label(extractor: str, confidence: float | None) -> str:
 
 
 def index_text_files() -> dict[str, Path]:
-    return {p.name[: -len(".pages.jsonl")]: p for p in TEXT.rglob("*.pages.jsonl")}
+    return {p.name[: -len(".pages.jsonl")]: p for p in catalog_text_files(TEXT)}
 
 
 def page_text(files_by_doc: dict[str, Path], doc: str, page: int) -> str | None:

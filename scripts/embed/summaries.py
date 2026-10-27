@@ -73,7 +73,7 @@ far, seconds) at every checkpoint and at the end.
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import concurrent.futures
@@ -796,7 +796,7 @@ def main() -> int:
     manifest = [json.loads(l) for l in (REPO / "data" / "manifest.jsonl").open() if l.strip()]
     doc_types = load_doc_types()
     page_status = load_page_status()
-    page_files = {f.name[: -len(".pages.jsonl")]: f for f in TEXT.rglob("*.pages.jsonl")}
+    page_files = {f.name[: -len(".pages.jsonl")]: f for f in catalog_text_files(TEXT)}
     roles_words = load_roles_words()
     existing = load_existing(out_path)
     cache = Cache(CACHE_PATH)

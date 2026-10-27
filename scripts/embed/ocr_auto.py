@@ -22,7 +22,7 @@ import uuid
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / 'scripts/eval'))
 from ocr_upgrade import VERSION, DECISION_VERSION
-from page_text import effective_rows, load_ocr
+from page_text import catalog_text_files, effective_rows, load_ocr
 
 POLICY = f'{VERSION}:{DECISION_VERSION}:auto-1'
 
@@ -54,7 +54,7 @@ def candidates(data: Path, con, active_docs=None, now=None):
     known = {r[0]: r[1:] for r in con.execute('SELECT * FROM reviews')}
     pending = []
     counts = dict(pages_seen=0, approved=0, cached=0, deferred=0)
-    for source in sorted((data / 'text').rglob('*.pages.jsonl')):
+    for source in catalog_text_files(data / 'text'):
         doc = source.name.removesuffix('.pages.jsonl')
         if active_docs is not None and doc not in active_docs:
             continue

@@ -88,7 +88,7 @@ data/site/site.sqlite. Prints a one-line JSON summary of row counts and timing.
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import collections
 import csv
@@ -791,9 +791,8 @@ def main() -> int:
 
     page_status = load_page_status()
     ocr_pages = set()
-    for sidecar in (REPO / 'data' / 'text').rglob('*.ocr.jsonl'):
-        source = sidecar.with_name(sidecar.name.removesuffix('.ocr.jsonl') + '.pages.jsonl')
-        if source.exists():
+    for source in catalog_text_files(REPO / 'data' / 'text'):
+        if source.with_name(source.name.removesuffix('.pages.jsonl') + '.ocr.jsonl').exists():
             doc = source.name.removesuffix('.pages.jsonl')
             ocr_pages.update((doc, int(row['page'])) for row in effective_rows(source) if row['text_source'] == 'ours')
     status_counts = page_status_counts(page_status)

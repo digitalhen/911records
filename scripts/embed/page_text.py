@@ -45,3 +45,34 @@ def effective_rows(path: Path):
                 row = json.loads(line)
                 text, origin = select_text(row, ocr)
                 yield {**row, 'text': text, 'chars': len(text), 'text_source': origin}
+
+
+def catalog_text_files(text_dir: Path) -> list[Path]:
+    """Read each record at its catalogued location, never an archived volume copy.
+
+    Removed records retain their manifest paths for historical publication. Missing
+    extractions are skipped, just as with directory discovery; an old copy must not
+    silently stand in for a missing current extraction.
+    Standalone fixtures without a manifest may scan only unambiguous filenames.
+    """
+    manifest = text_dir.parent / 'manifest.jsonl'
+    if manifest.exists():
+        repo = text_dir.parent.parent
+        files = {}
+        for line in manifest.read_text().splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            doc = row['bates_start']
+            if doc in files:
+                raise ValueError(f'Duplicate catalog document: {doc}')
+            local = row.get('local_text')
+            files[doc] = (repo / local).with_suffix('.pages.jsonl') if local else None
+        return sorted(p for p in files.values() if p is not None and p.exists())
+    files = sorted(text_dir.rglob('*.pages.jsonl'))
+    seen = set()
+    for path in files:
+        if path.name in seen:
+            raise ValueError(f'A catalog is required to select the current copy of {path.name}')
+        seen.add(path.name)
+    return files

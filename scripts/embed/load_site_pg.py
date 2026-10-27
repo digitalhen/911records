@@ -30,7 +30,7 @@ Requires: pip install "psycopg[binary]" into .venv (already done in this repo's 
 """
 from __future__ import annotations
 
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import argparse
 import json
 import os
@@ -236,7 +236,7 @@ def page_text_rows(ocr_status: dict[tuple[str, int], str]):
     """(doc, page, text, source), using the same text as tags and embeddings.
     The status argument remains for compatibility; status is not an OCR-selection rule.
     """
-    for f in sorted(TEXT_DIR.rglob("*.pages.jsonl")):
+    for f in catalog_text_files(TEXT_DIR):
         doc = f.name.removesuffix('.pages.jsonl')
         for row in effective_rows(f):
             yield doc, int(row['page']), row['text'], row['text_source']

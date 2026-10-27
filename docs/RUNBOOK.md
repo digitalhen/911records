@@ -447,3 +447,13 @@ Verification tests: `node --import ./scripts/lib/register-server-only-stub.mjs
 --import tsx --test lib/ask/captcha.test.ts lib/ask/grant.test.ts` from `web/`.
 The grant database test additionally requires `RUN_ASK_GRANT_DB_TESTS=1` and
 configured database/Turnstile preview environment; it never calls a paid model.
+
+### Records moved between volumes (2026-10-27)
+
+Text readers select `local_text` from the current manifest through
+`page_text.catalog_text_files`. Archived extractions stay on disk, but must not be
+scanned alongside the current copy: the October 16 release moved 797 records and
+previous directory scans caused duplicate `page_text` keys during publication.
+The same selection applies to OCR, embeddings, tags, summaries, facts and search.
+After fixing a publication failure, use `scripts/refresh_daily.sh --publish-only`
+to rebuild and publish completed derived data without repeating model stages.

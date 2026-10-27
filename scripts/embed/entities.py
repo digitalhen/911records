@@ -60,7 +60,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from page_text import effective_rows
+from page_text import catalog_text_files, effective_rows
 import canonical  # noqa: E402  (address/lab/contractor canonicalisation, issue #19)
 
 REPO = Path(__file__).resolve().parents[2]
@@ -432,7 +432,7 @@ def rescan_dates(con: sqlite3.Connection) -> int:
     done = {(d, p) for d, p in con.execute("SELECT doc, page FROM pages WHERE regex_done > 0")}
     t0 = time.time()
     changed = pages_seen = 0
-    for f in sorted(TEXT.rglob("*.pages.jsonl")):
+    for f in catalog_text_files(TEXT):
         doc = f.name[: -len(".pages.jsonl")]
         for row in effective_rows(f):
             page, text = int(row["page"]), row.get("text") or ""
@@ -500,7 +500,7 @@ def main() -> int:
         return 0
 
     state = {(d, p): (s, r, g) for d, p, s, r, g in con.execute("SELECT doc,page,text_sha1,regex_done,gliner_done FROM pages")}
-    files = sorted(TEXT.rglob("*.pages.jsonl"))
+    files = catalog_text_files(TEXT)
     if args.limit_docs:
         files = files[: args.limit_docs]
 
