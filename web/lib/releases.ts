@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.3.2';
+export const APP_VERSION = '1.3.3';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.3.3', date: '2026-10-28', notes: ['On smaller screens, navigation opens from a compact Menu button instead of wrapping across several lines. The menu supports keyboard navigation and closes with Escape or after choosing a page.'] },
   { version: '1.3.2', date: '2026-10-27', notes: ['Fixed missing scanned images and PDF links for records from agencies newly included in the October release.'] },
   { version: '1.3.1', date: '2026-10-27', notes: ['Fixed a problem that prevented newly released records from appearing on the site when the City moved existing records between volumes. Document text and search now use the current catalogued copy.'] },
   { version: '1.3.0', date: '2026-10-24', notes: ['Records the City released without box or folder labels can now be narrowed by document type, such as lab reports or chain-of-custody forms, when browsing. Boxes the City did not name are listed by agency instead of all appearing as “Not recorded”, and records with no City collection are shown as “No collection listed by the City”.'] },
