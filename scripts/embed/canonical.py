@@ -258,6 +258,45 @@ def gazetteer_street_names(gazetteer: Dict[str, List[GazEntry]]) -> set:
     return names
 
 
+# ------------------------------------------------------ south of Canal Street (Henry, 2026-11-05) ---
+# Lab reports from a sampling site name the lab on the same page, so a busy downtown site (Stuyvesant
+# HS at 345 Chambers, PS 89 at 201 Warren, 130 Liberty) could be read as the lab's own letterhead
+# address and dropped from the map. Henry's rule: a Manhattan address south of Canal Street is always
+# a sampling site. The roll has no coordinates, so this uses Manhattan tax blocks, which are numbered
+# from the Battery northward: the lots fronting Canal Street are blocks 196-231 (west) and 283-303
+# (east), and every block below 196 lies south of it. Approximate by design: a few south-of-Canal
+# blocks on the Lower East Side (numbered in the 200s) are not counted, which only means they keep the
+# existing organisation/site test.
+CANAL_FIRST_BLOCK = 196
+
+
+def manhattan_block(bbl: str | None) -> int | None:
+    """Tax block from a 10-digit Manhattan BBL ("1000160215" -> 16); None for anything else."""
+    b = (bbl or "").strip()
+    if len(b) == 10 and b.isdigit() and b[0] == "1":
+        return int(b[1:6])
+    return None
+
+
+def downtown_only_streets(gazetteer: Dict[str, List[GazEntry]]) -> set:
+    """Streets whose every roll lot lies south of Canal (e.g. SOUTH END AVENUE, HARRISON STREET):
+    an unmatched house number on one of these is still downtown."""
+    blocks: Dict[str, set] = {}
+    for entries in gazetteer.values():
+        for ge in entries:
+            blk = manhattan_block(ge.bbl)
+            if blk is not None:
+                blocks.setdefault(ge.street_norm, set()).add(blk)
+    return {street for street, bs in blocks.items() if bs and max(bs) < CANAL_FIRST_BLOCK}
+
+
+def is_south_of_canal(bbl: str | None, street_norm: str | None, downtown_streets: set | None) -> bool:
+    blk = manhattan_block(bbl)
+    if blk is not None:
+        return blk < CANAL_FIRST_BLOCK
+    return bool(street_norm and downtown_streets and street_norm in downtown_streets)
+
+
 # --------------------------------------------------------- borough / address-role (issue #19) ---
 # Henry, 2026-09-14, looking at a building page: "59-17 JUNCTION BLVD -> this is in Queens; it's a
 # testing center." Lab/contractor mailing addresses outside Manhattan were being treated as

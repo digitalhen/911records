@@ -12,7 +12,7 @@ One OpenSearch document per PAGE (id "<bates_start>_p<page>"):
   doc, page, bates_page, bates_start, bates_end, agency, source, box, folder, volume, page_count,
   pdf_size, ocr_status (ok|empty|junk|ocr), ocr_source (pdftotext|ours), image_ready (bool)
   doc_status (present|removed), first_seen (date)
-  doc_type (cover_sheet|lab_report|chain_of_custody|memo_letter|sign_in_sheet|invoice|
+  doc_type (cover_sheet|lab_report|lab_count_sheet|chain_of_custody|memo_letter|sign_in_sheet|invoice|
             permit_application|form|photo_log|other), doc_type_confidence (P3, issue #28,
             scripts/embed/doctypes.py's data/embed/p3-doctypes.jsonl; absent when that file hasn't
             classified the document yet)

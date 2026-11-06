@@ -334,6 +334,27 @@ def cover_sheet_title(folder: str | None) -> str:
     return f"Folder cover sheet — {address}" if address else "Folder cover sheet"
 
 
+RE_CS_GROUP = re.compile(r"Lab\s*[GC]r[o0]u[pD]\s*#?\s*[:;.]?\s*(\d{2,6})", re.I)
+RE_CS_SAMPLE = re.compile(r"Lab\s*Sample\s*#?\s*[:;.]?\s*([A-Za-z0-9-]{1,10})", re.I)
+RE_CS_DUST = re.compile(r"MICR\w?VAC|Surface\s*Area\s*Sampled|\(ML\)", re.I)
+
+
+def count_sheet_title_summary(page1: str) -> tuple[str, str]:
+    """Rule-based title/summary for doctypes.py's lab_count_sheet (Henry, 2026-11-05): ~30,500
+    near-identical TEM bench sheets from the October 16, 2026 release need no model call."""
+    medium = "dust" if RE_CS_DUST.search(page1[:400]) else "air"
+    group, sample = RE_CS_GROUP.search(page1), RE_CS_SAMPLE.search(page1)
+    title = f"TEM asbestos {medium} count sheet"
+    if group:
+        title += f", lab group {group.group(1)}"
+        if sample:
+            title += f", sample {sample.group(1)}"
+    what = "a settled-dust (microvacuum)" if medium == "dust" else "an air"
+    summary = (f"Laboratory bench sheet tallying asbestos structures seen by electron microscope for {what} "
+               "sample; raw counts, not the reported result.")
+    return title, summary
+
+
 COVER_SHEET_SUMMARY = (
     "A City-portal property-lookup separator page (address, Block/Lot, BIN) filed ahead of the "
     "folder's substantive records, not a record of its own."
@@ -824,6 +845,18 @@ def main() -> int:
                 continue
             rows[doc] = {"doc": doc, "title": cover_sheet_title(folder_plain), "summary": COVER_SHEET_SUMMARY,
                          "confidence": 1.0, "model": None, "hash": h}
+            rule_based += 1
+            continue
+
+        if doc_type == "lab_count_sheet":
+            p1 = page_text(doc, 1, page_status, page_files)
+            h = input_hash("lab_count_sheet", None, box, agency, page_count, p1[:400])
+            cached = existing.get(doc)
+            if cached and cached.get("hash") == h:
+                reused += 1
+                continue
+            title, summary = count_sheet_title_summary(p1)
+            rows[doc] = {"doc": doc, "title": title, "summary": summary, "confidence": 1.0, "model": None, "hash": h}
             rule_based += 1
             continue
 
