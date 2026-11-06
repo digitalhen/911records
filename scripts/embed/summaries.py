@@ -150,7 +150,14 @@ RECORD_WORDS = {
     "daily", "weekly", "monthly", "final", "draft", "preliminary", "revised", "interim", "annual",
     "page", "pages", "batch", "box", "folder", "volume", "no", "number", "id", "ref",
 }
-ALLOWED_WORDS = ALLOWED_PLACE_WORDS | ORG_ALLOW_WORDS | RECORD_WORDS
+# Downtown places the October release names constantly (schools, streets near the site). Some of
+# these also occur as surnames in the roles table, which made every Stuyvesant High School title fail.
+DOWNTOWN_PLACE_WORDS = {
+    "stuyvesant", "high", "school", "schools", "warren", "murray", "barclay", "rector", "albany",
+    "cedar", "thames", "pine", "west", "north", "south", "tribeca", "battery", "street", "avenue",
+    "place", "plaza", "terrace", "esplanade", "pace", "borough", "community", "college",
+}
+ALLOWED_WORDS = ALLOWED_PLACE_WORDS | ORG_ALLOW_WORDS | RECORD_WORDS | DOWNTOWN_PLACE_WORDS
 
 
 def redact_titlecase(text: str) -> str:
