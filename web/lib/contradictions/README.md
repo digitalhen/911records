@@ -1,6 +1,6 @@
 # Adding a comparison
 
-Add an entry to `data.ts`. Start with `status: 'draft'`; drafts never appear on the page. Give it a unique, stable kebab-case slug (used as its permanent page anchor).
+Add an entry to `data.ts`. Start with `status: 'draft'`; drafts never appear on the page. Give it a unique, stable kebab-case slug (used as its permanent page anchor) and set `release` to the City release that first published its records. For a new City release, add it to the top of `RELEASES` in `data.ts`; the page groups entries under it, newest first.
 
 Check both passages against original scans or an official archive before publishing. Record attribution, document date, exact Bates page and source URL. Distinguish draft edits, conflicting institutions, unsupported reassurance, and direct contradictions. Include surrounding qualifications, counterevidence and what the comparison does not establish. Do not infer intent, individual exposure or disease causation.
 

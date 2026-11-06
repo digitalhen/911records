@@ -5,11 +5,12 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.3.3';
+export const APP_VERSION = '1.4.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.4.0', date: '2026-11-05', notes: ['Two new Contradictions entries from the City’s October 2026 release: a Health Department form letter that told residents cleaning asbestos-containing dust was “not recommended”, set beside the final report that recommended frequent cleaning; and a state health official’s email warning that listing dioxin for the indoor clean-up would contradict EPA’s public message, set beside the task force’s later finding on dioxin.', 'Contradictions are now grouped by the City release their records came from, newest first, with a heading and jump links for each release. Existing links to individual comparisons still work.'] },
   { version: '1.3.3', date: '2026-10-28', notes: ['On smaller screens, navigation opens from a compact Menu button instead of wrapping across several lines. The menu supports keyboard navigation and closes with Escape or after choosing a page.'] },
   { version: '1.3.2', date: '2026-10-27', notes: ['Fixed missing scanned images and PDF links for records from agencies newly included in the October release.'] },
   { version: '1.3.1', date: '2026-10-27', notes: ['Fixed a problem that prevented newly released records from appearing on the site when the City moved existing records between volumes. Document text and search now use the current catalogued copy.'] },
