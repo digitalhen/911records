@@ -36,16 +36,28 @@ export function entityLinkHref(row: Pick<PanelRow,'type'|'slug'|'bin'>): string 
 // site.places row of its own — place_pages is built from a separate extraction pass, so
 // /building/<bin> would 404. Only surface a bin here when a building page actually resolves.
 const LINKABLE_BIN = `(CASE WHEN e.bin IS NOT NULL AND EXISTS (SELECT 1 FROM site.places pl WHERE pl.kind='bin' AND pl.key=e.bin) THEN e.bin END) AS bin`;
+// Live per-entity counts (removed documents excluded) without recounting entity_pages per request.
+// site.entities.n_docs/n_pages are the pipeline's counts over ALL of an entity's entity_pages rows,
+// removed documents included (scripts/embed/build_site_db.py). Since the City's October 2026
+// release a single substance (asbestos) has ~63k page rows and the substance panel ~400k, so the
+// old per-entity COUNT(DISTINCT) LATERAL took ~5.6s and hit the 5s statement timeout, crashing
+// /entities, /entities/substance and entity suggestions. Subtracting the few hundred rows that sit
+// on removed documents (indexed by doc) gives the same numbers (checked for every entity against a
+// full recount, 2026-11-05) in milliseconds. Exposes id,type,slug,label,dates,bin,bbl,n_docs,n_pages as `e`.
+const REMOVED_COUNTS = `LEFT JOIN (SELECT ep.entity_id,COUNT(DISTINCT ep.doc) AS docs,COUNT(DISTINCT (ep.doc,ep.page)) AS pages
+    FROM site.documents d JOIN site.entity_pages ep USING(doc) WHERE d.status='removed' GROUP BY ep.entity_id) rm ON rm.entity_id=e.id`;
+function liveEntities(where: string): string {
+  return `(SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,e.bin,e.bbl,
+    GREATEST(0,COALESCE(e.n_docs,0)-COALESCE(rm.docs,0)) AS n_docs,GREATEST(0,COALESCE(e.n_pages,0)-COALESCE(rm.pages,0)) AS n_pages
+    FROM site.entities e ${REMOVED_COUNTS} WHERE ${where}) e`;
+}
 /** Top N entities of one type by page count, plus the total count of all indexed entities of that type. Used by the /entities panel grid and its "See all" link. */
 export async function panelEntities(type: string, limit = 8): Promise<{ rows: PanelRow[]; total: number }> {
   if (type === 'signatory') return panelSignatories(limit);
   if (!(ENTITY_TYPES as readonly string[]).includes(type)) return { rows: [], total: 0 };
   const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,${LINKABLE_BIN},e.bbl,
-    c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
-    JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
-      FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
-      WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed') c ON true
-    WHERE e.type=$1 AND c.n_pages>0 ORDER BY c.n_pages DESC,e.id LIMIT $2`, [type, limit]);
+    e.n_docs,e.n_pages,COUNT(*) OVER() AS total FROM ${liveEntities('e.type=$1')}
+    WHERE e.n_pages>0 ORDER BY e.n_pages DESC,e.id LIMIT $2`, [type, limit]);
   return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
 }
 async function panelSignatories(limit = 8): Promise<{ rows: PanelRow[]; total: number }> {
@@ -96,11 +108,8 @@ export async function listEntities(type: string, opts: { letter?: string; offset
   const params: unknown[] = [type, limit, offset];
   if (letter) params.push(`${letter}%`);
   const rows = await queryReadSafe<PanelRow & { total: number }>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,${LINKABLE_BIN},e.bbl,
-    c.n_docs,c.n_pages,COUNT(*) OVER() AS total FROM site.entities e
-    JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
-      FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
-      WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed') c ON true
-    WHERE e.type=$1 AND c.n_pages>0 ${letter ? 'AND e.label ILIKE $4' : ''}
+    e.n_docs,e.n_pages,COUNT(*) OVER() AS total FROM ${liveEntities('e.type=$1')}
+    WHERE e.n_pages>0 ${letter ? 'AND e.label ILIKE $4' : ''}
     ORDER BY e.label ASC,e.id LIMIT $2 OFFSET $3`, params);
   return { rows: rows.map(withDates), total: rows[0]?.total ?? 0 };
 }
@@ -113,13 +122,16 @@ export async function suggestEntities(q: string): Promise<Entity[]> {
   const pattern = `%${q.slice(0, 120).replace(/[\\%_]/g, '\\$&')}%`;
   const [entities, signatories] = await Promise.all([
     queryReadSafe<Entity>(`SELECT e.id,e.type,e.slug,e.label,e.first_date,e.last_date,
-      s.doc,s.page,s.confidence,c.n_docs,c.n_pages FROM site.entities e
-      JOIN LATERAL (SELECT DISTINCT ep.doc,ep.page,ep.confidence FROM site.entity_pages ep JOIN site.documents d USING(doc)
-        JOIN site.pages p USING(doc,page) WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed' ORDER BY ep.doc,ep.page LIMIT 1) s ON true
-      JOIN LATERAL (SELECT COUNT(DISTINCT ep.doc) AS n_docs,COUNT(DISTINCT (ep.doc,ep.page)) AS n_pages
-        FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
-        WHERE ep.entity_id=e.id AND d.status IS DISTINCT FROM 'removed') c ON true
-      WHERE e.type=ANY($1::text[]) AND e.label ILIKE $2 ORDER BY e.n_pages DESC,e.id LIMIT 60`, [ENTITY_TYPES, pattern]),
+      s.doc,s.page,s.confidence,e.n_docs,e.n_pages
+      FROM (SELECT * FROM ${liveEntities('e.type=ANY($1::text[]) AND e.label ILIKE $2')} WHERE e.n_pages>0 ORDER BY e.n_pages DESC,e.id LIMIT 60) e
+      -- A sample available source page: the first one found, not the lowest by doc/page — sorting
+      -- every page of a large entity (asbestos: ~63k) for each of 60 suggestions took seconds.
+      -- OFFSET 0 keeps the scan on entity_pages_entity rather than walking entity_pages_doc.
+      JOIN LATERAL (SELECT x.doc,x.page,x.confidence FROM (SELECT ep.doc,ep.page,ep.confidence FROM site.entity_pages ep WHERE ep.entity_id=e.id OFFSET 0) x
+        WHERE NOT EXISTS (SELECT 1 FROM site.documents d WHERE d.doc=x.doc AND d.status='removed')
+          AND EXISTS (SELECT 1 FROM site.pages p WHERE p.doc=x.doc AND p.page=x.page)
+        LIMIT 1) s ON true
+      ORDER BY e.n_pages DESC,e.id`, [ENTITY_TYPES, pattern]),
     queryReadSafe<Entity>(`SELECT s.id,s.slug,'signatory' AS type,COALESCE(NULLIF(s.title,''),'Official signatory') AS label,
       s.first_date,s.last_date,c.n_docs,c.n_pages,x.doc,x.page,x.confidence,x.role FROM site.signatories s
       JOIN LATERAL (SELECT sp.doc,sp.page,sp.confidence,sp.action AS role
