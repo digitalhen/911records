@@ -5,11 +5,13 @@
  * in plain language; never internal work.
  * The footer renders the version as the link to /releases; /api/health reports it.
  */
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export type Release = { version: string; date: string; notes: string[] };
 
 export const RELEASES: Release[] = [
+  { version: '1.5.0', date: '2026-11-06', notes: ['About 30,000 laboratory count sheets from the City’s October release now have their own document type, “Lab count sheet”, with a plain title for each, and are grouped in one topic instead of crowding the topic map.', 'The building map and building pages now include downtown buildings that were left off because a laboratory was named on the same pages, such as Stuyvesant High School, P.S. 89 and P.S. 234.', 'The site description now reflects both City releases.'] },
+  { version: '1.4.1', date: '2026-11-06', notes: ['Fixed the Entities page, which showed an error instead of loading after the City’s October release, and made entity search suggestions load quickly again.'] },
   { version: '1.4.0', date: '2026-11-05', notes: ['Two new Contradictions entries from the City’s October 2026 release: a Health Department form letter that told residents cleaning asbestos-containing dust was “not recommended”, set beside the final report that recommended frequent cleaning; and a state health official’s email warning that listing dioxin for the indoor clean-up would contradict EPA’s public message, set beside the task force’s later finding on dioxin.', 'Contradictions are now grouped by the City release their records came from, newest first, with a heading and jump links for each release. Existing links to individual comparisons still work.'] },
   { version: '1.3.3', date: '2026-10-28', notes: ['On smaller screens, navigation opens from a compact Menu button instead of wrapping across several lines. The menu supports keyboard navigation and closes with Escape or after choosing a page.'] },
   { version: '1.3.2', date: '2026-10-27', notes: ['Fixed missing scanned images and PDF links for records from agencies newly included in the October release.'] },

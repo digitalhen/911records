@@ -48,7 +48,7 @@ export interface DocumentRow {
   n_related_cross: number | null;
   official_url: string | null;
   /** Rule-based "what is this document" label (issue #28, scripts/embed/doctypes.py) — 'cover_sheet',
-   *  'lab_report', 'chain_of_custody', 'memo_letter', 'sign_in_sheet', 'invoice',
+   *  'lab_report', 'lab_count_sheet', 'chain_of_custody', 'memo_letter', 'sign_in_sheet', 'invoice',
    *  'permit_application', 'form', 'photo_log', 'other', or null before the pipeline has
    *  classified this document (or before the column has been loaded at all — getDocument's
    *  `SELECT *` tolerates the column's absence, per docs/briefs/COMMON-web.md's schema-first rule).

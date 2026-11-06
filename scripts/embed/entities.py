@@ -379,6 +379,7 @@ def classify_addresses(con: sqlite3.Connection) -> dict:
     migrate_canonical_columns(con)
     gazetteer = canonical.load_gazetteer(GAZETTEER_CSV) if GAZETTEER_CSV.exists() else None
     manhattan_streets = canonical.gazetteer_street_names(gazetteer) if gazetteer else None
+    downtown_streets = canonical.downtown_only_streets(gazetteer) if gazetteer else None
 
     org_pages = {(d, p) for d, p in con.execute(
         "SELECT DISTINCT doc, page FROM mentions WHERE label IN ('lab','contractor')")}
@@ -398,6 +399,7 @@ def classify_addresses(con: sqlite3.Connection) -> dict:
     rows = []
     borough_counts: dict[str, int] = collections.Counter()
     role_counts: dict[str, int] = collections.Counter()
+    downtown_overrides = 0  # organisation-shaped addresses kept as sites because they are south of Canal
     reclassified = 0  # borough != 'Manhattan' or role == 'organisation' — the count the report wants
     for ckey, g in by_key.items():
         house, street = canonical.split_house_street(g["label"] or "")
@@ -406,6 +408,12 @@ def classify_addresses(con: sqlite3.Connection) -> dict:
         borough = (canonical.infer_borough(house, sname, stype, g["bbl"], manhattan_streets)
                    if house is not None else "Outside Manhattan")
         role = "organisation" if g["org_n"] / g["n"] >= 0.5 else "site"
+        # Henry, 2026-11-05: an address south of Canal Street is always a sampling site — lab reports
+        # from downtown buildings name the lab on the same page, which made busy sites look like
+        # letterheads (Stuyvesant HS, PS 89, 130 Liberty Street all fell off the map).
+        if role == "organisation" and borough == "Manhattan" and canonical.is_south_of_canal(g["bbl"], street, downtown_streets):
+            role = "site"
+            downtown_overrides += 1
         borough_counts[borough] += 1
         role_counts[role] += 1
         if borough != "Manhattan" or role == "organisation":
@@ -421,6 +429,7 @@ def classify_addresses(con: sqlite3.Connection) -> dict:
         "by_borough": dict(borough_counts),
         "by_address_role": dict(role_counts),
         "reclassified_non_manhattan_or_org": reclassified,
+        "south_of_canal_kept_as_site": downtown_overrides,
     }
 
 

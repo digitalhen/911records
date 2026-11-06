@@ -22,6 +22,12 @@ Types, in the priority order rules are tried (first match wins):
                       found anywhere in the sampled corpus (checked for literal "Box #"/"Folder:"
                       lines with little else on the page); if the daily catalog job later mirrors
                       one, RE_BLOCK_LOT/RE_BIN won't catch it and this docstring should be updated.
+  lab_count_sheet    One- or two-page laboratory bench sheet headed "TEM Asbestos (air) Count Sheet" (or
+                      the MICROVAC dust variant), with grid/filter/lab-group fields. Roughly 30,500 of
+                      the City's October 16, 2026 release are these (Board of Education school
+                      sampling), e.g. NYC-WTC_000228062. They record raw structure counts per grid
+                      opening, not reported results, so they get their own type rather than
+                      swamping lab_report. Confidence 0.9. (Added 2026-11-05, RULES_VERSION 5.)
   chain_of_custody   Literal phrase "chain of custody" (42 hits in the sample) — e.g.
                       NYC-WTC_000164362 p3 ("... CEQ ... DRAFT 10/17/03 ... chain of custody ...").
                       Confidence 0.85.
@@ -115,7 +121,7 @@ OUT_PATH = EMB / "p3-doctypes.jsonl"
 # Bumped whenever a rule (any RE_* above or classify()'s logic) changes, so a cached row keyed only
 # on text_sha1 doesn't silently survive a rule fix forever — a document's text is unchanged but its
 # classification should not be. load_existing() only reuses a row whose rules_version also matches.
-RULES_VERSION = 4
+RULES_VERSION = 5
 
 WATERMARK_RE = re.compile(r"NYC\s*9[\/\s]*1+1?\s*Public\s*Portal\s*Document", re.I)
 
@@ -205,6 +211,10 @@ def strip_watermark(text: str) -> str:
     return WATERMARK_RE.sub("", text or "")
 
 
+RE_COUNT_SHEET = re.compile(r"TEM\W{0,3}Asbe\w*\W{0,3}\w{0,10}\W{0,3}Count\W{0,2}Sheet", re.I)
+RE_COUNT_SHEET_FIELDS = re.compile(r"Grid\s*Opening|GRID\s*BOX|Lab\s*Group|Filter\s*Type|Area\s*Examined", re.I)
+
+
 def classify(page1: str, full: str, n_pages: int) -> tuple[str, float, str]:
     """(doc_type, confidence, reason) — first matching rule wins, in the priority order documented
     above. `page1` and `full` both have the portal watermark already stripped."""
@@ -212,6 +222,9 @@ def classify(page1: str, full: str, n_pages: int) -> tuple[str, float, str]:
         if RE_BIN.search(page1):
             return ("cover_sheet", 0.9, "single page; address header + Block/Lot + BIN (NYC DEP property cover sheet)")
         return ("cover_sheet", 0.55, "single page with Block/Lot but no BIN match (possible OCR miss on the BIN line)")
+
+    if n_pages <= 2 and RE_COUNT_SHEET.search(page1) and len(set(m.group(0).lower()[:4] for m in RE_COUNT_SHEET_FIELDS.finditer(page1))) >= 2:
+        return ("lab_count_sheet", 0.9, "TEM asbestos count sheet heading with grid/filter/lab-group fields")
 
     if RE_CHAIN_OF_CUSTODY.search(full):
         return ("chain_of_custody", 0.85, 'literal "chain of custody"')

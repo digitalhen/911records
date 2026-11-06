@@ -5,6 +5,7 @@
 export const DOC_TYPE_LABELS: Record<string, string> = {
   cover_sheet: 'Folder cover sheet',
   lab_report: 'Lab report',
+  lab_count_sheet: 'Lab count sheet',
   chain_of_custody: 'Chain of custody',
   memo_letter: 'Memo or letter',
   sign_in_sheet: 'Sign-in sheet',

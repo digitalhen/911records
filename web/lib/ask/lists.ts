@@ -43,6 +43,7 @@ export interface ListPlanLike {
 const DOC_TYPE_LABELS: Record<string, string> = {
   cover_sheet: 'cover sheet',
   lab_report: 'lab report',
+  lab_count_sheet: 'lab count sheet',
   chain_of_custody: 'chain of custody',
   memo_letter: 'memo/letter',
   sign_in_sheet: 'sign-in sheet',

@@ -189,18 +189,19 @@ if [ -f .claudekey ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then export ANTHROPIC_A
 
 if ! $PUBLISH_ONLY; then
 # Discovery layer: document vectors, related records, near-duplicates (related.py), then the
-# human-readable topic hierarchy (topics.py, Haiku-named, cached; needs ANTHROPIC_API_KEY from
-# .claudekey), then buildings/places for the map. All local except the topic naming calls.
+# human-readable topic hierarchy (topics.py, named by the local qwen model via Ollama since
+# 2026-11-05, cached), then buildings/places for the map. All local except the topic naming calls.
+# Document types first: topics.py gives doctypes.py's lab_count_sheet records their own topic.
+run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 run_stage related_py .venv/bin/python scripts/embed/related.py
 run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
 run_stage places_py .venv/bin/python scripts/embed/places.py
-run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 # Model-dependent stages: non-fatal — a model outage or API usage cap must not stop the site build.
 # Summaries run on the local qwen model via Ollama, one worker (Henry, 2026-09-14: "skip haiku
 # entirely, do it all in qwen"); the daily increment is small enough for the time box below.
 summary_scope=""
 if [ -n "$REPROCESS_OCR" ] || $FULL_OCR; then summary_scope="--changed-only"; fi
-for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py .venv/bin/python scripts/embed/facts.py --budget-usd 3"; do
+for soft in "summaries_py env SUMMARIES_BACKEND=ollama SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py env FACTS_BACKEND=ollama .venv/bin/python scripts/embed/facts.py"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
   # Time-boxed (SOFT_STAGE_SECS, default 3600 s): a capped API made summaries.py retry for ages.

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: '%s · 9/11 City Records',
   },
   description:
-    "A search and reading tool over New York City's released 9/11 records: 24,436 documents, 172,537 Bates-numbered pages, released by the NYC Law Department and mirrored here as the City updates it.",
+    "A search and reading tool over New York City's released 9/11 records: more than 64,000 documents and 230,000 Bates-numbered pages, released by the NYC Law Department in September and October 2026 and mirrored here as the City updates it.",
   openGraph: {
     type: 'website',
     siteName: '9/11 City Records',
