@@ -164,6 +164,69 @@ export const getOccurrences = cache(async (id: string, signatory = false): Promi
     FROM site.${table} ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
     WHERE ep.${key}=$1 AND d.status IS DISTINCT FROM 'removed' ORDER BY ep.doc,ep.page,role`, [id]);
 });
+export const ENTITY_PAGE_SIZE = 50;
+export interface EntityRole { role: string; docs: number; pages: number }
+export interface EntitySummary { docs: number; pages: number; filings: number; roles: EntityRole[]; topDocs: { doc: string; title: string | null; pages: number }[]; months: { month: string; pages: number }[]; agencyMonths: { month: string; agency: string; pages: number }[]; source: Occurrence | null }
+// Live (removed documents excluded) source pages of one entity. Every query below starts from this
+// so a big entity (substance asbestos: ~63k pages) is aggregated in SQL instead of shipping every
+// row to the page. Roles keep the '' -> 'Mentioned' fallback the page always used.
+const ENTITY_ROWS = `SELECT ep.doc,ep.page,COALESCE(NULLIF(ep.role,''),'Mentioned') AS role,ep.confidence,d.agency,d.volume,d.box,d.folder
+  FROM site.entity_pages ep JOIN site.documents d USING(doc) JOIN site.pages p USING(doc,page)
+  WHERE ep.entity_id=$1 AND d.status IS DISTINCT FROM 'removed'`;
+const MONTH_OF = `jsonb_array_elements_text(pp.dates) x WHERE jsonb_typeof(pp.dates)='array' AND x ~ '^[0-9]{4}-(0[1-9]|1[0-2])-[0-9]{2}'`;
+/** Cheap aggregate view of an entity for its detail page: counts, roles, top documents, month histogram. */
+async function loadEntitySummary(id: string, titles: boolean): Promise<EntitySummary> {
+  const titleCol = titles ? 'd.title' : 'NULL::text';
+  const [totals, roles, topDocs, months, agencyMonths, first] = await Promise.all([
+    queryReadSafe<{ docs: number; pages: number; filings: number }>(`WITH r AS (${ENTITY_ROWS})
+      SELECT COUNT(DISTINCT doc)::int AS docs,COUNT(DISTINCT (doc,page))::int AS pages,
+        COUNT(DISTINCT (agency,volume,box,folder))::int AS filings FROM r`, [id]),
+    queryReadSafe<EntityRole>(`WITH r AS (${ENTITY_ROWS})
+      SELECT role,COUNT(DISTINCT doc)::int AS docs,COUNT(DISTINCT (doc,page))::int AS pages FROM r GROUP BY role ORDER BY role`, [id]),
+    queryReadSafe<{ doc: string; title: string | null; pages: number }>(`WITH r AS (SELECT DISTINCT doc,page FROM (${ENTITY_ROWS}) x)
+      SELECT r.doc,${titleCol} AS title,COUNT(*)::int AS pages FROM r JOIN site.documents d USING(doc) GROUP BY r.doc,${titleCol} ORDER BY pages DESC,r.doc LIMIT 8`, [id]),
+    queryReadSafe<{ month: string; pages: number }>(`WITH r AS (SELECT DISTINCT doc,page FROM (${ENTITY_ROWS}) x)
+      SELECT m AS month,COUNT(*)::int AS pages FROM (SELECT DISTINCT r.doc,r.page,substr(x,1,7) AS m FROM r
+        JOIN site.place_pages pp ON pp.doc=r.doc AND pp.page=r.page, ${MONTH_OF}) t GROUP BY m ORDER BY m`, [id]),
+    queryReadSafe<{ month: string; agency: string; pages: number }>(`WITH r AS (SELECT DISTINCT doc,page,agency FROM (${ENTITY_ROWS}) x)
+      SELECT m AS month,COALESCE(agency,'(no agency)') AS agency,COUNT(*)::int AS pages FROM (SELECT DISTINCT r.doc,r.page,r.agency,substr(x,1,7) AS m FROM r
+        JOIN site.place_pages pp ON pp.doc=r.doc AND pp.page=r.page, ${MONTH_OF}) t GROUP BY m,agency ORDER BY m,agency`, [id]),
+    queryReadSafe<Occurrence>(`WITH r AS (${ENTITY_ROWS} ORDER BY ep.doc,ep.page LIMIT 1)
+      SELECT r.doc,r.page,r.role,r.confidence,r.agency,r.volume,r.box,r.folder,${titleCol} AS title,NULL::text AS summary,NULL::jsonb AS dates
+      FROM r JOIN site.documents d USING(doc)`, [id]),
+  ]);
+  const t = totals[0] ?? { docs: 0, pages: 0, filings: 0 };
+  return { ...t, roles, topDocs, months, agencyMonths, source: first[0] ?? null };
+}
+// The aggregates only change when the data is reloaded, so keep them across requests for a few minutes.
+const cachedEntitySummary = cached(loadEntitySummary, ['entity-summary'], { revalidate: 600 });
+export const getEntitySummary = cache(async (id: string): Promise<EntitySummary> => cachedEntitySummary(id, await documentsHaveTitles()));
+/** One page of an entity's source pages (50 per page), optionally for a single role, ordered by role, document, page. */
+export async function getOccurrencesPage(id: string, offset: number, role: string | null, limit = ENTITY_PAGE_SIZE): Promise<Occurrence[]> {
+  const titleCols = (await documentsHaveTitles()) ? 'd.title,d.summary,' : 'NULL::text AS title,NULL::text AS summary,';
+  return queryReadSafe<Occurrence>(`WITH r AS (SELECT DISTINCT * FROM (${ENTITY_ROWS}) x WHERE ($2::text IS NULL OR role=$2)
+      ORDER BY role,doc,page LIMIT $3 OFFSET $4)
+    SELECT r.doc,r.page,r.role,r.confidence,r.agency,r.volume,r.box,r.folder,${titleCols}NULL::jsonb AS dates
+    FROM r JOIN site.documents d USING(doc) ORDER BY r.role,r.doc,r.page,r.confidence`, [id, role, limit, offset]);
+}
+export interface EntityFiling { agency: string | null; volume: string | null; box: string | null; folder: string | null; pages: number; doc: string; page: number }
+/** One page of the box/folder filings an entity's pages sit in, largest first, with one sample page each. */
+export async function getEntityFilings(id: string, offset: number, limit = ENTITY_PAGE_SIZE): Promise<EntityFiling[]> {
+  return queryReadSafe<EntityFiling>(`WITH r AS (SELECT DISTINCT doc,page,agency,volume,box,folder FROM (${ENTITY_ROWS}) x)
+    SELECT agency,volume,box,folder,COUNT(*)::int AS pages,MIN(doc) AS doc,(array_agg(page ORDER BY doc,page))[1] AS page
+    FROM r GROUP BY agency,volume,box,folder ORDER BY pages DESC,agency,volume,box,folder LIMIT $2 OFFSET $3`, [id, limit, offset]);
+}
+/** Entities that share source pages with this one, computed in SQL (no page list shipped to the app). */
+async function loadRelatedEntities(id: string, limit: number): Promise<RelatedEntity[]> {
+  return queryReadSafe<RelatedEntity>(`WITH src AS (SELECT DISTINCT ep.doc,ep.page FROM site.entity_pages ep JOIN site.documents d USING(doc)
+      WHERE ep.entity_id=$1 AND d.status IS DISTINCT FROM 'removed')
+    SELECT e.id,e.type,e.slug,e.label,${LINKABLE_BIN},COUNT(DISTINCT (ep.doc,ep.page))::int AS shared_pages
+    FROM src JOIN site.entity_pages ep ON ep.doc=src.doc AND ep.page=src.page JOIN site.entities e ON e.id=ep.entity_id
+    WHERE ep.entity_id<>$1
+    GROUP BY e.id,e.type,e.slug,e.label,e.bin ORDER BY shared_pages DESC,e.id LIMIT $2`, [id, limit]);
+}
+const cachedRelated = cached(loadRelatedEntities, ['entity-related'], { revalidate: 600 });
+export const relatedEntitiesFor = (id: string, limit = 10): Promise<RelatedEntity[]> => cachedRelated(id, limit);
 export interface RelatedEntity { id: string; type: string; slug: string; label: string; bin: string | null; shared_pages: number }
 /** Other non-person entities that co-occur on the same source pages as this entity/signatory —
  *  labs, agencies, contractors, substances and addresses only (entity_pages never carries a
