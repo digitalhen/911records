@@ -50,7 +50,7 @@ export default async function BuildingPage({params}:Props) {
   type DocRow={doc:string;doc_type:string|null;title:string|null;summary:string|null;folder:string|null;box:string|null;agency:string|null;page_count:number|null;pages:number;firstPage:number;hasTest:boolean;dates:string[]};
   const byDoc=new Map<string,DocRow>();
   for(const r of rows){const d=byDoc.get(r.doc)||{doc:r.doc,doc_type:r.doc_type,title:r.title,summary:r.summary,folder:r.folder,box:r.box,agency:r.agency,page_count:r.page_count,pages:0,firstPage:r.page,hasTest:false,dates:[]};d.pages+=1;d.firstPage=Math.min(d.firstPage,r.page);d.hasTest=d.hasTest||r.has_test;d.dates.push(...r.dates);byDoc.set(r.doc,d)}
-  const TYPE_ORDER=['lab_report','chain_of_custody','memo_letter','permit_application','form','sign_in_sheet','invoice','photo_log','other'];
+  const TYPE_ORDER=['lab_report','lab_count_sheet','chain_of_custody','memo_letter','permit_application','form','sign_in_sheet','invoice','photo_log','other'];
   const typeGroups=new Map<string,DocRow[]>();
   for(const d of byDoc.values()){if(d.doc_type==='cover_sheet')continue;const k=d.doc_type&&TYPE_ORDER.includes(d.doc_type)?d.doc_type:'other';if(!typeGroups.has(k))typeGroups.set(k,[]);typeGroups.get(k)!.push(d)}
   const orderedTypes=TYPE_ORDER.filter(t=>typeGroups.has(t));

@@ -190,6 +190,22 @@ def build_prompt(terms: list[str], folder_labels: list[str], excerpts: list[str]
     return "\n".join(lines)
 
 
+NAMING_BACKEND = os.environ.get("TOPICS_BACKEND", "ollama")  # Henry, 2026-11-05: avoid Haiku; "api" restores it
+OLLAMA_URL = os.environ.get("TOPICS_OLLAMA_URL", "http://127.0.0.1:11434")
+OLLAMA_MODEL = os.environ.get("TOPICS_OLLAMA_MODEL", "qwen3.5:35b-a3b")
+
+
+def call_ollama(terms: list[str], folder_labels: list[str], excerpts: list[str], retry_note: str | None) -> tuple[str, dict]:
+    prompt = build_prompt(terms, folder_labels, excerpts, retry_note)
+    body = json.dumps({"model": OLLAMA_MODEL, "stream": False, "think": False,
+                       "messages": [{"role": "user", "content": prompt}],
+                       "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 400}}).encode()
+    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", body, {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        data = json.load(resp)
+    return str(data.get("message", {}).get("content", "")), {}
+
+
 def call_haiku(api_key: str, terms: list[str], folder_labels: list[str], excerpts: list[str],
                retry_note: str | None) -> tuple[str, dict]:
     prompt = build_prompt(terms, folder_labels, excerpts, retry_note)
@@ -218,7 +234,10 @@ def name_topic(api_key: str, cache: dict, terms: list[str], folder_labels: list[
     note = None
     for _attempt in range(2):
         try:
-            text, usage = call_haiku(api_key, terms, folder_labels, excerpts, note)
+            if NAMING_BACKEND == "ollama":
+                text, usage = call_ollama(terms, folder_labels, excerpts, note)
+            else:
+                text, usage = call_haiku(api_key, terms, folder_labels, excerpts, note)
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             result = {"title": None, "description": None, "confidence": 0.0, "error": str(e)}
             break
@@ -243,6 +262,25 @@ def name_topic(api_key: str, cache: dict, terms: list[str], folder_labels: list[
         break
     cache[h] = result
     return result
+
+
+DOCTYPES_JSONL = EMB / "p3-doctypes.jsonl"
+COUNT_SHEET_TOPIC = {
+    "title": "TEM asbestos count sheets",
+    "description": "Laboratory bench sheets tallying asbestos structures counted under the electron microscope, one per air or dust sample.",
+    "confidence": 1.0,
+}
+
+
+def load_count_sheets() -> set[str]:
+    out: set[str] = set()
+    if DOCTYPES_JSONL.exists():
+        for line in DOCTYPES_JSONL.open():
+            if '"lab_count_sheet"' in line:
+                row = json.loads(line)
+                if row.get("doc_type") == "lab_count_sheet":
+                    out.add(row["doc"])
+    return out
 
 
 def main() -> int:
@@ -328,20 +366,35 @@ def main() -> int:
     # as a "leaf topic". Clustering the raw vectors gave balanced clusters (largest ~5-6% of the
     # corpus) on this corpus, so that is what is used for both the leaf and parent step.
     Xr = V
-    k = min(80, max(40, n // 150))
-    km = KMeans(n_clusters=k, random_state=911, n_init=10).fit(Xr)
-    leaf_labels = km.labels_
+    # Henry, 2026-11-05: ~30,500 near-identical TEM count sheets (doctypes.py lab_count_sheet, the
+    # October 16, 2026 release) split three leaves between them and crowded out real subjects. They
+    # are left out of KMeans and given one rule-named leaf of their own (index k), attached to the
+    # parent whose centroid is nearest.
+    count_sheets = load_count_sheets()
+    cs_mask = np.array([d in count_sheets for d in docs], dtype=bool)
+    rest = np.where(~cs_mask)[0]
+    k = min(80, max(40, len(rest) // 150))
+    km = KMeans(n_clusters=k, random_state=911, n_init=10).fit(Xr[rest])
+    leaf_labels = np.full(n, k, dtype=int)
+    leaf_labels[rest] = km.labels_
+    n_leaves = k + (1 if cs_mask.any() else 0)
     n_parent = min(10, max(6, round(k / 8)))
     leaf_centroids = np.stack([
         Xr[leaf_labels == t].mean(axis=0) if np.any(leaf_labels == t) else Xr.mean(axis=0)
-        for t in range(k)
+        for t in range(n_leaves)
     ])
-    parent_of_leaf = AgglomerativeClustering(n_clusters=n_parent).fit(leaf_centroids).labels_
+    parent_of_leaf = AgglomerativeClustering(n_clusters=n_parent).fit(leaf_centroids[:k]).labels_
+    if n_leaves > k:
+        parent_centroids = np.stack([leaf_centroids[:k][parent_of_leaf == p].mean(axis=0) for p in range(n_parent)])
+        parent_of_leaf = np.append(parent_of_leaf, int(np.argmin(np.linalg.norm(parent_centroids - leaf_centroids[k], axis=1))))
 
     probs = np.zeros(n)
-    for t in range(k):
+    for t in range(n_leaves):
         idx = np.where(leaf_labels == t)[0]
         if len(idx) == 0:
+            continue
+        if t == k:
+            probs[idx] = 1.0
             continue
         c = Xr[idx].mean(axis=0)
         d = np.linalg.norm(Xr[idx] - c, axis=1)
@@ -384,7 +437,9 @@ def main() -> int:
         return out
 
     api_key = None
-    if not args.no_name:
+    if not args.no_name and NAMING_BACKEND == "ollama":
+        api_key = "local"  # no key needed; name_or_blank only checks that naming is enabled
+    elif not args.no_name:
         try:
             api_key = CLAUDE_KEY_FILE.read_text().strip()
         except OSError:
@@ -406,7 +461,7 @@ def main() -> int:
 
     leaf_rows = []
     child_idx_by_parent: dict[int, list[int]] = collections.defaultdict(list)
-    for t in range(k):
+    for t in range(n_leaves):
         idx = np.where(leaf_labels == t)[0]
         if len(idx) == 0:
             continue
@@ -415,8 +470,8 @@ def main() -> int:
         boxes = collections.Counter(meta.get(docs[i], {}).get("box_name") for i in idx)
         ags = collections.Counter(meta.get(docs[i], {}).get("agency") for i in idx)
         pages = sum(int(meta.get(docs[i], {}).get("page_count") or 0) for i in idx)
-        name = name_or_blank(idx, terms)
-        parent_id = k + int(parent_of_leaf[t])
+        name = COUNT_SHEET_TOPIC if t == k else name_or_blank(idx, terms)
+        parent_id = n_leaves + int(parent_of_leaf[t])
         leaf_rows.append({
             "topic": t, "parent": parent_id, "size_docs": len(idx), "size_pages": pages,
             "terms": terms, "boxes": boxes.most_common(10), "agencies": ags.most_common(5),
@@ -435,7 +490,7 @@ def main() -> int:
         pages = sum(int(meta.get(docs[i], {}).get("page_count") or 0) for i in idx)
         name = name_or_blank(idx, terms)
         parent_rows.append({
-            "topic": k + p, "parent": None, "size_docs": len(idx), "size_pages": pages,
+            "topic": n_leaves + p, "parent": None, "size_docs": len(idx), "size_pages": pages,
             "terms": terms, "boxes": boxes.most_common(10), "agencies": ags.most_common(5),
             "title": name.get("title"), "description": name.get("description"),
             "name_confidence": name.get("confidence"),
