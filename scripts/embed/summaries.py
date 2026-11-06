@@ -881,6 +881,11 @@ def main() -> int:
         to_process.append({"doc": doc, "doc_type": doc_type, "folder": folder or None, "box": box,
                             "agency": agency, "page_count": page_count, "excerpt": excerpt, "hash": h})
 
+    # Documents never tried before go first; ones that already came back empty (usually because every
+    # answer named a person and was rejected) go last, so a nightly time box is not spent re-failing
+    # them ahead of new records (2026-11-06: 1,147 such documents sat at the front of the queue).
+    to_process.sort(key=lambda it: it["doc"] in existing)
+
     if args.limit:
         to_process = to_process[: args.limit]
 
