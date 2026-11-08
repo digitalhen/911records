@@ -29,6 +29,14 @@ Usage:
                                     [--shard-gb 4] [--dry-run] [--repo ~/Code/sept11-docs]
 Re-running skips shards whose file already exists with the recorded size (resumable), so keep the
 same --shard-gb between runs.
+
+Updates (--update): once the full seed exists, later runs with --update add only what changed.
+The core shards are repacked in place (same names, new sha256: about 3 GB), and every text, page
+or PDF file that is new or changed since it was last packed goes into new update shards named
+<kind>-u<UTC timestamp>-NNN.tar, which sort after the base shards, so extracting in name order
+leaves the newest copy. The existing base shards are never rewritten, so `rclone copy` uploads
+only the new shards, core and the manifest. PACKED-FILES.tsv in --out records what has been
+packed (path, size, mtime); it is rebuilt from the shards' tar headers if missing.
 """
 from __future__ import annotations
 
@@ -39,6 +47,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
@@ -113,6 +122,47 @@ def shards(files: list[Path], limit: int) -> list[list[Path]]:
     return groups
 
 
+INDEX = "PACKED-FILES.tsv"
+_tar_version = subprocess.run(["tar", "--version"], capture_output=True, text=True).stdout
+BSD_TAR_OPTS = ["--no-mac-metadata", "--no-xattrs"] if "bsdtar" in _tar_version else []
+
+
+def stamp(p: Path) -> tuple[int, int]:
+    st = p.stat()
+    return st.st_size, int(st.st_mtime)
+
+
+def load_index(out: Path, manifest: dict) -> dict[str, tuple[int, int]]:
+    """path -> (size, mtime) of every non-core file already in a shard."""
+    idx: dict[str, tuple[int, int]] = {}
+    path = out / INDEX
+    if path.exists():
+        with open(path) as f:
+            for line in f:
+                rel, size, mtime = line.rstrip("\n").split("\t")
+                idx[rel] = (int(size), int(mtime))
+        return idx
+    names = sorted(n for n, m in manifest["shards"].items() if m["kind"] != "core" and (out / n).exists())
+    if names:
+        print(f"building {INDEX} from the headers of {len(names)} shard(s)...", flush=True)
+    for name in names:
+        with tarfile.open(out / name) as tf:
+            for m in tf:
+                if m.isfile():
+                    idx[m.name] = (m.size, int(m.mtime))
+    with open(path, "w") as f:
+        f.writelines(f"{rel}\t{s}\t{t}\n" for rel, (s, t) in sorted(idx.items()))
+    return idx
+
+
+def record(out: Path, idx: dict, group: list[Path]) -> None:
+    with open(out / INDEX, "a") as f:
+        for p in group:
+            rel = str(p.relative_to(REPO))
+            idx[rel] = stamp(p)
+            f.write(f"{rel}\t{idx[rel][0]}\t{idx[rel][1]}\n")
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -131,6 +181,8 @@ def main() -> int:
     ap.add_argument("--exclude-removed", action="store_true",
                     help="leave out documents the City removed from its portal (default: include them)")
     ap.add_argument("--repo", type=Path, default=REPO, help="checkout whose data/ to pack (default: this one)")
+    ap.add_argument("--update", action="store_true",
+                    help="add only new/changed files as update shards and repack core (needs a full seed in --out)")
     args = ap.parse_args()
     REPO, DATA = args.repo.resolve(), args.repo.resolve() / "data"
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()]
@@ -152,32 +204,57 @@ def main() -> int:
         "extract": "cd <repo root> && tar -xf <shard>   (or scripts/seed/unpack_seed.sh <seed dir>)",
     })
 
+    if args.update and not any(m["kind"] != "core" for m in manifest["shards"].values()):
+        ap.error(f"--update needs an existing full seed in {args.out}; run once without --update first")
+    index = load_index(args.out, manifest)
+    run_stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S")
+
+    def pack(name: str, kind: str, group: list[Path]) -> None:
+        dest = args.out / name
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".lst") as lst:
+            lst.write("\n".join(str(p.relative_to(REPO)) for p in group) + "\n")
+        tmp = dest.with_suffix(".tar.partial")
+        try:
+            # Keep macOS metadata (AppleDouble ._* entries, xattr headers) out of the shards.
+            subprocess.run(["tar", "-cf", str(tmp), *BSD_TAR_OPTS, "-C", str(REPO), "-T", lst.name],
+                           check=True, env={**os.environ, "COPYFILE_DISABLE": "1"})
+        finally:
+            os.unlink(lst.name)
+        tmp.rename(dest)
+        manifest["shards"][name] = {"kind": kind, "files": len(group), "bytes": dest.stat().st_size,
+                                    "sha256": sha256(dest), "packed": run_stamp}
+        if kind != "core":
+            record(args.out, index, group)
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+        print(f"  {name}: {len(group)} files, {dest.stat().st_size / (1 << 30):.2f} GiB", flush=True)
+
     for kind in kinds:
         files = files_for(kind, removed)
+        if args.update and kind != "core":
+            files = [p for p in files if index.get(str(p.relative_to(REPO))) != stamp(p)]
         groups = shards(files, limit)
         total = sum(p.stat().st_size for p in files)
-        print(f"{kind}: {len(files)} files, {total / (1 << 30):.1f} GiB -> {len(groups)} shard(s)", flush=True)
+        what = "new/changed files" if args.update and kind != "core" else "files"
+        print(f"{kind}: {len(files)} {what}, {total / (1 << 30):.2f} GiB -> {len(groups)} shard(s)", flush=True)
         if args.dry_run:
             continue
+        if args.update and kind == "core":
+            # Core changes every refresh: repack it under the same names and drop any surplus.
+            for name in [n for n, m in manifest["shards"].items() if m["kind"] == "core"][len(groups):]:
+                manifest["shards"].pop(name)
+                (args.out / name).unlink(missing_ok=True)
+                print(f"  {name}: removed (core now has {len(groups)} shard(s))", flush=True)
+            for i, group in enumerate(groups):
+                pack(f"core-{i:03d}.tar", kind, group)
+            continue
         for i, group in enumerate(groups):
-            name = f"{kind}-{i:03d}.tar"
-            dest = args.out / name
+            name = f"{kind}-u{run_stamp}-{i:03d}.tar" if args.update else f"{kind}-{i:03d}.tar"
             prev = manifest["shards"].get(name)
+            dest = args.out / name
             if prev and dest.exists() and dest.stat().st_size == prev["bytes"] and prev["files"] == len(group):
                 print(f"  {name}: already packed", flush=True)
                 continue
-            with tempfile.NamedTemporaryFile("w", delete=False, suffix=".lst") as lst:
-                lst.write("\n".join(str(p.relative_to(REPO)) for p in group) + "\n")
-            tmp = dest.with_suffix(".tar.partial")
-            try:
-                subprocess.run(["tar", "-cf", str(tmp), "-C", str(REPO), "-T", lst.name], check=True)
-            finally:
-                os.unlink(lst.name)
-            tmp.rename(dest)
-            manifest["shards"][name] = {"kind": kind, "files": len(group), "bytes": dest.stat().st_size,
-                                        "sha256": sha256(dest)}
-            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
-            print(f"  {name}: {len(group)} files, {dest.stat().st_size / (1 << 30):.2f} GiB", flush=True)
+            pack(name, kind, group)
 
     if not args.dry_run:
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
