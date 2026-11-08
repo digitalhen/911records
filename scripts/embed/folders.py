@@ -37,8 +37,8 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
 OUT = DATA / "embed" / "folders"
-OLLAMA = "http://localhost:11434/api/embed"
-MODEL = "nomic-embed-text"
+import llm  # embedding provider/model: EMBED_* env, docs/MODELS.md
+MODEL = llm.EMBED_MODEL
 
 # Agency / technical acronyms and domain words allowed in displayed cluster names.
 DOMAIN_TERMS = {
@@ -52,9 +52,7 @@ DOMAIN_TERMS = {
 def embed(texts: list[str], batch: int = 128) -> np.ndarray:
     out = []
     for i in range(0, len(texts), batch):
-        body = json.dumps({"model": MODEL, "input": [f"clustering: {t}" for t in texts[i:i + batch]]}).encode()
-        req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
-        out.extend(json.load(urllib.request.urlopen(req, timeout=600))["embeddings"])
+        out.extend(llm.embed(texts[i:i + batch], "clustering", timeout=600))
     v = np.asarray(out, dtype=np.float32)
     return v / np.linalg.norm(v, axis=1, keepdims=True)
 

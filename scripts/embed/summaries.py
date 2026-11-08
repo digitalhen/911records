@@ -99,10 +99,9 @@ EMB = REPO / "data" / "embed"
 OUT_PATH = EMB / "p5-summaries.jsonl"
 CACHE_PATH = EMB / "p5-summaries-cache.json"
 DOCTYPES_JSONL = EMB / "p3-doctypes.jsonl"
-CLAUDE_KEY_FILE = Path("/Users/henry/Code/sept11-docs/.claudekey")
-MODEL = "claude-haiku-4-5-20251001"
-PRICE_IN_PER_MTOK = 1.00
-PRICE_OUT_PER_MTOK = 5.00
+import llm  # provider/model selection: scripts/embed/llm.py, docs/MODELS.md
+LLM = llm.stage("SUMMARIES", default_provider="anthropic", extra_providers=("cli", "codex"))
+MODEL = llm.DEFAULT_MODELS["anthropic"]  # the Claude model `claude -p` (BACKEND=cli) runs
 DEFAULT_BUDGET_USD = 30.0
 BATCH_SIZE = int(os.environ.get("SUMMARIES_BATCH", "10"))  # documents per model call; 20 with the claude -p backend (process start-up dominates)
 CHECKPOINT_EVERY = 100  # documents (across all batches), not API calls; small so a stop loses ~3 minutes
@@ -561,11 +560,12 @@ def is_usage_limit_error(e: BaseException) -> bool:
     return "usage limit" in str(e).lower()
 
 
-BACKEND = os.environ.get("SUMMARIES_BACKEND", "api")  # "api" (Anthropic SDK), "cli" (claude -p), "codex" (codex exec) or "ollama" (local)
+# Provider: llm.py's resolution (SUMMARIES_LLM_PROVIDER > legacy SUMMARIES_BACKEND > LLM_PROVIDER >
+# anthropic). On top of llm.py's providers this script keeps two of its own: "cli" (claude -p) and
+# "codex" (codex exec).
+BACKEND = LLM.provider
 CODEX_MODEL = os.environ.get("SUMMARIES_CODEX_MODEL", "gpt-5.3-codex-spark")
-OLLAMA_URL = os.environ.get("SUMMARIES_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("SUMMARIES_OLLAMA_MODEL", "qwen3.5:35b-a3b")
-BACKEND_MODEL = {"codex": CODEX_MODEL, "ollama": OLLAMA_MODEL}.get(BACKEND, MODEL)  # what the row records as its author
+BACKEND_MODEL = {"codex": CODEX_MODEL, "cli": MODEL}.get(BACKEND, LLM.model)  # what the row records as its author
 
 
 def call_claude_cli(prompt: str) -> str:
@@ -615,29 +615,20 @@ def call_codex_cli(prompt: str) -> str:
     return text
 
 
-def call_ollama(prompt: str) -> str:
+def call_llm(prompt: str, max_tokens: int = 6000) -> llm.Reply:
     """Local model on StudioMac (Henry, 2026-09-14: "test some local models on ollama"). Measured on a
     real 20-document batch: qwen3.5:35b-a3b 28 s / all 20 usable, with dates and lab names in the
     titles; qwen3.5 (8B) 42 s; qwen2.5:7b 20 s but generic titles; llama3.2 no valid JSON. No quota,
     no spend — the right backend for the daily refresh's small increments."""
-    import urllib.request
-    body = {"model": OLLAMA_MODEL, "stream": False, "think": False,
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-            "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 6000}}
-    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=900) as resp:
-        data = json.loads(resp.read())
-    return str(data.get("message", {}).get("content", ""))
+    return llm.chat(LLM, prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.2, num_ctx=16384)
+
+
+def call_ollama(prompt: str) -> str:  # kept for summaries_qa.py and older callers: any llm.py provider
+    return call_llm(prompt).text
 
 
 def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retry_ids: set[int] | None = None) -> tuple[list[dict] | None, float]:
     prompt = build_prompt(items, retry_ids)
-    if BACKEND == "ollama":
-        text = call_ollama(prompt)
-        arr = extract_json_array(text)
-        if arr is None:  # say what came back, so a truncated or chatty reply can be diagnosed
-            print(f"summaries: ollama reply not a JSON array ({len(text)} chars): {text[:160]!r} … {text[-80:]!r}", file=sys.stderr)
-        return align_ids(arr, [it["id"] for it in items]), 0.0  # local: no spend
     if BACKEND == "codex":
         try:
             text = call_codex_cli(prompt)
@@ -654,20 +645,23 @@ def call_model(client, items: list[dict], budget: Budget, stop: StopSignal, retr
                 stop.set(str(e))
             raise
         return extract_json_array(text), 0.0  # subscription-billed: no API spend to count
+    local = BACKEND in ("ollama", "openai")  # non-Claude models: longer replies, ids re-aligned
+    max_tokens = 6000 if local else 200 * (len(retry_ids) if retry_ids else len(items)) + 200
     try:
-        response = client.messages.create(
-            model=MODEL, max_tokens=200 * (len(retry_ids) if retry_ids else len(items)) + 200,
-            system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}],
-        )
+        reply = call_llm(prompt, max_tokens)
     except Exception as e:
         if is_usage_limit_error(e):
             stop.set(str(e))
         raise
-    text = "".join(b.text for b in response.content if b.type == "text")
-    cost = (response.usage.input_tokens * PRICE_IN_PER_MTOK
-            + response.usage.output_tokens * PRICE_OUT_PER_MTOK) / 1_000_000
+    cost = LLM.cost(reply.input_tokens, reply.output_tokens)  # 0 for a local model
     budget.add(cost)
-    return extract_json_array(text), cost
+    arr = extract_json_array(reply.text)
+    if not local:
+        return arr, cost
+    if arr is None:  # say what came back, so a truncated or chatty reply can be diagnosed
+        text = reply.text
+        print(f"summaries: {BACKEND} reply not a JSON array ({len(text)} chars): {text[:160]!r} … {text[-80:]!r}", file=sys.stderr)
+    return align_ids(arr, [it["id"] for it in items]), cost
 
 
 def clamp_title(title: str) -> str:
@@ -902,10 +896,7 @@ def main() -> int:
     model_done = 0
     stopped_on_budget = False
     if to_process:
-        client = None
-        if BACKEND not in ("cli", "codex", "ollama"):
-            import anthropic  # imported lazily: a run with nothing left to do needs no key/SDK at all
-            client = anthropic.Anthropic(api_key=CLAUDE_KEY_FILE.read_text().strip())
+        client = None  # model calls go through llm.py (call_llm); kept for process_batch's signature
 
         batches = [to_process[i: i + BATCH_SIZE] for i in range(0, len(to_process), BATCH_SIZE)]
         write_lock = threading.Lock()

@@ -12,3 +12,4 @@ __pycache__/
 web/.env.local
 web/.env
 .claudekey
+deploy/.env

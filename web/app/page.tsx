@@ -1,7 +1,8 @@
+import { OPERATOR_NAME, SITE_URL } from '@/lib/brand';
 import HomeMap, { mapMetadata } from '@/components/map/HomeMap';
 import { getMeta } from '@/lib/site';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+
 
 export const dynamic = 'force-dynamic';
 export async function generateMetadata() {
@@ -25,7 +26,7 @@ export default async function HomePage() {
       "New York City's released 9/11 records — Bates-numbered documents from the NYC Law Department, mirrored and made searchable. Independent project; not affiliated with the City of New York.",
     url: SITE_URL,
     isAccessibleForFree: true,
-    creator: { '@type': 'Organization', name: 'Cleartext Labs', url: SITE_URL },
+    creator: { '@type': 'Organization', name: OPERATOR_NAME, url: SITE_URL },
     ...(meta?.documents ? { size: `${meta.documents} documents` } : {}),
     ...(meta?.snapshot_date ? { dateModified: meta.snapshot_date } : {}),
     distribution: { '@type': 'DataDownload', encodingFormat: 'text/html', contentUrl: SITE_URL },

@@ -1,0 +1,9 @@
+# Python deps for the pipeline scripts (scripts/embed, scripts/search). Python 3.12+.
+# Loading a seed needs only the first two.
+psycopg[binary]>=3.2
+numpy>=2.0
+# Model-calling stages (summaries, facts, topics, canonical) on Anthropic or Amazon Bedrock:
+anthropic[bedrock]>=1.5
+# Topic clustering (scripts/embed/topics.py, folders.py):
+scikit-learn>=1.5
+umap-learn>=0.5

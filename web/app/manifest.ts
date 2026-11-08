@@ -1,3 +1,4 @@
+import { SITE_NAME } from '@/lib/brand';
 import type { MetadataRoute } from 'next';
 
 // Next.js file-convention metadata (app/manifest.ts is auto-discovered and
@@ -8,8 +9,8 @@ import type { MetadataRoute } from 'next';
 // design/logo/mark-compact.svg — see web/NOTES-B27.md.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: '911records.org',
-    short_name: '911records.org',
+    name: SITE_NAME,
+    short_name: SITE_NAME,
     description: "Search and read New York City's released 9/11 records.",
     start_url: '/',
     display: 'browser',

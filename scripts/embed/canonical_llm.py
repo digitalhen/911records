@@ -46,9 +46,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import canonical  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-KEY_FILE = Path("/Users/henry/Code/sept11-docs/.claudekey")
+KEY_FILE: Path | None = None  # optional override; by default llm.py finds the key (ANTHROPIC_API_KEY or .claudekey)
 CACHE_PATH = REPO / "data" / "embed" / "canonical-llm-cache.json"
-MODEL = "claude-haiku-4-5-20251001"
+import dataclasses  # noqa: E402
+import llm  # noqa: E402  provider/model selection: scripts/embed/llm.py, docs/MODELS.md
+LLM = llm.stage("CANONICAL", default_provider="anthropic")  # CANONICAL_LLM_PROVIDER / _MODEL, or LLM_*
+MODEL = LLM.model
 BATCH_SIZE = 25
 MIN_MERGE_CONFIDENCE = 0.8
 STORED_CONFIDENCE = 0.6
@@ -82,13 +85,6 @@ SYSTEM_PROMPT = (
     '{"id": <int>, "match": "<one candidate string, exactly as given>" or null, "confidence": <0..1>}. '
     "Set match to null and confidence low whenever you are not genuinely confident."
 )
-
-
-def _load_api_key(key_file: Path = KEY_FILE) -> str:
-    key = key_file.read_text().strip()
-    if not key:
-        raise RuntimeError(f"{key_file} is empty")
-    return key
 
 
 def _load_cache(path: Path = CACHE_PATH) -> dict:
@@ -130,17 +126,12 @@ def _parse_response(text: str) -> list[dict]:
     return json.loads(text)
 
 
-def _call_model(client, model: str, items: list[dict]) -> tuple[list[dict], object]:
-    """One batch call. Returns (parsed JSON list, response.usage). Raises on malformed JSON — the
-    caller treats the whole batch as unresolved (no merges) rather than guessing partial results."""
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _build_batch_prompt(items)}],
-    )
-    text = "".join(b.text for b in response.content if b.type == "text")
-    return _parse_response(text), response.usage
+def _call_model(stage: llm.Stage, items: list[dict]) -> tuple[list[dict], llm.Reply]:
+    """One batch call. Returns (parsed JSON list, the reply with its token counts). Raises on
+    malformed JSON — the caller treats the whole batch as unresolved (no merges) rather than
+    guessing partial results."""
+    reply = llm.chat(stage, _build_batch_prompt(items), system=SYSTEM_PROMPT, max_tokens=4096, temperature=0.1)
+    return _parse_response(reply.text), reply
 
 
 def resolve_label(
@@ -151,7 +142,7 @@ def resolve_label(
     batch_size: int = BATCH_SIZE,
     budget_usd: float = DEFAULT_BUDGET_USD,
     cache_path: Path = CACHE_PATH,
-    key_file: Path = KEY_FILE,
+    key_file: Path | None = KEY_FILE,
 ) -> tuple[dict, dict]:
     """label: 'address'|'lab'|'contractor'. `mapping` is exactly what entities.py's canonicalise()
     already computed and wrote for this label (canonical.canonicalize_addresses()/
@@ -215,17 +206,16 @@ def resolve_label(
         _apply(raw, result, candidates[raw])
 
     if to_ask:
-        client = None
+        stage = dataclasses.replace(LLM, model=model)
+        if key_file is not None and stage.provider == "anthropic":
+            stage = dataclasses.replace(stage, api_key=key_file.read_text().strip())
         for start in range(0, len(to_ask), batch_size):
             if usage["cost_usd"] >= budget_usd:
                 usage["stopped_on_budget"] = True
                 break
             batch = to_ask[start:start + batch_size]
-            if client is None:
-                import anthropic  # imported lazily so a cache-only run needs no key/SDK at all
-                client = anthropic.Anthropic(api_key=_load_api_key(key_file))
             try:
-                parsed, api_usage = _call_model(client, model, batch)
+                parsed, api_usage = _call_model(stage, batch)
             except Exception as e:  # malformed JSON, network error, etc. — skip this batch, keep going
                 print(f"canonical_llm: batch at {start} failed ({e}); leaving it unresolved", file=sys.stderr)
                 continue
@@ -233,8 +223,7 @@ def resolve_label(
             usage["batches"] += 1
             usage["input_tokens"] += api_usage.input_tokens
             usage["output_tokens"] += api_usage.output_tokens
-            usage["cost_usd"] += (api_usage.input_tokens * PRICE_IN_PER_MTOK
-                                   + api_usage.output_tokens * PRICE_OUT_PER_MTOK) / 1_000_000
+            usage["cost_usd"] += stage.cost(api_usage.input_tokens, api_usage.output_tokens)
             by_id = {r.get("id"): r for r in parsed if isinstance(r, dict)}
             for item in batch:
                 result = by_id.get(item["id"])

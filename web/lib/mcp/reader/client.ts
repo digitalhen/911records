@@ -8,6 +8,8 @@
   type Result = { structuredContent?: Data; _meta?: { reader?: Meta }; isError?: boolean; content?: { type: string; text?: string }[] };
   type Context = { theme?: string; displayMode?: string };
   type OpenAI = Context & { toolOutput?: Data; toolResponseMetadata?: { reader?: Meta }; toolInput?: Args; callTool?: (name: string, args: Args) => Promise<Result>; openExternal?: (args: { href: string; redirectUrl: boolean }) => void; notifyIntrinsicHeight?: (height: number) => void };
+  // Filled in by the MCP server when it serves this resource (lib/mcp/reader/metadata.ts readerHtmlForSite).
+  const SITE = JSON.parse(decodeURIComponent('__READER_SITE__')) as { url: string; origins: string[]; slug: string };
   const win = window as Window & { openai?: OpenAI };
   const content = document.getElementById('content')!, notice = document.getElementById('notice')!;
   const collapse = document.getElementById('collapse') as HTMLButtonElement;
@@ -20,7 +22,7 @@
   const normalize = (s: string) => s.normalize('NFKC').replace(/\s+/gu, ' ').trim();
   function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] { const n = document.createElement(tag); n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function button(label: string, fn: () => void, cls = '') { const b = el('button', cls, label); b.type = 'button'; b.onclick = fn; return b; }
-  function safeUrl(value: unknown): string | null { if (typeof value !== 'string') return null; try { const u = new URL(value); if (!['https://911records.org', 'https://911records.nyc'].includes(u.origin) || u.username || u.password) return null; u.hostname = '911records.org'; return u.href; } catch { return null; } }
+  function safeUrl(value: unknown): string | null { if (typeof value !== 'string') return null; try { const u = new URL(value); if (!SITE.origins.includes(u.origin) || u.username || u.password) return null; const canonical = new URL(SITE.url); u.protocol = canonical.protocol; u.host = canonical.host; return u.href; } catch { return null; } }
   function link(label: string, value: unknown, cls = '') { const href = safeUrl(value); if (!href) return null; const a = el('a', cls, label); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
   function notify(method: string, params: unknown) { if (window.parent !== window) window.parent.postMessage({ jsonrpc: '2.0', method, params }, parentOrigin); }
   function request(method: string, params: unknown, timeout = 30000): Promise<unknown> { return new Promise((resolve, reject) => {
@@ -136,7 +138,7 @@
   window.addEventListener('openai:set_globals', e => legacyResult((e as CustomEvent<{ globals: OpenAI }>).detail?.globals || {}));
   const observer = new ResizeObserver(() => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { if (disposed) return; const height = Math.ceil(document.getElementById('reader')!.getBoundingClientRect().height); if (height === lastHeight) return; lastHeight = height; if (bridgeReady) notify('ui/notifications/size-changed', { height }); else win.openai?.notifyIntrinsicHeight?.(height); }); });
   observer.observe(document.getElementById('reader')!); if (win.openai) legacyResult(win.openai);
-  void request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: '911records-reader', version: '1.2.0' }, appCapabilities: {} }, 5000)
+  void request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: `${SITE.slug}-reader`, version: '1.2.0' }, appCapabilities: {} }, 5000)
     .then(value => { if (disposed) return; bridgeReady = true; setContext((value as { hostContext?: Context }).hostContext || {}); notify('ui/notifications/initialized', {}); if (data?.pages?.length) void call('get_page', { doc: data.doc, page: data.pages[0]!.page }); })
     .catch(() => { if (!win.openai?.callTool && !data && !disposed) status('Connect to read records', 'Open this reader through the 9/11 City Records app.'); });
 })();

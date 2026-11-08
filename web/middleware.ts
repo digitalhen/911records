@@ -1,3 +1,4 @@
+import { SITE_ALIASES, SITE_URL } from './lib/brand';
 import { NextResponse, type NextRequest } from 'next/server';
 
 // Per-process fixed window: 20 requests/minute, bounded to 50k clients.
@@ -55,8 +56,9 @@ export function crawlGuard(req: NextRequest, now = Date.now()): NextResponse | n
 
 // Canonical domain migration. 308 preserves methods/bodies as well as paths and queries.
 // Internal health probes use localhost/container hostnames, so they are never redirected.
-const SITE_ORIGIN = 'https://911records.org';
-const LEGACY_HOSTS = new Set(['911records.nyc', 'www.911records.nyc', 'www.911records.org']);
+// Hosts and canonical origin come from lib/brand.ts (NEXT_PUBLIC_SITE_URL / NEXT_PUBLIC_SITE_ALIASES).
+const SITE_ORIGIN = SITE_URL;
+const LEGACY_HOSTS = new Set(SITE_ALIASES);
 
 export function canonicalRedirect(req: NextRequest): NextResponse | null {
   const forwardedHost = req.headers.get('x-forwarded-host');

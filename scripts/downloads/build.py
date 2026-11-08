@@ -27,6 +27,14 @@ We cannot recall copies already downloaded. Do not treat an old ZIP as current.
 Catalog capture dates are not necessarily the dates the City changed a record.
 Independent project by Cleartext Labs; not affiliated with the City of New York.
 '''
+# A self-hosted copy names itself (SITE_URL / OPERATOR_NAME, docs/SELF-HOSTING.md). Unset, the text
+# above is used byte-for-byte: it is part of every ZIP's identity hash, so changing it would rebuild
+# them all.
+if os.environ.get('SITE_URL', '').strip():
+    _site = os.environ['SITE_URL'].strip().rstrip('/')
+    README = (README.replace('https://911records.nyc', _site)
+              .replace('911records.nyc', _site.split('://', 1)[-1])
+              .replace('Cleartext Labs', os.environ.get('OPERATOR_NAME', '').strip() or 'an independent operator'))
 
 def encoded(value):
     return (json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')) + '\n').encode()

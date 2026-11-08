@@ -38,8 +38,8 @@ from page_text import catalog_text_files, effective_rows
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "data" / "text"
 DB = REPO / "data" / "embed" / "pages.sqlite"
-OLLAMA = "http://localhost:11434/api/embed"
-MODEL = "nomic-embed-text"
+import llm  # embedding provider/model: EMBED_* env, docs/MODELS.md
+MODEL = llm.EMBED_MODEL
 CHUNK_CHARS = 3000
 OVERLAP = 300
 MIN_CHARS = 80        # below this a page is treated as empty (image-only scans extract to ~0)
@@ -60,9 +60,7 @@ def connect() -> sqlite3.Connection:
 
 
 def embed(texts: list[str]) -> np.ndarray:
-    body = json.dumps({"model": MODEL, "input": [f"search_document: {t}" for t in texts]}).encode()
-    req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
-    v = np.asarray(json.load(urllib.request.urlopen(req, timeout=900))["embeddings"], dtype=np.float32)
+    v = np.asarray(llm.embed(texts, "document", timeout=900), dtype=np.float32)
     return v / np.linalg.norm(v, axis=1, keepdims=True)
 
 

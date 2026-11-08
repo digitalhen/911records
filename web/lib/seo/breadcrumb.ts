@@ -1,4 +1,5 @@
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+import { SITE_URL } from '@/lib/brand';
+
 
 export interface Crumb {
   name: string;

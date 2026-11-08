@@ -1,4 +1,5 @@
 'use client';
+import { SITE_URL } from '@/lib/brand';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -8,7 +9,7 @@ import type { CaseItem } from '@/lib/case/types';
 import type { CaseDocMeta } from '@/lib/case/lookup';
 import { Button, ButtonLink, Callout, Dialog, Textarea, Toast, useToast } from '@/components/ui';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+
 
 function docHref(doc: string, page: number): string {
   return page > 1 ? `/doc/${encodeURIComponent(doc)}/p/${page}` : `/doc/${encodeURIComponent(doc)}`;

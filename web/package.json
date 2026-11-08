@@ -19,6 +19,7 @@
     "seed:reading": "tsx scripts/seed-reading.ts"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.36.0",
     "@anthropic-ai/sdk": "^0.120.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "maplibre-gl": "^6.0.0",

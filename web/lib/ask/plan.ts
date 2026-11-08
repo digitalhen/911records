@@ -3,25 +3,17 @@
 // typed question into an AskPlan. No tool use, no loop — the model's entire
 // job is this one JSON object. Retrieval and the second call live in
 // lib/ask/retrieve.ts and lib/ask/answer.ts; rows never reach this call.
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
+import { LLM_MODEL, llmConfigured, structuredCall, type LlmUsage } from '../llm';
 import { LIST_KINDS } from './lists';
 
-// docs/PLAN.md default; overridable per docs/PLAN.md's env table. Kept
-// undated (no `-20251001` suffix) to track whatever Haiku 4.5 currently
-// resolves to, matching the plan's own `claude-haiku-4-5`.
-export const ASK_MODEL = process.env.ASK_MODEL || 'claude-haiku-4-5';
+// Provider and model come from lib/llm.ts (LLM_PROVIDER / ASK_MODEL; default
+// Anthropic claude-haiku-4-5, undated to track whatever Haiku 4.5 resolves to).
+export const ASK_MODEL = LLM_MODEL;
 const MAX_TOKENS = 1024;
 
-let client: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!client) client = new Anthropic();
-  return client;
-}
-
 export function askConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return llmConfigured();
 }
 
 /**
@@ -67,7 +59,7 @@ export type AskPlan = z.infer<typeof AskPlanSchema>;
 export interface AskPlanResult {
   plan: AskPlan;
   model: string;
-  usage: Anthropic.Usage;
+  usage: LlmUsage;
 }
 
 /**
@@ -117,25 +109,15 @@ function normalizePlan(plan: AskPlan): AskPlan {
 }
 
 export async function planAsk(question: string): Promise<AskPlanResult> {
-  const response = await anthropic().messages.parse({
-    model: ASK_MODEL,
-    max_tokens: MAX_TOKENS,
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-    // Haiku 4.5 doesn't take `output_config.effort` (400 invalid_request_error)
-    // — only the structured-output format is set here.
-    output_config: { format: zodOutputFormat(AskPlanSchema) },
-    messages: [{ role: 'user', content: question }],
+  const { data, usage: u } = await structuredCall({
+    name: 'ask_plan', system: SYSTEM, user: question, schema: AskPlanSchema, maxTokens: MAX_TOKENS,
   });
-
-  const parsed = response.parsed_output;
-  if (!parsed) throw new Error('ask: model returned no parseable plan');
-  const plan = normalizePlan(parsed as AskPlan);
-  const u = response.usage;
+  const plan = normalizePlan(data as AskPlan);
   console.log(
     `[ask:plan] ${ASK_MODEL} kind=${plan.kind} in=${u.input_tokens} out=${u.output_tokens}` +
       ` cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
   );
-  return { plan, model: ASK_MODEL, usage: response.usage };
+  return { plan, model: ASK_MODEL, usage: u };
 }
 
 /**
@@ -175,22 +157,13 @@ export async function planFollowUp(
     `Pages the prior answer cited: ${parentCitedBatesPages.length ? parentCitedBatesPages.join(', ') : '(none)'}\n` +
     `Follow-up: ${sentence}`;
 
-  const response = await anthropic().messages.parse({
-    model: ASK_MODEL,
-    max_tokens: MAX_TOKENS,
-    system: [{ type: 'text', text: FOLLOW_UP_SYSTEM, cache_control: { type: 'ephemeral' } }],
-    // Haiku 4.5 doesn't take `output_config.effort` (400 invalid_request_error).
-    output_config: { format: zodOutputFormat(AskPlanSchema) },
-    messages: [{ role: 'user', content: userContent }],
+  const { data, usage: u } = await structuredCall({
+    name: 'ask_plan', system: FOLLOW_UP_SYSTEM, user: userContent, schema: AskPlanSchema, maxTokens: MAX_TOKENS,
   });
-
-  const parsed = response.parsed_output;
-  if (!parsed) throw new Error('ask: model returned no parseable follow-up plan');
-  const plan = normalizePlan(parsed as AskPlan);
-  const u = response.usage;
+  const plan = normalizePlan(data as AskPlan);
   console.log(
     `[ask:plan:followup] ${ASK_MODEL} kind=${plan.kind} in=${u.input_tokens} out=${u.output_tokens}` +
       ` cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
   );
-  return { plan, model: ASK_MODEL, usage: response.usage };
+  return { plan, model: ASK_MODEL, usage: u };
 }

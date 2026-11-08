@@ -1,10 +1,11 @@
+import { OPERATOR_NAME } from '@/lib/brand';
 import Link from 'next/link';
 import { APP_VERSION } from '@/lib/releases';
 
 export function Footer() {
   return (
     <footer>
-      <span>An independent project by Cleartext Labs. Not affiliated with the City of New York.</span>
+      <span>An independent project by {OPERATOR_NAME}. Not affiliated with the City of New York.</span>
       <span>
         <Link href="/downloads">Downloads</Link> · <Link href="/about">About</Link> · <Link href="/privacy">Privacy</Link> ·{' '}
         <Link href="/terms">Terms</Link> ·{' '}

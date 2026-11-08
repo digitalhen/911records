@@ -1,9 +1,10 @@
+import { SITE_URL } from '@/lib/brand';
 import { NextResponse } from 'next/server';
 import { getDocIdsWithDatesPage } from '@/lib/site';
 import { SITEMAP_CHUNK_SIZE } from '@/lib/sitemap';
 import { informationSitemapPaths } from '@/lib/info/sitemap';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+
 
 // Matches /sitemaps/documents-0.xml, documents-1.xml, ... (App Router dynamic
 // segments can't mix a literal prefix into the folder name, so this one

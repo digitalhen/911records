@@ -3,20 +3,13 @@
 // discipline is enforced here AND re-checked by the caller (lib/ask/route
 // logic in app/ask/page.tsx): every sentence must cite a Bates page that was
 // actually retrieved, or it is dropped — never rendered.
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { ASK_MODEL } from './plan';
+import { structuredCall, type LlmUsage } from '../llm';
 import type { RetrievedPage } from './retrieve';
 import { search } from '../opensearch';
 
 const MAX_TOKENS = 2048;
-
-let client: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!client) client = new Anthropic();
-  return client;
-}
 
 const CitedSentenceSchema = z.object({
       text: z.string(),
@@ -42,7 +35,7 @@ export type AskAnswer = Omit<z.infer<typeof AskAnswerSchema>, 'evidenceSummary'>
 export interface AskAnswerResult {
   answer: AskAnswer;
   model: string;
-  usage: Anthropic.Usage;
+  usage: LlmUsage;
 }
 
 const SYSTEM = `You write a short answer to a question about New York City's released 9/11 records, using ONLY the numbered page excerpts given to you. This is a citation-discipline tool, not a general assistant.
@@ -65,28 +58,18 @@ export async function answerQuestion(question: string, pages: RetrievedPage[]): 
     )
     .join('\n\n');
 
-  const response = await anthropic().messages.parse({
-    model: ASK_MODEL,
-    max_tokens: MAX_TOKENS,
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-    // Haiku 4.5 doesn't take `output_config.effort` (400 invalid_request_error).
-    output_config: { format: zodOutputFormat(AskAnswerSchema) },
-    messages: [
-      {
-        role: 'user',
-        content: `Question: ${question}\n\nRetrieved page excerpts (cite by "Bates page" value only):\n\n${excerptBlock}`,
-      },
-    ],
+  const { data: answer, usage: u } = await structuredCall({
+    name: 'ask_answer',
+    system: SYSTEM,
+    user: `Question: ${question}\n\nRetrieved page excerpts (cite by "Bates page" value only):\n\n${excerptBlock}`,
+    schema: AskAnswerSchema,
+    maxTokens: MAX_TOKENS,
   });
-
-  const answer = response.parsed_output;
-  if (!answer) throw new Error('ask: model returned no parseable answer');
-  const u = response.usage;
   console.log(
     `[ask:answer] ${ASK_MODEL} sentences=${answer.sentences.length} in=${u.input_tokens} out=${u.output_tokens}` +
       ` cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
   );
-  return { answer: answer as AskAnswer, model: ASK_MODEL, usage: response.usage };
+  return { answer: answer as AskAnswer, model: ASK_MODEL, usage: u };
 }
 
 /**

@@ -1,0 +1,176 @@
+# Self-hosted 911records: the whole stack on ONE machine (an EC2 instance, a VPS, a workstation).
+# See docs/SELF-HOSTING.md. This is NOT the production setup in ../docker-compose.yml (two Dokploy
+# replicas plus host services on StudioMac) and nothing here touches it.
+#
+#   cd deploy && cp .env.example .env && $EDITOR .env
+#   docker compose up -d                        # postgres, opensearch, ollama, files, app
+#   docker compose exec ollama ollama pull nomic-embed-text   (once; skip if EMBED_PROVIDER=openai)
+#   docker compose run --rm pipeline scripts/seed/load_seed.sh  (after unpacking a seed into DATA_DIR)
+#
+# Only the app's port is published. Put a TLS proxy or an AWS ALB in front of it.
+name: 911records
+
+x-pg-env: &pg-env
+  PGHOST: postgres
+  PGPORT: '5432'
+  PGUSER: sept11
+  PGDATABASE: sept11
+  PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sept11
+      POSTGRES_DB: sept11
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sept11 -d sept11']
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.2
+    environment:
+      discovery.type: single-node
+      cluster.name: sept11-records
+      # Private compose network only (no published port), so the security plugin is off.
+      DISABLE_SECURITY_PLUGIN: 'true'
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-2g} -Xmx${OPENSEARCH_HEAP:-2g}
+      bootstrap.memory_lock: 'true'
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - os-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://localhost:9200/_cluster/health || exit 1']
+      interval: 15s
+      retries: 20
+    restart: unless-stopped
+
+  # Query embeddings for semantic search (nomic-embed-text runs fine on CPU).
+  # Not needed if EMBED_PROVIDER=openai — but then the index must be re-embedded with that model.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+  # PDFs, page images and text files, straight off disk (DATA_DIR). The app proxies /files/* here.
+  files:
+    image: nginx:1.27-alpine
+    volumes:
+      - ${DATA_DIR:-../data}/pdf:/data/pdf:ro
+      - ${DATA_DIR:-../data}/pages:/data/pages:ro
+      - ${DATA_DIR:-../data}/text:/data/text:ro
+      - ${DATA_DIR:-../data}/downloads:/data/downloads:ro
+      - ./files.nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../web
+      dockerfile: ../Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${SITE_URL:-http://localhost:3000}
+        # Off by default for self-hosted copies: these ids belong to 911records.org.
+        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-off}
+        NEXT_PUBLIC_ADS: ${NEXT_PUBLIC_ADS:-off}
+        # Who this copy is (web/lib/brand.ts, docs/SELF-HOSTING.md). Empty = derived from SITE_URL
+        # or 911records.org's value; `off` = none. Set OPERATOR_NAME and CONTACT_EMAIL to your own.
+        NEXT_PUBLIC_SITE_NAME: ${SITE_NAME:-}
+        NEXT_PUBLIC_SITE_SLUG: ${SITE_SLUG:-}
+        NEXT_PUBLIC_SITE_ALIASES: ${SITE_ALIASES:-}
+        NEXT_PUBLIC_FORMER_HOST: ${FORMER_HOST:-off}
+        NEXT_PUBLIC_OPERATOR_NAME: ${OPERATOR_NAME:?set OPERATOR_NAME in deploy/.env (who runs this copy)}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in deploy/.env}
+        NEXT_PUBLIC_ISSUES_URL: ${ISSUES_URL:-off}
+        NEXT_PUBLIC_DONATE_URL: ${DONATE_URL:-off}
+        NEXT_PUBLIC_ADSENSE_CLIENT: ${ADSENSE_CLIENT:-off}
+        NEXT_PUBLIC_ADSENSE_SLOT: ${ADSENSE_SLOT:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      opensearch: { condition: service_healthy }
+    environment:
+      NODE_OPTIONS: --max-old-space-size=2048
+      DATABASE_URL: postgres://sept11:${POSTGRES_PASSWORD}@postgres:5432/sept11
+      FILES_URL: http://files:8911
+      OPENSEARCH_URL: http://opensearch:9200
+      REPLICA_NAME: ${REPLICA_NAME:-selfhost}
+      # Search embeddings (docs/MODELS.md)
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
+      EMBED_URL: ${EMBED_URL:-http://ollama:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      EMBED_QUERY_PREFIX:
+      # Ask (docs/MODELS.md). Leave every key empty to run without Ask (search still works).
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      ASK_MODEL: ${ASK_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_REGION: ${AWS_REGION:-}
+      BEDROCK_ENDPOINT: ${BEDROCK_ENDPOINT:-}
+      ASK_DAILY_USD_CAP: ${ASK_DAILY_USD_CAP:-}
+      ASK_PRICE_INPUT_PER_MTOK: ${ASK_PRICE_INPUT_PER_MTOK:-}
+      ASK_PRICE_OUTPUT_PER_MTOK: ${ASK_PRICE_OUTPUT_PER_MTOK:-}
+      # Captcha for Ask and bulk downloads (optional; Cloudflare Turnstile)
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      DOWNLOAD_SESSION_SECRET: ${DOWNLOAD_SESSION_SECRET:-}
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # One-shot tools: load a seed, rebuild the index, run pipeline stages.
+  #   docker compose run --rm pipeline scripts/seed/load_seed.sh
+  pipeline:
+    profiles: [tools]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.pipeline
+    working_dir: /repo
+    volumes:
+      - ..:/repo
+      - ${DATA_DIR:-../data}:/repo/data
+    environment:
+      <<: *pg-env
+      PYTHON: python3
+      # Contact sent to the City's portal if you run the scraper, and names in the ZIP README.
+      MIRROR_CONTACT: ${CONTACT_EMAIL:?set CONTACT_EMAIL in deploy/.env}
+      SITE_URL: ${SITE_URL:-}
+      OPERATOR_NAME: ${OPERATOR_NAME:-}
+      OPENSEARCH_URL: http://opensearch:9200
+      OLLAMA_URL: http://ollama:11434
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
+      EMBED_URL: ${EMBED_URL:-http://ollama:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_REGION: ${AWS_REGION:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      opensearch: { condition: service_healthy }
+
+volumes:
+  pg-data: {}
+  os-data: {}
+  ollama-models: {}

@@ -25,7 +25,7 @@ import { join } from 'node:path';
 const HOST = 'https://sept11documents.cityofnewyork.us';
 const SEARCH = `${HOST}/api/v2/search`;
 const CONTENT = (title) => `${HOST}/apps/content/September11_MD/${encodeURIComponent(title)}`;
-const UA = 'sept11-docs-research/0.1 (contact: digitalhen@gmail.com)';
+const UA = `sept11-docs-research/0.1 (contact: ${process.env.MIRROR_CONTACT?.trim() || 'digitalhen@gmail.com'})`;
 const PAGE = 100;          // server caps count at 100 per request
 const DELAY_MS = 600;      // <= 2 req/s
 

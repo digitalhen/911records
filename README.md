@@ -13,7 +13,10 @@ the scripts rely on. `docs/CONTEXT.md` covers the release and external sources.
 The prior art, [`pranava0x0/sept11documents-mcp`](https://github.com/pranava0x0/sept11documents-mcp),
 found the export and cursor-paging endpoints first.
 
-There is no UI and no search index here yet.
+The website (`web/`), search index and pipeline are documented in `docs/PLAN.md` and
+`docs/RUNBOOK.md`. To run your own copy (e.g. on AWS) from a pre-built data seed, see
+`docs/SELF-HOSTING.md`. To change which language and embedding models are used, see
+`docs/MODELS.md`.
 
 ## Scripts
 

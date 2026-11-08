@@ -1,3 +1,4 @@
+import { isSiteOrigin, SITE_NAME } from '@/lib/brand';
 import { createShortlink } from '@/lib/shortlinks/store';
 import { normalizeTarget } from '@/lib/shortlinks/paths';
 import { clientIp } from '@/lib/ask/rateLimit';
@@ -5,7 +6,7 @@ import { clientIp } from '@/lib/ask/rateLimit';
 const requests = new Map<string, { n: number; until: number }>();
 export async function POST(req: Request) {
   const origin = req.headers.get('origin');
-  if (origin && origin !== 'https://911records.org' && !(process.env.NODE_ENV !== 'production' && origin === new URL(req.url).origin)) return Response.json({ error: 'Origin not allowed.' }, { status: 403 });
+  if (origin && !isSiteOrigin(origin) && !(process.env.NODE_ENV !== 'production' && origin === new URL(req.url).origin)) return Response.json({ error: 'Origin not allowed.' }, { status: 403 });
   const now = Date.now();
   for (const [ip, b] of requests) if (b.until <= now) requests.delete(ip);
   const ip = clientIp(req.headers);
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (typeof body.url !== 'string') throw new Error();
     target = normalizeTarget(body.url);
-  } catch { return Response.json({ error: 'Provide a valid 911records.org page URL.' }, { status: 400 }); }
+  } catch { return Response.json({ error: `Provide a valid ${SITE_NAME} page URL.` }, { status: 400 }); }
   finally { clearTimeout(timer); reader.releaseLock(); }
   try { return Response.json(await createShortlink(target), { headers: { 'Cache-Control': 'no-store' } }); }
   catch { return Response.json({ error: 'Shortlink unavailable. Please copy the full URL.' }, { status: 503 }); }
