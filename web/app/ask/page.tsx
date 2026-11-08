@@ -380,7 +380,7 @@ async function handleRefresh(oldId: string, sp: SearchParamsInput, verified: boo
   if (!verified) return verificationView(sp, oldRow.q);
   const hdrs = await headers();
   const ip = clientIp(hdrs);
-  if (!allowAskRequest(ip)) {
+  if (!(await allowAskRequest(ip))) {
     redirect(searchFallbackUrl(oldRow.q, 'ask-rate-limited'));
   }
   if (!(await underDailyCap())) {
@@ -456,7 +456,7 @@ async function executeAsk(sp: SearchParamsInput, verified: boolean): Promise<Rea
       if (!verified) return verificationView(sp, q);
       const hdrs = await headers();
       const ip = clientIp(hdrs);
-      if (!allowAskRequest(ip)) {
+      if (!(await allowAskRequest(ip))) {
         redirect(searchFallbackUrl(q, 'ask-rate-limited'));
       }
       if (!(await underDailyCap())) {
@@ -521,7 +521,7 @@ async function executeAsk(sp: SearchParamsInput, verified: boolean): Promise<Rea
   if (!verified) return verificationView(sp, q);
   const hdrs = await headers();
   const ip = clientIp(hdrs);
-  if (!allowAskRequest(ip)) {
+  if (!(await allowAskRequest(ip))) {
     redirect(searchFallbackUrl(q, 'ask-rate-limited'));
   }
 

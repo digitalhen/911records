@@ -1,5 +1,6 @@
 import 'server-only';
 import { queryOne } from '@/lib/db';
+import { downloadsS3, readIndexFromS3 } from '@/lib/downloads/s3';
 
 export interface Archive {
   name: string; documents: number; pages: number; bytes: number; sha256: string;
@@ -16,9 +17,16 @@ export function formatBytes(bytes: number) {
 }
 export async function currentDownloads(): Promise<DownloadCatalog | null> {
   // Primary, uncached: a lagging replica must not authorize a withdrawn archive.
-  const response = await fetch(`${downloadsOrigin()}/index.json`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-  if (!response.ok) return null;
-  const catalog = await response.json() as DownloadCatalog;
+  let catalog: DownloadCatalog;
+  if (downloadsS3()) {
+    const text = await readIndexFromS3();
+    if (!text) return null;
+    catalog = JSON.parse(text) as DownloadCatalog;
+  } else {
+    const response = await fetch(`${downloadsOrigin()}/index.json`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return null;
+    catalog = await response.json() as DownloadCatalog;
+  }
   if (catalog.schema_version !== 1 || !catalog.built_at || !Array.isArray(catalog.boxes)) return null;
   const meta = await queryOne<{ value: string }>("SELECT value FROM site.meta WHERE key='built_at'");
   return meta?.value === catalog.built_at ? catalog : null;

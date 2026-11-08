@@ -9,6 +9,7 @@
 #   3. Mark the deployment ready (data/.seed-ready): the app waits for this.
 #   4. Fetch the remaining kinds (page images, PDFs). These are served straight off disk, so the
 #      site is already up while they download.
+#      With BUILD_DOWNLOADS=1, then build the per-box ZIP downloads (needs all PDFs on disk).
 #   5. If FILES_S3 is set, copy text, page images, PDFs and downloads to that bucket in the URL
 #      layout the app expects (pdf/, page/, text/, downloads/), for FILES_URL via CloudFront.
 #      FILES_S3_PRUNE_LOCAL=1 then deletes the local PDFs and page images (S3 has them).
@@ -96,7 +97,7 @@ while true; do
   if "$PY" scripts/seed/fetch_seed.py "$SEED_URL" --extract --kinds core,text; then
     if [ "$(state)" != "$(cat "$LOADED" 2>/dev/null)" ] || ! stores_loaded; then
       log "loading Postgres and OpenSearch"
-      if scripts/seed/load_seed.sh; then state > "$LOADED"; else log "load failed; will retry"; fi
+      if BUILD_DOWNLOADS=0 scripts/seed/load_seed.sh; then state > "$LOADED"; else log "load failed; will retry"; fi
     else
       log "already loaded and up to date"
     fi
@@ -110,6 +111,12 @@ while true; do
     if [ -n "$EXTRA" ]; then
       log "fetching $EXTRA (served from disk; the site is up meanwhile)"
       "$PY" scripts/seed/fetch_seed.py "$SEED_URL" --extract --kinds "$EXTRA" || log "fetch of $EXTRA failed; will retry"
+    fi
+    # Per-box ZIP downloads need every PDF on disk, so they are built here, after the PDFs arrive
+    # (not inside load_seed.sh). build.py skips archives that are already current.
+    if [ "${BUILD_DOWNLOADS:-0}" = 1 ] && [ -d data/pdf ]; then
+      log "building ZIP downloads"
+      "$PY" scripts/downloads/build.py || log "downloads build failed; will retry"
     fi
     if [ -n "${FILES_S3:-}" ]; then publish_s3 || log "S3 sync failed; will retry"; fi
     if [ "${SEED_EXIT_WHEN_DONE:-0}" = 1 ]; then log "done"; exit 0; fi

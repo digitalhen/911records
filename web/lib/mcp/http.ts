@@ -3,8 +3,8 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { Backend } from './backend';
 import { createServer } from './server';
 import { clientIp } from '../ask/rateLimit';
+import { hit } from '../rateLimit';
 
-const buckets = new Map<string, { count: number; expires: number }>();
 let active = 0;
 const MAX_BODY = 16_384;
 const reject = (status: number, message: string, headers = {}) => Response.json({ error: message }, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
@@ -19,13 +19,12 @@ export function createHandler(db: Backend) {
     }
     if (origin && !allowedOrigins.has(origin)) return reject(403, 'Origin not allowed.');
     if (req.method !== 'POST') return reject(405, 'Use MCP Streamable HTTP POST requests.', { Allow: 'POST' });
-    const now = Date.now();
-    for (const [key, value] of buckets) if (value.expires <= now) buckets.delete(key);
-    const ip = clientIp(req.headers);
-    const bucket = buckets.get(ip);
-    if (bucket && bucket.count >= 60) return reject(429, 'Too many requests.', { 'Retry-After': String(Math.ceil((bucket.expires - now) / 1000)) });
-    if (active >= 12 || (!bucket && buckets.size >= 5000)) return reject(503, 'Server busy. Please retry.', { 'Retry-After': '5' });
-    buckets.set(ip, { count: (bucket?.count ?? 0) + 1, expires: bucket?.expires ?? now + 60000 });
+    // `active` is this copy's own concurrency guard (per process by design); the per-IP limit
+    // is shared across copies when RATE_LIMIT_STORE=postgres.
+    if (active >= 12) return reject(503, 'Server busy. Please retry.', { 'Retry-After': '5' });
+    const limit = await hit('mcp', clientIp(req.headers), 60, 60_000);
+    if (limit.busy) return reject(503, 'Server busy. Please retry.', { 'Retry-After': '5' });
+    if (!limit.ok) return reject(429, 'Too many requests.', { 'Retry-After': String(limit.retryAfter) });
     if (!req.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return reject(415, 'Content-Type must be application/json.');
     if (Number(req.headers.get('content-length')) > MAX_BODY) return reject(413, 'Request too large.');
     active++;

@@ -127,6 +127,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://sept11:${POSTGRES_PASSWORD}@postgres:5432/sept11}
       # Where PDFs, page images and text are read from: the files service, or S3 via CloudFront.
       FILES_URL: ${FILES_URL:-http://files:8911}
+      # Scaling options (deploy/aws sets these): redirect file requests to a CDN, presign archive
+      # downloads from S3, share rate-limit counters across app copies.
+      FILES_PUBLIC_URL: ${FILES_PUBLIC_URL:-}
+      DOWNLOADS_S3: ${DOWNLOADS_S3:-}
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-}
       REPLICA_NAME: ${REPLICA_NAME:-selfhost}
       # Search embeddings (docs/MODELS.md)
       EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
@@ -177,6 +182,7 @@ services:
       SEED_UPDATE_HOURS: ${SEED_UPDATE_HOURS:-24}
       FILES_S3: ${FILES_S3:-}
       FILES_S3_PRUNE_LOCAL: ${FILES_S3_PRUNE_LOCAL:-0}
+      BUILD_DOWNLOADS: ${BUILD_DOWNLOADS:-0}
       AWS_REGION: ${AWS_REGION:-}
       OLLAMA_URL: http://ollama:11434
       EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
