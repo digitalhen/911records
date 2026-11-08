@@ -2,22 +2,19 @@ import { verifyAskCaptcha } from '@/lib/ask/captcha';
 import { issueAskGrant } from '@/lib/ask/grant';
 import { captchaConfig } from '@/lib/downloads/captcha';
 import { clientIp } from '@/lib/ask/rateLimit';
+import { hit } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-const attempts = new Map<string, { count: number; until: number }>();
 const reply = (error: string, status: number) => Response.json({ error }, {
   status, headers: { 'Cache-Control': 'private, no-store' },
 });
 
 export async function POST(request: Request) {
-  const now = Date.now();
-  for (const [key, value] of attempts) if (value.until <= now) attempts.delete(key);
-  const ip = clientIp(request.headers), bucket = attempts.get(ip);
-  if ((bucket?.count || 0) >= 10 || (!bucket && attempts.size >= 5000)) {
+  const ip = clientIp(request.headers);
+  if (!(await hit('ask-verify', ip, 10, 600_000)).ok) {
     return reply('Too many verification attempts. Please try again in ten minutes.', 429);
   }
-  attempts.set(ip, { count: (bucket?.count || 0) + 1, until: bucket?.until || now + 600_000 });
   if (!request.headers.get('content-type')?.startsWith('application/json')) return reply('Expected JSON.', 415);
   const reader = request.body?.getReader();
   if (!reader) return reply('Complete verification first.', 400);

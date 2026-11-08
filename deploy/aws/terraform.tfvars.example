@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars. Everything else has defaults (variables.tf).
+region = "us-east-1"
+name   = "records"
+
+# The documents: the Google Drive folder link from the 911records maintainer, or your own S3 copy
+# (then also set seed_bucket_arn, e.g. "arn:aws:s3:::my-seed-bucket").
+seed_url = "https://drive.google.com/drive/folders/<FOLDER_ID>"
+
+# Filled in by deploy/aws/build-push.sh's output after the first apply:
+# app_image      = "123456789012.dkr.ecr.us-east-1.amazonaws.com/records/app:20261108-1"
+# pipeline_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/records/pipeline:20261108-1"
+
+# HTTPS: an ACM certificate for your domain in this region (DNS-validated).
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+
+# Scale
+# app_min_count = 2
+# app_max_count = 10
+# db_multi_az = true
+# db_read_replica = true
+# search_instance_count = 2
+
+# Ask on Bedrock (enable the model in the Bedrock console first)
+# app_env = {
+#   LLM_PROVIDER = "bedrock"
+#   ASK_MODEL    = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+# }
+# bedrock_model_arns = [
+#   "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+#   "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+# ]

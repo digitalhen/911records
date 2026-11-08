@@ -125,6 +125,16 @@ ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS list_result JSONB;
 ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS refreshed_from TEXT REFERENCES app.answers(id);
 ALTER TABLE app.answers ADD COLUMN IF NOT EXISTS superseded_by TEXT REFERENCES app.answers(id);
 CREATE INDEX IF NOT EXISTS answers_refreshed_from_idx ON app.answers (refreshed_from);
+
+-- Shared rate-limit counters (lib/rateLimit.ts), used only when RATE_LIMIT_STORE=postgres:
+-- autoscaled deployments where every app copy must see the same count. Keys are scope:client-IP,
+-- swept an hour after their window ends; nothing else is stored.
+CREATE TABLE IF NOT EXISTS app.rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  reset_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS rate_limits_reset_idx ON app.rate_limits (reset_at);
 `;
 
 let ensured: Promise<void> | undefined;

@@ -2,17 +2,12 @@ import { isSiteOrigin, SITE_NAME } from '@/lib/brand';
 import { createShortlink } from '@/lib/shortlinks/store';
 import { normalizeTarget } from '@/lib/shortlinks/paths';
 import { clientIp } from '@/lib/ask/rateLimit';
+import { hit } from '@/lib/rateLimit';
 
-const requests = new Map<string, { n: number; until: number }>();
 export async function POST(req: Request) {
   const origin = req.headers.get('origin');
   if (origin && !isSiteOrigin(origin) && !(process.env.NODE_ENV !== 'production' && origin === new URL(req.url).origin)) return Response.json({ error: 'Origin not allowed.' }, { status: 403 });
-  const now = Date.now();
-  for (const [ip, b] of requests) if (b.until <= now) requests.delete(ip);
-  const ip = clientIp(req.headers);
-  const b = requests.get(ip);
-  if ((b?.n ?? 0) >= 30 || (!b && requests.size >= 5000)) return Response.json({ error: 'Please try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } });
-  requests.set(ip, { n: (b?.n ?? 0) + 1, until: b?.until ?? now + 60000 });
+  if (!(await hit('shortlinks', clientIp(req.headers), 30, 60_000)).ok) return Response.json({ error: 'Please try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } });
   if (!req.headers.get('content-type')?.startsWith('application/json')) return Response.json({ error: 'Expected JSON.' }, { status: 415 });
   const reader = req.body?.getReader();
   if (!reader) return Response.json({ error: 'Missing URL.' }, { status: 400 });

@@ -128,51 +128,36 @@ Everything from section 2 on one machine, databases included.
   ~$20/month, plus model usage. Ask on Haiku 4.5 costs about half a cent per question; the
   daily cap (`ASK_DAILY_USD_CAP`) bounds it.
 
-### Production: documents in S3, managed databases
+### Production: autoscaling on managed services (Terraform)
 
-The app keeps no state of its own, so it can run as several copies behind a load balancer,
-with the data in managed services:
+`deploy/aws/` stands up the whole thing with Terraform: the app on ECS Fargate behind a load
+balancer, scaling between 2 and 10 copies on CPU; RDS for PostgreSQL 16; Amazon OpenSearch
+Service; the documents in S3 behind CloudFront; query embeddings on ECS; and a daily seed task
+that loads and updates everything. **Follow [deploy/aws/README.md](../deploy/aws/README.md).**
+It is four commands plus a domain, and costs about $315/month before traffic and Ask.
 
-| Piece | AWS service | Setup |
-|---|---|---|
-| Documents (PDFs, page images, text) | **S3** bucket, private, behind **CloudFront** with Origin Access Control | Set `FILES_URL` to the CloudFront URL. The app fetches files server-side and streams them to readers. |
-| Postgres | **RDS for PostgreSQL 16**, `db.t4g.medium` (2 vCPU, 4 GB), 50 GB gp3; Multi-AZ if you want failover | Create database `sept11`, master user `sept11`. Run `deploy/postgres-init.sql` once (`psql "host=<endpoint> user=sept11 dbname=sept11 sslmode=require" -f deploy/postgres-init.sql`). The data is ~10 GB and the load rebuilds it in a side schema, then swaps it in. |
-| Search | **Amazon OpenSearch Service** 2.19 (2.11 or later), 1 × `r6g.large.search` (2 vCPU, 16 GB), 50 GB gp3; 2 nodes in 2 AZs for failover | Enable fine-grained access control with an internal master user, and set `OPENSEARCH_USER` / `OPENSEARCH_PASSWORD`. k-NN and the hybrid-search normalization processor are built in. Use VPC access. |
-| App | **ECS Fargate** (1 vCPU, 2 GB per task; 2+ tasks behind an ALB) or the compose app on EC2 | Image from `Dockerfile`, context `web/`, build args as in `deploy/docker-compose.yml`. Env: `DATABASE_URL`, `OPENSEARCH_*`, `FILES_URL`, `EMBED_URL`, Ask settings. |
-| Query embeddings | an `ollama/ollama` ECS service (CPU is fine, 2 GB) with `nomic-embed-text` | Set `EMBED_URL` to it. |
-| Seed and updates | the `seed` service: an ECS task (Fargate with 200 GB ephemeral storage, or EC2) | See below. |
-| Ask | **Bedrock** with the task role | as above |
+What makes it scale (each is an app setting the Terraform sets; all are off by default, so a
+single machine and 911records.org's own replicas behave as before):
 
-Rough cost, us-east-1 on-demand, single-AZ: RDS ~$60, OpenSearch ~$130, two app tasks ~$75,
-Ollama ~$35, ALB ~$20, S3 + CloudFront for ~70 GB ~$10 plus traffic: **about $330/month**.
-Multi-AZ roughly doubles the database lines.
+| Setting | Effect |
+|---|---|
+| `FILES_PUBLIC_URL` | `/files/*` redirects readers to the CDN, so PDFs and page images never pass through an app copy |
+| `DOWNLOADS_S3` | ZIP downloads are served from S3 on 15-minute presigned links after the captcha check |
+| `RATE_LIMIT_STORE=postgres` | per-visitor limits (Ask, verification, short links, MCP) are shared by all copies |
+| `DATABASE_READ_URL` | reads go to an RDS read replica, falling back to the primary |
 
-**Connecting to RDS.** RDS for PostgreSQL 16 requires TLS. The app's driver verifies
-certificates strictly and Node does not trust Amazon's CA by default, so use
-`DATABASE_URL=postgres://sept11:PASSWORD@<endpoint>:5432/sept11?sslmode=no-verify` (encrypted,
-fine inside a VPC), or download Amazon's
-[global bundle](https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem) into the
-container and use `?sslmode=verify-full&sslrootcert=/certs/global-bundle.pem`. The pipeline
-uses libpq: `PGHOST=<endpoint>` and `PGSSLMODE=require`.
-
-**Filling it.** Run the `seed` service once against the managed services with the documents
-going to S3:
-
-```
-SEED_URL=s3://my-bucket/911records-seed      # or the Drive link
-FILES_S3=s3://my-911records-files            # PDFs, page images and text are copied here
-FILES_S3_PRUNE_LOCAL=1                       # then deleted locally
-SEED_EXIT_WHEN_DONE=1                        # exit instead of idling (for a scheduled task)
-PGHOST, PGSSLMODE=require, POSTGRES_PASSWORD, OPENSEARCH_URL/USER/PASSWORD as above
-```
-
-As an ECS task: the image built from `deploy/Dockerfile.pipeline` (build context: the repo
-root; it contains the scripts), command `scripts/seed/sync_seed.sh`, a task role with read on
-the seed bucket and read/write on the files bucket, and **`/repo/data` on EFS** so it remembers
-what it has already fetched between runs (with pruning on, EFS holds ~10 GB). Schedule it daily
-with EventBridge Scheduler to pick up seed updates. With docker compose on EC2 instead, remove
-`COMPOSE_PROFILES=local-db` from `.env`, fill in the database block there, and set `FILES_S3`
-and `FILES_URL`: the same `seed` service does it all and keeps running.
+**Without Terraform** (EC2 with docker compose, managed databases): remove
+`COMPOSE_PROFILES=local-db` from `.env`, then fill in its database block. RDS for PostgreSQL 16
+requires TLS: use
+`DATABASE_URL=postgres://sept11:PASSWORD@<endpoint>:5432/sept11?sslmode=no-verify` (encrypted;
+the app's driver does not trust Amazon's CA by default), or mount Amazon's
+[global bundle](https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem) and use
+`?sslmode=verify-full&sslrootcert=/certs/global-bundle.pem`. The pipeline uses `PGHOST` and
+`PGSSLMODE=require`. For Amazon OpenSearch Service, enable fine-grained access control with an
+internal master user and set `OPENSEARCH_URL`, `OPENSEARCH_USER`, `OPENSEARCH_PASSWORD`. Set
+`FILES_S3` (and `FILES_URL` / `FILES_PUBLIC_URL` to a CloudFront distribution on that bucket) to
+serve the documents from S3. No manual database setup is needed: `load_seed.sh` creates the
+read-only role itself.
 
 ## 4. Make it yours: name, operator, contact
 

@@ -1,6 +1,7 @@
 import { SITE_SLUG } from '@/lib/brand';
 import { captchaGate } from '@/lib/downloads/captcha';
 import { currentDownloads, downloadsOrigin } from '@/lib/downloads/catalog';
+import { downloadsS3, presignedArchiveUrl } from '@/lib/downloads/s3';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ name: string }> };
@@ -19,6 +20,16 @@ async function serve(request: Request, context: Context, method: 'GET' | 'HEAD')
       return new Response('This download is no longer current. Visit /downloads for its replacement.', { status: 410, headers: noStore });
     }
     if (!/^(?:collection|box|manifest)-[a-f0-9]{64}\.(?:zip|json)$/.test(file)) throw new Error('Invalid archive name');
+    const label = archive === catalog.full ? 'collection' : [archive?.agency, archive?.box || 'unlabelled', archive?.volume].filter(Boolean).join('-');
+    const filename = archive
+      ? `${SITE_SLUG}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 140)}-${(catalog.snapshot_date || 'current').replace(/[^0-9a-z-]/g, '')}.zip`
+      : `${SITE_SLUG}-manifest.json`;
+    const contentType = file.endsWith('.zip') ? 'application/zip' : 'application/json';
+    if (downloadsS3()) {
+      // Bytes come straight from S3 on a short-lived link; the checks above still gate it.
+      const location = await presignedArchiveUrl(file, filename, contentType);
+      return new Response(null, { status: 302, headers: { ...noStore, Location: location } });
+    }
     const headers = new Headers();
     for (const key of ['range', 'if-range']) {
       const value = request.headers.get(key); if (value) headers.set(key, value);
@@ -28,11 +39,7 @@ async function serve(request: Request, context: Context, method: 'GET' | 'HEAD')
     for (const key of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
       const value = upstream.headers.get(key); if (value) out.set(key, value);
     }
-    out.set('Content-Type', upstream.headers.get('content-type') || (file.endsWith('.zip') ? 'application/zip' : 'application/json'));
-    const label = archive === catalog.full ? 'collection' : [archive?.agency, archive?.box || 'unlabelled', archive?.volume].filter(Boolean).join('-');
-    const filename = archive
-      ? `${SITE_SLUG}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 140)}-${(catalog.snapshot_date || 'current').replace(/[^0-9a-z-]/g, '')}.zip`
-      : `${SITE_SLUG}-manifest.json`;
+    out.set('Content-Type', upstream.headers.get('content-type') || contentType);
     out.set('Content-Disposition', `attachment; filename="${filename}"`);
     out.set('X-Content-Type-Options', 'nosniff');
     return new Response(method === 'HEAD' ? null : upstream.body, { status: upstream.status, headers: out });

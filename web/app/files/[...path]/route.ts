@@ -15,7 +15,14 @@ import type { NextRequest } from 'next/server';
 // Streams the upstream body (PDFs run to ~377 MB — never buffer), forwards
 // Range and conditional headers so the browser's PDF viewer and caches work,
 // and passes upstream status codes through unchanged (404 stays 404).
+//
+// FILES_PUBLIC_URL (optional, e.g. a CloudFront distribution in front of the S3 files bucket):
+// answer with a redirect there instead of proxying, so the bytes go from the CDN straight to the
+// reader and app copies only handle page requests. Same paths, so /files/... links stay stable.
+// Unset (911records.org's two replicas), everything is proxied as before.
 export const dynamic = 'force-dynamic';
+
+const FILES_PUBLIC_URL = () => (process.env.FILES_PUBLIC_URL || '').trim().replace(/\/+$/, '');
 
 const FILES_URL = () => (process.env.FILES_URL || 'http://127.0.0.1:8911').replace(/\/+$/, '');
 const FORWARD_REQUEST = ['range', 'if-none-match', 'if-modified-since', 'accept'];
@@ -29,6 +36,13 @@ async function proxy(req: NextRequest, path: string[], method: 'GET' | 'HEAD') {
   if (path[0]?.toLowerCase() === 'downloads') return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   const segments = path.map((s) => encodeURIComponent(decodeURIComponent(s)));
   if (segments.some((s) => s === '.' || s === '..' || /%2f|%5c/i.test(s)) || segments[0]?.toLowerCase() === 'downloads') return new Response('Not found', { status: 404 });
+  const cdn = FILES_PUBLIC_URL();
+  if (cdn) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `${cdn}/${segments.join('/')}`, 'Cache-Control': 'public, max-age=86400' },
+    });
+  }
   const headers = new Headers();
   for (const h of FORWARD_REQUEST) { const v = req.headers.get(h); if (v) headers.set(h, v); }
   let upstream: Response;
