@@ -37,18 +37,25 @@ for the document reader and downloads.
 It includes the documents the City later **removed** from its portal, still marked as removed
 (`removed_from_portal` in `SEED-MANIFEST.json`). Treat them with the care that implies.
 
-**From Google Drive** (how 911records shares it). Install [rclone](https://rclone.org/install/),
-then run `rclone config` and add a remote named `gdrive` of type `drive` signed in with your own
-Google account. Ask for access to the seed folder, then copy it using the folder id from its URL
-(`https://drive.google.com/drive/folders/<FOLDER_ID>`):
+**From Google Drive** (how 911records shares it). Ask the maintainer for the seed folder link.
+If it is shared as "Anyone with the link", no Google account or extra tools are needed:
+
+```sh
+python3 scripts/seed/fetch_seed.py 'https://drive.google.com/drive/folders/<FOLDER_ID>' --out ./911records-seed
+python3 scripts/seed/fetch_seed.py '<link>' --out ./911records-seed --kinds core,text   # search only, ~7 GB
+```
+
+It resumes interrupted downloads, checks every shard's sha256 and skips shards you already have.
+Google limits anonymous downloads of heavily downloaded files. If the script reports a quota
+or "virus scan" page, wait (up to 24 h) and re-run, or use rclone with your own Google account:
+install [rclone](https://rclone.org/install/), `rclone config` a remote named `gdrive` of type
+`drive`, then
 
 ```sh
 rclone copy gdrive: ./911records-seed --drive-root-folder-id <FOLDER_ID> --progress --transfers 4
 ```
 
 On EC2, download straight onto the instance's data volume. Inbound transfer is free on AWS.
-Google rate-limits files that are downloaded heavily. If you see "download quota exceeded",
-wait 24 h or ask for the folder to be shared with your account directly.
 
 **Unpack** into the checkout's `data/` (or wherever `DATA_DIR` points). Every shard is verified
 against its checksum first:
@@ -136,8 +143,15 @@ The release history (`/releases`) is the original project's.
 
 The seed is a snapshot. Two ways to follow the City's later releases:
 
-1. Pull a newer seed and re-run `unpack_seed.sh` (already-unpacked shards are skipped, so
-   repack with a new output folder name) and `load_seed.sh`.
+1. Follow seed updates. The maintainer adds small update shards (only new and changed files,
+   plus a fresh `core`) to the same folder. Re-run the same three commands; each one does only
+   the new work:
+
+   ```sh
+   python3 scripts/seed/fetch_seed.py '<link>' --out ./911records-seed   # downloads only new/changed shards
+   scripts/seed/unpack_seed.sh ./911records-seed                         # extracts only those
+   docker compose run --rm pipeline scripts/seed/load_seed.sh            # reload Postgres + index
+   ```
 2. Run the pipeline yourself. `scripts/refresh_daily.sh` does the whole cadence (README.md). New
    pages need text extraction (poppler), and the summarise/facts stages need a model
    (`docs/MODELS.md`). The fallback OCR stage needs macOS (Apple Vision).
@@ -154,9 +168,22 @@ python3 scripts/seed/pack_seed.py --repo ~/Code/sept11-docs --out ~/911records-s
 # 2. Upload to Google Drive (one-time setup: brew install rclone && rclone config -> remote "gdrive")
 rclone copy ~/911records-seed gdrive:911records-seed --progress --transfers 4 --drive-chunk-size 256M
 
-# 3. Share the 911records-seed folder in the Drive web UI (named people is safer than "anyone
-#    with the link", since the seed includes removed documents), and send them the folder URL.
+# 3. Share the 911records-seed folder in the Drive web UI and send people the folder URL.
+#    "Anyone with the link" lets fetch_seed.py download without a Google account; anyone who
+#    gets the link can then download everything, removed documents included.
 ```
 
-To refresh it, pack into a new folder and upload that. Google Drive accepts 750 GB of uploads
-per account per day.
+**Updating it** (whenever you like, e.g. monthly or after a big City release). Keep
+`~/911records-seed` (or at least its `SEED-MANIFEST.json` and `PACKED-FILES.tsv`) between runs:
+
+```sh
+python3 scripts/seed/pack_seed.py --repo ~/Code/sept11-docs --out ~/911records-seed --update
+rclone copy ~/911records-seed gdrive:911records-seed --progress --transfers 4 --drive-chunk-size 256M
+```
+
+`--update` repacks `core` (about 3 GB) and puts only new or changed text, page and PDF files
+into new `<kind>-u<timestamp>-NNN.tar` shards. The base shards are never rewritten, so rclone
+uploads only the new shards, `core-000.tar` and the manifest. Add `--dry-run` first to see the size.
+Use `rclone copy`, not `rclone sync`, so a deleted local shard is never removed from Drive.
+If the update shards pile up (more than ~25% of the seed), pack a fresh full seed into a new
+folder and share that instead. Google Drive accepts 750 GB of uploads per account per day.

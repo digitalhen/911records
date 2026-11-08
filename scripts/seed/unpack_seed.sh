@@ -5,13 +5,23 @@
 #
 # Kinds default to all of core text pages pdf. Every shard's sha256 is checked against
 # SEED-MANIFEST.json before it is extracted; a mismatch stops the run (re-download that shard).
-# Extracted shards are recorded in data/.seed-unpacked so a re-run skips them.
+# Extracted shards are recorded (name and sha256) in data/.seed-unpacked so a re-run skips them;
+# a shard whose sha256 changed (core, after a seed update) is extracted again. Shards are
+# extracted in name order, so update shards (<kind>-u<timestamp>-NNN.tar) land after the base
+# shards and their newer files win.
+#
+# To follow seed updates: download the seed folder again into the same place (rclone copy only
+# fetches the new and changed shards), re-run this, then scripts/seed/load_seed.sh.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 SEED="${1:?usage: unpack_seed.sh <seed dir> [core text pages pdf]}"; shift || true
 KINDS="${*:-core text pages pdf}"
 [ -f "$SEED/SEED-MANIFEST.json" ] || { echo "no SEED-MANIFEST.json in $SEED" >&2; exit 1; }
 mkdir -p data; touch data/.seed-unpacked
+# Seeds packed on macOS may carry AppleDouble ._* entries and macOS xattr headers: skip the former,
+# and keep GNU tar quiet about the latter.
+TAR_OPTS=(--exclude='._*')
+tar --version 2>/dev/null | grep -q GNU && TAR_OPTS+=(--warning=no-unknown-keyword)
 python3 - "$SEED" $KINDS <<'PY' | while read -r name sha; do
 import json, sys
 seed, kinds = sys.argv[1], sys.argv[2:]
@@ -20,14 +30,14 @@ for name, s in sorted(m["shards"].items()):
     if s["kind"] in kinds:
         print(name, s["sha256"])
 PY
-  if grep -qx "$name" data/.seed-unpacked; then echo "$name: already unpacked"; continue; fi
+  if grep -qx "$name $sha" data/.seed-unpacked; then echo "$name: already unpacked"; continue; fi
   [ -f "$SEED/$name" ] || { echo "$name: missing from $SEED" >&2; exit 1; }
   echo -n "$name: verifying... "
   got=$( (command -v sha256sum >/dev/null && sha256sum "$SEED/$name" || shasum -a 256 "$SEED/$name") | cut -d' ' -f1)
   [ "$got" = "$sha" ] || { echo "CHECKSUM MISMATCH (got $got)" >&2; exit 1; }
   echo -n "extracting... "
-  tar -xf "$SEED/$name"
-  echo "$name" >> data/.seed-unpacked
+  tar -xf "$SEED/$name" "${TAR_OPTS[@]}"
+  echo "$name $sha" >> data/.seed-unpacked
   echo ok
 done
 echo "done: $(wc -l < data/.seed-unpacked | tr -d ' ') shard(s) unpacked into $(pwd)/data"
