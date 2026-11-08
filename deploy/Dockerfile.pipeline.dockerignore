@@ -1,0 +1,5 @@
+# Build context for deploy/Dockerfile.pipeline is the repo root: send only scripts/, never data/.
+*
+!scripts/
+scripts/**/__pycache__
+scripts/**/node_modules

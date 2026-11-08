@@ -67,21 +67,45 @@ scripts/seed/unpack_seed.sh ./911records-seed core text  # just enough for searc
 
 ## 2. Run it on one machine
 
-Needs Docker with Compose v2, about 16 GB RAM and about 150 GB of disk (seed + database + index).
+Needs Docker with Compose v2, about 16 GB RAM and about 150 GB of disk (data + database + index).
 
 ```sh
 cd deploy
-cp .env.example .env        # set POSTGRES_PASSWORD, SITE_URL; pick an Ask block or leave Ask off
+cp .env.example .env        # set POSTGRES_PASSWORD, SITE_URL, OPERATOR_NAME, CONTACT_EMAIL, SEED_URL
 docker compose up -d --build
-docker compose exec ollama ollama pull nomic-embed-text
-docker compose run --rm pipeline scripts/seed/load_seed.sh   # Postgres + OpenSearch, ~15-30 min
+docker compose logs -f seed # watch the first start
 curl -s localhost:3000/api/health
 ```
 
-`load_seed.sh` runs the same publication stages as the production daily refresh
-(`load_site_pg.py`, then `opensearch.py setup` and `index`) with no model calls and no contact
-with the City's portal. Re-run it any time the data changes. Set `BUILD_DOWNLOADS=1` to also
-build the per-box ZIP downloads; that needs the `pdf` shards and roughly 80 GB more disk.
+**The first start fetches the documents by itself.** The `seed` service
+(`scripts/seed/sync_seed.sh`):
+
+1. pulls the search embedding model into Ollama;
+2. downloads the `core` and `text` shards from `SEED_URL` (~7 GB), extracting each and deleting
+   the tar as it goes, so it needs only one shard (~4.5 GB) of scratch space;
+3. loads Postgres and OpenSearch (`load_seed.sh`: the same publication stages as the
+   production daily refresh, with no model calls and no contact with the City's portal);
+4. marks itself healthy, and **the app starts** (`docker compose up` waits for this; on a fresh
+   machine the whole first start takes roughly 30-90 minutes, mostly indexing);
+5. downloads the page images and PDFs (~60 GB) while the site is already up;
+6. checks `SEED_URL` for updates every `SEED_UPDATE_HOURS` (default 24) and loads them.
+
+Restarts are quick: shards already extracted are recorded in `data/.seed-unpacked` and skipped,
+and nothing is reloaded unless new data arrived or the database volumes are empty.
+
+`SEED_URL` can be the Google Drive folder link (no Google account needed), an S3 copy
+(`s3://bucket/prefix`, read with the instance's IAM role) or any `https://` URL that serves the
+seed files. On AWS, an S3 copy in the same region is faster and avoids Google's anonymous
+download limits. Make one once from any machine with rclone (a Drive remote and an S3 remote):
+
+```sh
+rclone copy gdrive: s3:my-bucket/911records-seed --drive-root-folder-id <FOLDER_ID> --transfers 8
+```
+
+and re-run it to pick up seed updates. Leave `SEED_URL` empty to load data by hand instead:
+section 1, then `docker compose run --rm pipeline scripts/seed/load_seed.sh`. Set
+`BUILD_DOWNLOADS=1` on that command to also build the per-box ZIP downloads (needs the `pdf`
+shards and roughly 80 GB more disk).
 
 The app listens on `APP_PORT` (3000). Put TLS in front of it with Caddy, nginx, or an AWS
 load balancer.
@@ -90,30 +114,65 @@ load balancer.
 
 ### Simplest: one EC2 instance
 
+Everything from section 2 on one machine, databases included.
+
 - **Instance:** `m7i.xlarge` (4 vCPU, 16 GB) or `r7i.large` (2 vCPU, 16 GB), Amazon Linux 2023 or
   Ubuntu 24.04. Graviton (`m7g.xlarge`) works too: every image used is multi-arch.
 - **Disk:** a 200 GB gp3 volume for the checkout and `data/`.
 - **Network:** a security group allowing 443 (and 22 for you). Put an Application Load
   Balancer with an ACM certificate in front, or run Caddy on the box.
-- **Ask on Bedrock:** give the instance an IAM role with `bedrock:InvokeModel` on the Claude
-  model you choose, enable that model in the Bedrock console, then set `LLM_PROVIDER=bedrock` and
-  `AWS_REGION`. No API keys on the box.
+- **IAM role:** `s3:GetObject` + `s3:ListBucket` on the seed bucket if `SEED_URL` is S3, and
+  `bedrock:InvokeModel` on your Claude model for Ask on Bedrock (`LLM_PROVIDER=bedrock`,
+  `AWS_REGION`; enable the model in the Bedrock console). No keys on the box.
 - **Cost (us-east-1, on-demand, rough):** instance ~$140-150/month, disk ~$16/month, ALB
   ~$20/month, plus model usage. Ask on Haiku 4.5 costs about half a cent per question; the
   daily cap (`ASK_DAILY_USD_CAP`) bounds it.
 
-Then follow sections 1 and 2 on the instance.
+### Production: documents in S3, managed databases
 
-### Managed services (more moving parts, less to babysit)
+The app keeps no state of its own, so it can run as several copies behind a load balancer,
+with the data in managed services:
 
-| Piece | AWS service | Notes |
+| Piece | AWS service | Setup |
 |---|---|---|
-| app | ECS Fargate (or App Runner), image built from `Dockerfile` with context `web/` | env as in `deploy/docker-compose.yml`'s `app` service |
-| Postgres | RDS for PostgreSQL 16 | run `deploy/postgres-init.sql` once, then `load_seed.sh` from any machine with the seed, `PG*` env pointing at RDS |
-| OpenSearch | Amazon OpenSearch Service 2.11+ | k-NN and the hybrid-search normalization processor are built in. Basic auth: `OPENSEARCH_USER` / `OPENSEARCH_PASSWORD` |
-| files | S3 + CloudFront | Mirror the URL layout: `aws s3 sync data/pdf s3://BUCKET/pdf/`, `data/pages` to **`page/`**, `data/text` to `text/`. Set `FILES_URL` to the CloudFront origin. The app fetches through it server-side, so the bucket can stay private behind Origin Access Control. |
-| embeddings | an `ollama/ollama` ECS service with `nomic-embed-text` (CPU is fine) | set `EMBED_URL` to it |
-| Ask | Bedrock with the task role | as above |
+| Documents (PDFs, page images, text) | **S3** bucket, private, behind **CloudFront** with Origin Access Control | Set `FILES_URL` to the CloudFront URL. The app fetches files server-side and streams them to readers. |
+| Postgres | **RDS for PostgreSQL 16**, `db.t4g.medium` (2 vCPU, 4 GB), 50 GB gp3; Multi-AZ if you want failover | Create database `sept11`, master user `sept11`. Run `deploy/postgres-init.sql` once (`psql "host=<endpoint> user=sept11 dbname=sept11 sslmode=require" -f deploy/postgres-init.sql`). The data is ~10 GB and the load rebuilds it in a side schema, then swaps it in. |
+| Search | **Amazon OpenSearch Service** 2.19 (2.11 or later), 1 × `r6g.large.search` (2 vCPU, 16 GB), 50 GB gp3; 2 nodes in 2 AZs for failover | Enable fine-grained access control with an internal master user, and set `OPENSEARCH_USER` / `OPENSEARCH_PASSWORD`. k-NN and the hybrid-search normalization processor are built in. Use VPC access. |
+| App | **ECS Fargate** (1 vCPU, 2 GB per task; 2+ tasks behind an ALB) or the compose app on EC2 | Image from `Dockerfile`, context `web/`, build args as in `deploy/docker-compose.yml`. Env: `DATABASE_URL`, `OPENSEARCH_*`, `FILES_URL`, `EMBED_URL`, Ask settings. |
+| Query embeddings | an `ollama/ollama` ECS service (CPU is fine, 2 GB) with `nomic-embed-text` | Set `EMBED_URL` to it. |
+| Seed and updates | the `seed` service: an ECS task (Fargate with 200 GB ephemeral storage, or EC2) | See below. |
+| Ask | **Bedrock** with the task role | as above |
+
+Rough cost, us-east-1 on-demand, single-AZ: RDS ~$60, OpenSearch ~$130, two app tasks ~$75,
+Ollama ~$35, ALB ~$20, S3 + CloudFront for ~70 GB ~$10 plus traffic: **about $330/month**.
+Multi-AZ roughly doubles the database lines.
+
+**Connecting to RDS.** RDS for PostgreSQL 16 requires TLS. The app's driver verifies
+certificates strictly and Node does not trust Amazon's CA by default, so use
+`DATABASE_URL=postgres://sept11:PASSWORD@<endpoint>:5432/sept11?sslmode=no-verify` (encrypted,
+fine inside a VPC), or download Amazon's
+[global bundle](https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem) into the
+container and use `?sslmode=verify-full&sslrootcert=/certs/global-bundle.pem`. The pipeline
+uses libpq: `PGHOST=<endpoint>` and `PGSSLMODE=require`.
+
+**Filling it.** Run the `seed` service once against the managed services with the documents
+going to S3:
+
+```
+SEED_URL=s3://my-bucket/911records-seed      # or the Drive link
+FILES_S3=s3://my-911records-files            # PDFs, page images and text are copied here
+FILES_S3_PRUNE_LOCAL=1                       # then deleted locally
+SEED_EXIT_WHEN_DONE=1                        # exit instead of idling (for a scheduled task)
+PGHOST, PGSSLMODE=require, POSTGRES_PASSWORD, OPENSEARCH_URL/USER/PASSWORD as above
+```
+
+As an ECS task: the image built from `deploy/Dockerfile.pipeline` (build context: the repo
+root; it contains the scripts), command `scripts/seed/sync_seed.sh`, a task role with read on
+the seed bucket and read/write on the files bucket, and **`/repo/data` on EFS** so it remembers
+what it has already fetched between runs (with pruning on, EFS holds ~10 GB). Schedule it daily
+with EventBridge Scheduler to pick up seed updates. With docker compose on EC2 instead, remove
+`COMPOSE_PROFILES=local-db` from `.env`, fill in the database block there, and set `FILES_S3`
+and `FILES_URL`: the same `seed` service does it all and keeps running.
 
 ## 4. Make it yours: name, operator, contact
 
@@ -143,15 +202,10 @@ The release history (`/releases`) is the original project's.
 
 The seed is a snapshot. Two ways to follow the City's later releases:
 
-1. Follow seed updates. The maintainer adds small update shards (only new and changed files,
-   plus a fresh `core`) to the same folder. Re-run the same three commands; each one does only
-   the new work:
-
-   ```sh
-   python3 scripts/seed/fetch_seed.py '<link>' --out ./911records-seed   # downloads only new/changed shards
-   scripts/seed/unpack_seed.sh ./911records-seed                         # extracts only those
-   docker compose run --rm pipeline scripts/seed/load_seed.sh            # reload Postgres + index
-   ```
+1. Follow seed updates. The `seed` service already does this every `SEED_UPDATE_HOURS`. The
+   maintainer publishes weekly update shards (only new and changed files, plus a fresh `core`)
+   to the same folder. If you load by hand, re-run `fetch_seed.py`, `unpack_seed.sh` and
+   `load_seed.sh`; each does only the new work.
 2. Run the pipeline yourself. `scripts/refresh_daily.sh` does the whole cadence (README.md). New
    pages need text extraction (poppler), and the summarise/facts stages need a model
    (`docs/MODELS.md`). The fallback OCR stage needs macOS (Apple Vision).
@@ -173,17 +227,25 @@ rclone copy ~/911records-seed gdrive:911records-seed --progress --transfers 4 --
 #    gets the link can then download everything, removed documents included.
 ```
 
-**Updating it** (whenever you like, e.g. monthly or after a big City release). Keep
-`~/911records-seed` (or at least its `SEED-MANIFEST.json` and `PACKED-FILES.tsv`) between runs:
+**Updating it** is automatic: `scripts/seed/publish_seed.sh` runs weekly from cron on the
+maintainer's Mac (Sunday 10:00, after the daily refresh):
+
+```
+0 10 * * 0 cd ~/Code/sept11-docs && /bin/bash scripts/seed/publish_seed.sh >> data/publish_seed.log 2>&1
+```
+
+It takes the refresh lock (waiting for a running refresh), runs `pack_seed.py --update`, then
+`rclone copy`s to `gdrive:911records-seed`. Keep `~/911records-seed` (at least its
+`SEED-MANIFEST.json` and `PACKED-FILES.tsv`) between runs. By hand:
 
 ```sh
-python3 scripts/seed/pack_seed.py --repo ~/Code/sept11-docs --out ~/911records-seed --update
+python3 scripts/seed/pack_seed.py --repo ~/Code/sept11-docs --out ~/911records-seed --update [--dry-run]
 rclone copy ~/911records-seed gdrive:911records-seed --progress --transfers 4 --drive-chunk-size 256M
 ```
 
 `--update` repacks `core` (about 3 GB) and puts only new or changed text, page and PDF files
 into new `<kind>-u<timestamp>-NNN.tar` shards. The base shards are never rewritten, so rclone
-uploads only the new shards, `core-000.tar` and the manifest. Add `--dry-run` first to see the size.
-Use `rclone copy`, not `rclone sync`, so a deleted local shard is never removed from Drive.
-If the update shards pile up (more than ~25% of the seed), pack a fresh full seed into a new
-folder and share that instead. Google Drive accepts 750 GB of uploads per account per day.
+uploads only the new shards, `core-000.tar` and the manifest. Use `rclone copy`, not
+`rclone sync`, so a deleted local shard is never removed from Drive. If the update shards pile
+up (more than ~25% of the seed), pack a fresh full seed into a new folder and share that
+instead. Google Drive accepts 750 GB of uploads per account per day.
