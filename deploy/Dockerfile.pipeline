@@ -1,9 +1,11 @@
-# Image for the one-shot `pipeline` service in deploy/docker-compose.yml: loads a seed into Postgres
-# and OpenSearch, and can run the model stages. The repo is bind-mounted at /repo, not copied.
+# Image for the `seed` and one-shot `pipeline` services in deploy/docker-compose.yml: loads a seed into Postgres
+# and OpenSearch, and can run the model stages. The scripts are copied in, so the image runs on its
+# own (an ECS task); docker compose also bind-mounts the checkout over /repo.
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils curl \
     && rm -rf /var/lib/apt/lists/*
 COPY scripts/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt boto3 awscli
 WORKDIR /repo
+COPY scripts/ /repo/scripts/
 ENTRYPOINT []

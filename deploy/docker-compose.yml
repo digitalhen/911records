@@ -2,23 +2,45 @@
 # See docs/SELF-HOSTING.md. This is NOT the production setup in ../docker-compose.yml (two Dokploy
 # replicas plus host services on StudioMac) and nothing here touches it.
 #
-#   cd deploy && cp .env.example .env && $EDITOR .env
-#   docker compose up -d                        # postgres, opensearch, ollama, files, app
-#   docker compose exec ollama ollama pull nomic-embed-text   (once; skip if EMBED_PROVIDER=openai)
-#   docker compose run --rm pipeline scripts/seed/load_seed.sh  (after unpacking a seed into DATA_DIR)
+#   cd deploy && cp .env.example .env && $EDITOR .env      (set SEED_URL to fetch the documents)
+#   docker compose up -d        # postgres, opensearch, ollama, files, seed, then app
+#   docker compose logs -f seed # first start: downloads and loads the documents, then the app starts
+#
+# The `seed` service (scripts/seed/sync_seed.sh) pulls the embedding model, fetches the seed from
+# SEED_URL, loads Postgres and OpenSearch, marks itself healthy (the app waits for that), then
+# fetches page images and PDFs and checks for seed updates every SEED_UPDATE_HOURS.
+# With SEED_URL empty it does nothing and you load the data by hand (docs/SELF-HOSTING.md).
 #
 # Only the app's port is published. Put a TLS proxy or an AWS ALB in front of it.
 name: 911records
 
+x-pipeline-build: &pipeline-build
+  context: ..
+  dockerfile: deploy/Dockerfile.pipeline
+
+# Postgres and OpenSearch run here by default (COMPOSE_PROFILES=local-db in .env). To use RDS and
+# Amazon OpenSearch Service instead, drop that profile and set PGHOST/PGSSLMODE, DATABASE_URL and
+# OPENSEARCH_URL/USER/PASSWORD in .env (docs/SELF-HOSTING.md section 3).
 x-pg-env: &pg-env
-  PGHOST: postgres
-  PGPORT: '5432'
-  PGUSER: sept11
-  PGDATABASE: sept11
+  PGHOST: ${PGHOST:-postgres}
+  PGPORT: ${PGPORT:-5432}
+  PGUSER: ${PGUSER:-sept11}
+  PGDATABASE: ${PGDATABASE:-sept11}
   PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+  PGSSLMODE: ${PGSSLMODE:-prefer}
+
+x-os-env: &os-env
+  OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+  OPENSEARCH_USER: ${OPENSEARCH_USER:-}
+  OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+
+x-db-deps: &db-deps
+  postgres: { condition: service_healthy, required: false }
+  opensearch: { condition: service_healthy, required: false }
 
 services:
   postgres:
+    profiles: [local-db]
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: sept11
@@ -34,6 +56,7 @@ services:
     restart: unless-stopped
 
   opensearch:
+    profiles: [local-db]
     image: opensearchproject/opensearch:2.19.2
     environment:
       discovery.type: single-node
@@ -95,13 +118,15 @@ services:
         NEXT_PUBLIC_ADSENSE_CLIENT: ${ADSENSE_CLIENT:-off}
         NEXT_PUBLIC_ADSENSE_SLOT: ${ADSENSE_SLOT:-}
     depends_on:
-      postgres: { condition: service_healthy }
-      opensearch: { condition: service_healthy }
+      <<: *db-deps
+      seed: { condition: service_healthy }
     environment:
+      <<: *os-env
       NODE_OPTIONS: --max-old-space-size=2048
-      DATABASE_URL: postgres://sept11:${POSTGRES_PASSWORD}@postgres:5432/sept11
-      FILES_URL: http://files:8911
-      OPENSEARCH_URL: http://opensearch:9200
+      # RDS: postgres://sept11:PASSWORD@<endpoint>:5432/sept11?sslmode=no-verify (docs section 3)
+      DATABASE_URL: ${DATABASE_URL:-postgres://sept11:${POSTGRES_PASSWORD}@postgres:5432/sept11}
+      # Where PDFs, page images and text are read from: the files service, or S3 via CloudFront.
+      FILES_URL: ${FILES_URL:-http://files:8911}
       REPLICA_NAME: ${REPLICA_NAME:-selfhost}
       # Search embeddings (docs/MODELS.md)
       EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
@@ -135,25 +160,55 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # One-shot tools: load a seed, rebuild the index, run pipeline stages.
-  #   docker compose run --rm pipeline scripts/seed/load_seed.sh
-  pipeline:
-    profiles: [tools]
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.pipeline
+  # Gets the documents on first start and keeps them current (scripts/seed/sync_seed.sh).
+  seed:
+    build: *pipeline-build
+    image: 911records-pipeline
+    command: [scripts/seed/sync_seed.sh]
     working_dir: /repo
     volumes:
       - ..:/repo
       - ${DATA_DIR:-../data}:/repo/data
     environment:
-      <<: *pg-env
+      <<: [*pg-env, *os-env]
+      PYTHON: python3
+      SEED_URL: ${SEED_URL:-}
+      SEED_KINDS: ${SEED_KINDS:-core,text,pages,pdf}
+      SEED_UPDATE_HOURS: ${SEED_UPDATE_HOURS:-24}
+      FILES_S3: ${FILES_S3:-}
+      FILES_S3_PRUNE_LOCAL: ${FILES_S3_PRUNE_LOCAL:-0}
+      AWS_REGION: ${AWS_REGION:-}
+      OLLAMA_URL: http://ollama:11434
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
+      EMBED_URL: ${EMBED_URL:-http://ollama:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+    depends_on: *db-deps
+    healthcheck:
+      # Healthy once Postgres and OpenSearch hold the data. The first start downloads ~7 GB and
+      # indexes ~230k pages, so allow hours before counting failures.
+      test: ['CMD', 'test', '-f', '/repo/data/.seed-ready']
+      interval: 15s
+      start_period: 12h
+      start_interval: 15s
+    restart: unless-stopped
+
+  # One-shot tools: load a seed, rebuild the index, run pipeline stages.
+  #   docker compose run --rm pipeline scripts/seed/load_seed.sh
+  pipeline:
+    profiles: [tools]
+    build: *pipeline-build
+    image: 911records-pipeline
+    working_dir: /repo
+    volumes:
+      - ..:/repo
+      - ${DATA_DIR:-../data}:/repo/data
+    environment:
+      <<: [*pg-env, *os-env]
       PYTHON: python3
       # Contact sent to the City's portal if you run the scraper, and names in the ZIP README.
       MIRROR_CONTACT: ${CONTACT_EMAIL:?set CONTACT_EMAIL in deploy/.env}
       SITE_URL: ${SITE_URL:-}
       OPERATOR_NAME: ${OPERATOR_NAME:-}
-      OPENSEARCH_URL: http://opensearch:9200
       OLLAMA_URL: http://ollama:11434
       EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
       EMBED_URL: ${EMBED_URL:-http://ollama:11434}
@@ -166,9 +221,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AWS_REGION: ${AWS_REGION:-}
-    depends_on:
-      postgres: { condition: service_healthy }
-      opensearch: { condition: service_healthy }
+    depends_on: *db-deps
 
 volumes:
   pg-data: {}
