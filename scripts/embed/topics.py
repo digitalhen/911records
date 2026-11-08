@@ -61,9 +61,12 @@ EMB = REPO / "data" / "embed"
 TEXT = REPO / "data" / "text"
 DEFAULT_RELATED = EMB / "related.sqlite"
 NAME_CACHE = EMB / "p2-topic-names.json"
-CLAUDE_KEY_FILE = Path("/Users/henry/Code/sept11-docs/.claudekey")
-MODEL = "claude-haiku-4-5-20251001"
-HAIKU_PRICE = {"input": 1.0, "output": 5.0}  # $ per 1M tokens
+import llm  # noqa: E402  provider/model selection: scripts/embed/llm.py, docs/MODELS.md
+# Henry, 2026-11-05: avoid Haiku — naming defaults to the local model. TOPICS_LLM_PROVIDER (or the
+# legacy TOPICS_BACKEND=api) / LLM_PROVIDER switch it.
+LLM = llm.stage("TOPICS", default_provider="ollama")
+MODEL = LLM.model
+HAIKU_PRICE = {"input": LLM.price_in, "output": LLM.price_out}  # $ per 1M tokens (name kept for the usage report)
 
 # NYC/WTC place words allowed in a topic title/description even though they are TitleCase, and
 # exempted from the address/name exclusion below. Deliberately short and place-only.
@@ -190,38 +193,15 @@ def build_prompt(terms: list[str], folder_labels: list[str], excerpts: list[str]
     return "\n".join(lines)
 
 
-NAMING_BACKEND = os.environ.get("TOPICS_BACKEND", "ollama")  # Henry, 2026-11-05: avoid Haiku; "api" restores it
-OLLAMA_URL = os.environ.get("TOPICS_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("TOPICS_OLLAMA_MODEL", "qwen3.5:35b-a3b")
+NAMING_BACKEND = LLM.provider
 
 
-def call_ollama(terms: list[str], folder_labels: list[str], excerpts: list[str], retry_note: str | None) -> tuple[str, dict]:
+def call_model(terms: list[str], folder_labels: list[str], excerpts: list[str], retry_note: str | None) -> tuple[str, dict]:
     prompt = build_prompt(terms, folder_labels, excerpts, retry_note)
-    body = json.dumps({"model": OLLAMA_MODEL, "stream": False, "think": False,
-                       "messages": [{"role": "user", "content": prompt}],
-                       "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 400}}).encode()
-    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", body, {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=600) as resp:
-        data = json.load(resp)
-    return str(data.get("message", {}).get("content", "")), {}
-
-
-def call_haiku(api_key: str, terms: list[str], folder_labels: list[str], excerpts: list[str],
-               retry_note: str | None) -> tuple[str, dict]:
-    prompt = build_prompt(terms, folder_labels, excerpts, retry_note)
-    body = json.dumps({
-        "model": MODEL,
-        "max_tokens": 300,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", body,
-        {"content-type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.load(resp)
-    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-    return text, (data.get("usage") or {})
+    local = LLM.provider in ("ollama", "openai")
+    r = llm.chat(LLM, prompt, max_tokens=400 if local else 300, temperature=0.2, num_ctx=8192,
+                 timeout=600 if LLM.provider == "ollama" else 60)
+    return r.text, {"input_tokens": r.input_tokens, "output_tokens": r.output_tokens}
 
 
 def name_topic(api_key: str, cache: dict, terms: list[str], folder_labels: list[str],
@@ -234,11 +214,9 @@ def name_topic(api_key: str, cache: dict, terms: list[str], folder_labels: list[
     note = None
     for _attempt in range(2):
         try:
-            if NAMING_BACKEND == "ollama":
-                text, usage = call_ollama(terms, folder_labels, excerpts, note)
-            else:
-                text, usage = call_haiku(api_key, terms, folder_labels, excerpts, note)
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            text, usage = call_model(terms, folder_labels, excerpts, note)
+        except Exception as e:  # network, HTTP or SDK error: leave this topic unnamed
+
             result = {"title": None, "description": None, "confidence": 0.0, "error": str(e)}
             break
         usage_totals["input"] += usage.get("input_tokens", 0)
@@ -437,13 +415,10 @@ def main() -> int:
         return out
 
     api_key = None
-    if not args.no_name and NAMING_BACKEND == "ollama":
-        api_key = "local"  # no key needed; name_or_blank only checks that naming is enabled
+    if not args.no_name and LLM.provider == "anthropic" and not LLM.api_key:
+        print("warning: no Anthropic key (ANTHROPIC_API_KEY or .claudekey); writing terms-only labels", file=sys.stderr)
     elif not args.no_name:
-        try:
-            api_key = CLAUDE_KEY_FILE.read_text().strip()
-        except OSError:
-            print(f"warning: could not read {CLAUDE_KEY_FILE}; writing terms-only labels", file=sys.stderr)
+        api_key = LLM.describe()  # name_or_blank only checks that naming is enabled
 
     cache: dict = {}
     if NAME_CACHE.exists():

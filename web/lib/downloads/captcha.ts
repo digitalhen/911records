@@ -1,3 +1,4 @@
+import { SITE_URL } from '../brand';
 import 'server-only';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
@@ -25,7 +26,7 @@ export function captchaConfig(env = process.env): CaptchaConfig | null {
   if (!siteKey || !secretKey || !sessionSecret || sessionSecret.length < 32) return null;
   // Never let published Cloudflare test credentials unlock production downloads.
   if (production && (/^[123]x0+/.test(siteKey) || /^[123]x0+/.test(secretKey))) return null;
-  return { siteKey, secretKey, sessionSecret, testMode, production, origin: 'https://911records.org' };
+  return { siteKey, secretKey, sessionSecret, testMode, production, origin: SITE_URL };
 }
 
 function signature(payload: string, key: string) {

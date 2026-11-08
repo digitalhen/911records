@@ -1,3 +1,4 @@
+import { OPERATOR_NAME } from '@/lib/brand';
 import Link from 'next/link';
 import { PageShell } from '@/components/info/PageShell';
 import { pageMetadata } from '@/lib/info/metadata';
@@ -69,7 +70,7 @@ export default function ContradictionsPage() {
     </section>
     <section id="submit" className={styles.method} aria-labelledby="submit-heading">
       <h2 id="submit-heading">Suggest a comparison or correction</h2>
-      <p>Include the source pages so we can check the evidence. Submissions are stored privately for review by Cleartext Labs and are not published automatically. No name, email address, or account is required. Please leave out private personal information.</p>
+      <p>Include the source pages so we can check the evidence. Submissions are stored privately for review by {OPERATOR_NAME} and are not published automatically. No name, email address, or account is required. Please leave out private personal information.</p>
       <SubmissionForm />
     </section>
   </PageShell>;

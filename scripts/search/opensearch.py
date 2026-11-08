@@ -75,9 +75,9 @@ OS_USER = os.environ.get("OPENSEARCH_USER")
 OS_PASSWORD = os.environ.get("OPENSEARCH_PASSWORD")
 INDEX = "sept11-pages-v1"
 PIPELINE = "sept11-hybrid"
-OLLAMA = "http://localhost:11434/api/embed"
-MODEL = "nomic-embed-text"
-DIM = 768
+import llm  # embedding provider/model: EMBED_* env, docs/MODELS.md
+MODEL = llm.EMBED_MODEL
+DIM = llm.EMBED_DIM
 RE_BATES = re.compile(r"NYC-(?:W|VV)TC[ _]?(\d{6,9})", re.I)
 
 
@@ -314,9 +314,7 @@ def index(limit: int = 0) -> None:
 
 
 def embed_query(q: str) -> list[float]:
-    body = json.dumps({"model": MODEL, "input": [f"search_query: {q}"]}).encode()
-    req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
-    v = np.asarray(json.load(urllib.request.urlopen(req, timeout=120))["embeddings"][0], dtype=np.float32)
+    v = np.asarray(llm.embed([q], "query", timeout=120)[0], dtype=np.float32)
     return [float(x) for x in v / np.linalg.norm(v)]
 
 

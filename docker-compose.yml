@@ -68,9 +68,28 @@ services:
       # /ollama/ proxy in production so Ollama itself never has to listen on
       # the LAN — see docker-compose.host.yml.
       OLLAMA_URL: ${OLLAMA_URL:-http://127.0.0.1:11434}
+      # Embedding model for search queries; must match the indexed vectors
+      # (docs/MODELS.md). Unset = Ollama nomic-embed-text at OLLAMA_URL.
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-}
+      EMBED_URL: ${EMBED_URL:-}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      # Bare form on purpose: "" is a meaningful value (no prefix), so unset
+      # must stay unset rather than become "" (which would drop nomic's prefix).
+      EMBED_QUERY_PREFIX:
+      # Ask's model (lib/llm.ts, docs/MODELS.md). Unset = Anthropic API,
+      # claude-haiku-4-5, ANTHROPIC_API_KEY — the original behaviour.
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ASK_MODEL: ${ASK_MODEL:-claude-haiku-4-5}
+      ASK_MODEL: ${ASK_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_REGION: ${AWS_REGION:-}
+      BEDROCK_ENDPOINT: ${BEDROCK_ENDPOINT:-}
       ASK_DAILY_USD_CAP: ${ASK_DAILY_USD_CAP:-}
+      ASK_PRICE_INPUT_PER_MTOK: ${ASK_PRICE_INPUT_PER_MTOK:-}
+      ASK_PRICE_OUTPUT_PER_MTOK: ${ASK_PRICE_OUTPUT_PER_MTOK:-}
       GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
     healthcheck:

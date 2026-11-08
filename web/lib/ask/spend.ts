@@ -15,14 +15,21 @@ import { ensureRuntimeSchema } from '../runtimeSchema';
 
 export const ASK_DAILY_USD_CAP = Number(process.env.ASK_DAILY_USD_CAP || 5);
 
-// Claude Haiku 4.5 pricing, $ per token (not per MTok) — see the claude-api
-// skill's model table. Cache reads run ~0.1x the input rate, cache writes
-// ~1.25x; both are folded in here so the estimate tracks actual billing
-// reasonably closely without needing the Admin API's usage/cost endpoints.
-const HAIKU_INPUT_PER_TOKEN = 1 / 1_000_000;
-const HAIKU_OUTPUT_PER_TOKEN = 5 / 1_000_000;
-const HAIKU_CACHE_READ_PER_TOKEN = HAIKU_INPUT_PER_TOKEN * 0.1;
-const HAIKU_CACHE_WRITE_PER_TOKEN = HAIKU_INPUT_PER_TOKEN * 1.25;
+// Per-million-token prices used to estimate spend against the daily cap. The
+// defaults are Claude Haiku 4.5's list prices (the default Ask model); set
+// ASK_PRICE_INPUT_PER_MTOK / ASK_PRICE_OUTPUT_PER_MTOK when you point Ask at a
+// different model (docs/MODELS.md), and 0 for a local model so the cap never
+// trips. Cache reads run ~0.1x the input rate, cache writes ~1.25x; both are
+// folded in so the estimate tracks billing without the Admin API's cost endpoints.
+function price(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+const INPUT_PER_TOKEN = price('ASK_PRICE_INPUT_PER_MTOK', 1) / 1_000_000;
+const OUTPUT_PER_TOKEN = price('ASK_PRICE_OUTPUT_PER_MTOK', 5) / 1_000_000;
+const CACHE_READ_PER_TOKEN = INPUT_PER_TOKEN * 0.1;
+const CACHE_WRITE_PER_TOKEN = INPUT_PER_TOKEN * 1.25;
 
 export interface AskUsage {
   input_tokens: number;
@@ -33,10 +40,10 @@ export interface AskUsage {
 
 export function estimateCostUsd(usage: AskUsage): number {
   return (
-    usage.input_tokens * HAIKU_INPUT_PER_TOKEN +
-    usage.output_tokens * HAIKU_OUTPUT_PER_TOKEN +
-    (usage.cache_read_input_tokens ?? 0) * HAIKU_CACHE_READ_PER_TOKEN +
-    (usage.cache_creation_input_tokens ?? 0) * HAIKU_CACHE_WRITE_PER_TOKEN
+    usage.input_tokens * INPUT_PER_TOKEN +
+    usage.output_tokens * OUTPUT_PER_TOKEN +
+    (usage.cache_read_input_tokens ?? 0) * CACHE_READ_PER_TOKEN +
+    (usage.cache_creation_input_tokens ?? 0) * CACHE_WRITE_PER_TOKEN
   );
 }
 

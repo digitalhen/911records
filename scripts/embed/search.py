@@ -32,8 +32,8 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 EMB = REPO / "data" / "embed"
 TEXT = REPO / "data" / "text"
-OLLAMA = "http://localhost:11434/api/embed"
-MODEL = "nomic-embed-text"
+import llm  # embedding provider/model: EMBED_* env, docs/MODELS.md
+MODEL = llm.EMBED_MODEL
 RRF_K = 60
 
 
@@ -63,9 +63,7 @@ def build() -> None:
 
 
 def embed_query(q: str) -> np.ndarray:
-    body = json.dumps({"model": MODEL, "input": [f"search_query: {q}"]}).encode()
-    req = urllib.request.Request(OLLAMA, body, {"Content-Type": "application/json"})
-    v = np.asarray(json.load(urllib.request.urlopen(req, timeout=120))["embeddings"][0], dtype=np.float32)
+    v = np.asarray(llm.embed([q], "query", timeout=120)[0], dtype=np.float32)
     return v / np.linalg.norm(v)
 
 

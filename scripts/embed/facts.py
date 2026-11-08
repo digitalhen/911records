@@ -109,9 +109,7 @@ PAGES_DB = EMB / "pages.sqlite"
 OUT_JSONL = EMB / "p4-facts.jsonl"
 OUT_SQLITE = EMB / "p4-facts.sqlite"
 CACHE_PATH = EMB / "p4-facts-cache.json"
-KEY_FILE = Path("/Users/henry/Code/sept11-docs/.claudekey")
-
-MODEL = "claude-haiku-4-5-20251001"
+import llm  # provider/model selection: scripts/embed/llm.py, docs/MODELS.md
 LLM_BATCH_SIZE = 2           # pages per request — a table-dense page can hold dozens of readings,
                               # each a whole JSON object in the response; keeping batches small keeps
                               # the response under LLM_MAX_TOKENS instead of getting cut off mid-JSON
@@ -124,15 +122,14 @@ DEFAULT_BUDGET_USD = 3.0
 # StudioMac by default (same model as summaries.py). FACTS_BACKEND=api restores the Anthropic path.
 # The budget only applies to the paid backend; the local run is bounded by the refresh time box and
 # the memory guard below.
-BACKEND = os.environ.get("FACTS_BACKEND", "ollama")
-OLLAMA_URL = os.environ.get("FACTS_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("FACTS_OLLAMA_MODEL", "qwen3.5:35b-a3b")
+# Provider/model: llm.py (FACTS_LLM_PROVIDER > legacy FACTS_BACKEND > LLM_PROVIDER > ollama).
+LLM = llm.stage("FACTS", default_provider="ollama")
+BACKEND = LLM.provider
+MODEL = LLM.model
 # Pause between batches while macOS reports memory pressure above this level (StudioMac serves live
 # pollers and swaps under load). 1 = normal, 2 = warn, 4 = critical (kern.memorystatus_vm_pressure_level).
 MAX_PRESSURE_LEVEL = int(os.environ.get("FACTS_MAX_PRESSURE_LEVEL", "1"))
-# claude-haiku-4-5 pricing, same table canonical_llm.py cites (checked 2026-09-14).
-PRICE_IN_PER_MTOK = 1.00
-PRICE_OUT_PER_MTOK = 5.00
+# Spend per call comes from llm.py (LLM.cost): $0 for Ollama, Haiku 4.5 list price otherwise.
 
 TARGET_DOC_TYPES = {"lab_report", "chain_of_custody", "form"}
 WATERMARK_RE = re.compile(r"NYC\s*9[\/\s]*1+1?\s*Public\s*Portal\s*Document", re.I)
@@ -645,13 +642,6 @@ SYSTEM_PROMPT = (
 )
 
 
-def _load_api_key() -> str:
-    key = KEY_FILE.read_text().strip()
-    if not key:
-        raise RuntimeError(f"{KEY_FILE} is empty")
-    return key
-
-
 def _load_cache() -> dict:
     if CACHE_PATH.exists():
         try:
@@ -714,17 +704,9 @@ def _wait_for_memory(max_wait_s: int = 1800) -> bool:
     return True
 
 
-def _call_ollama(items: list[dict]) -> tuple[str, int, int, str]:
-    import urllib.request
-    body = {"model": OLLAMA_MODEL, "stream": False, "think": False,
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": _build_prompt(items)}],
-            "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": LLM_MAX_TOKENS}}
-    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=900) as resp:
-        data = json.loads(resp.read())
-    stop = "max_tokens" if data.get("done_reason") == "length" else "end"
-    return str(data.get("message", {}).get("content", "")), int(data.get("prompt_eval_count") or 0), int(data.get("eval_count") or 0), stop
+def _call_model(items: list[dict]) -> tuple[str, int, int, str]:
+    r = llm.chat(LLM, _build_prompt(items), system=SYSTEM_PROMPT, max_tokens=LLM_MAX_TOKENS, temperature=0.1, num_ctx=16384)
+    return r.text, r.input_tokens, r.output_tokens, "max_tokens" if r.truncated else "end"
 
 
 def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_usd: float) -> tuple[list[dict], dict]:
@@ -771,46 +753,27 @@ def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_
         apply_result(i, result_facts)
 
     if to_ask:
-        client = None
         for batch_num, start in enumerate(range(0, len(to_ask), LLM_BATCH_SIZE)):
-            if BACKEND != "ollama" and usage["cost_usd"] >= budget_usd:
+            if LLM.paid and usage["cost_usd"] >= budget_usd:
                 usage["stopped_on_budget"] = True
                 break
             batch = to_ask[start:start + LLM_BATCH_SIZE]
             items = [{"id": b["id"], "doc": b["doc"], "page": b["page"], "text": b["trimmed"]} for b in batch]
-            if BACKEND == "ollama":
-                if not _wait_for_memory():
-                    print("facts.py llm_extract: memory pressure stayed high for 30 min; stopping model calls", file=sys.stderr)
-                    usage["stopped_on_memory"] = True
-                    break
-                try:
-                    text, tok_in, tok_out, stop_reason = _call_ollama(items)
-                except Exception as e:
-                    print(f"facts.py llm_extract: batch at {start} local model call failed ({e}); leaving it unresolved", file=sys.stderr)
-                    continue
-                usage["api_calls"] += 1
-                usage["input_tokens"] += tok_in
-                usage["output_tokens"] += tok_out
-            else:
-                if client is None:
-                    import anthropic
-                    client = anthropic.Anthropic(api_key=_load_api_key())
-                try:
-                    resp = client.messages.create(
-                        model=MODEL, max_tokens=LLM_MAX_TOKENS, system=SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": _build_prompt(items)}])
-                except Exception as e:
-                    print(f"facts.py llm_extract: batch at {start} API call failed ({e}); leaving it unresolved", file=sys.stderr)
-                    continue
-                # Count the spend regardless of what happens next — the call already cost real money
-                # even if the response doesn't parse (caught live on 2026-09-14's first real run).
-                usage["api_calls"] += 1
-                usage["input_tokens"] += resp.usage.input_tokens
-                usage["output_tokens"] += resp.usage.output_tokens
-                usage["cost_usd"] += (resp.usage.input_tokens * PRICE_IN_PER_MTOK
-                                       + resp.usage.output_tokens * PRICE_OUT_PER_MTOK) / 1_000_000
-                text = "".join(bl.text for bl in resp.content if bl.type == "text")
-                stop_reason = resp.stop_reason
+            if BACKEND == "ollama" and not _wait_for_memory():  # local model shares this machine's memory
+                print("facts.py llm_extract: memory pressure stayed high for 30 min; stopping model calls", file=sys.stderr)
+                usage["stopped_on_memory"] = True
+                break
+            try:
+                text, tok_in, tok_out, stop_reason = _call_model(items)
+            except Exception as e:
+                print(f"facts.py llm_extract: batch at {start} model call ({LLM.describe()}) failed ({e}); leaving it unresolved", file=sys.stderr)
+                continue
+            # Count the spend regardless of what happens next — the call already cost real money
+            # even if the response doesn't parse (caught live on 2026-09-14's first real run).
+            usage["api_calls"] += 1
+            usage["input_tokens"] += tok_in
+            usage["output_tokens"] += tok_out
+            usage["cost_usd"] += LLM.cost(tok_in, tok_out)
             try:
                 parsed = _parse_response(text)
             except Exception as e:

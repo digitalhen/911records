@@ -1,4 +1,5 @@
 'use client';
+import { DONATE_URL, SITE_NAME } from '@/lib/brand';
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -29,7 +30,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
   const releaseInfo = <div className="edition">
     <strong>{edition || 'NYC Law Department release'}</strong><br />
     <span className="edition-detail">Independent mirror · updated as the City releases more · <Link href="/releases" title="Version history">v{APP_VERSION}</Link></span><br />
-    <a className="bmac" href="https://buymeacoffee.com/digitalhen" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+    {DONATE_URL && <a className="bmac" href={DONATE_URL} target="_blank" rel="noopener">☕ Buy me a coffee</a>}
   </div>;
   return (
     <header className={`masthead ${styles.header}`} onKeyDown={(event) => {
@@ -40,7 +41,7 @@ export function Header({ active, edition }: { active?: string; edition?: string 
     }}>
       <div className={`mast-top ${styles.top}`}>
         <Link className="brand" href="/" aria-label="9/11 Records home">
-          <img src="/lockup-horizontal.svg" alt="9/11 Records — 911records.org" className="brand-logo" />
+          <img src="/lockup-horizontal.svg" alt={`9/11 Records — ${SITE_NAME}`} className="brand-logo" />
         </Link>
         <div className={styles.desktopEdition}>{releaseInfo}</div>
         <button className={styles.toggle} type="button" ref={toggleRef}

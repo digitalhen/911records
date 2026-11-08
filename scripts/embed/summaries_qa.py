@@ -201,18 +201,12 @@ def review_prompt(batch: list[dict]) -> str:
 
 
 def call_review(prompt: str) -> list[dict] | None:
-    if S.BACKEND == "ollama":
-        text = S.call_ollama(prompt)
-    elif S.BACKEND == "cli":
+    if S.BACKEND == "cli":
         text = S.call_claude_cli(prompt)
     elif S.BACKEND == "codex":
         text = S.call_codex_cli(prompt)
-    else:
-        import anthropic
-        client = anthropic.Anthropic(api_key=S.CLAUDE_KEY_FILE.read_text().strip())
-        resp = client.messages.create(model=S.MODEL, max_tokens=4000, system=S.SYSTEM_PROMPT,
-                                      messages=[{"role": "user", "content": prompt}])
-        text = "".join(getattr(b, "text", "") for b in resp.content)
+    else:  # any llm.py provider (ollama, anthropic, bedrock, openai)
+        text = S.call_llm(prompt, max_tokens=6000 if S.BACKEND in ("ollama", "openai") else 4000).text
     arr = S.extract_json_array(text)
     if arr is None:
         print(f"qa: reply not a JSON array ({len(text)} chars): {text[:120]!r}", file=sys.stderr)

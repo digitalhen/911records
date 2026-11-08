@@ -119,7 +119,7 @@ async function checkAsQuestion(q: string): Promise<Outcome> {
   }
 
   // route.kind === 'model'
-  if (!askConfigured()) return { ok: false, detail: 'ANTHROPIC_API_KEY not set — cannot check the model path', costUsd: 0 };
+  if (!askConfigured()) return { ok: false, detail: 'Ask model not configured (see docs/MODELS.md) — cannot check the model path', costUsd: 0 };
 
   const planResult = await planAsk(q);
   const plan = planResult.plan;

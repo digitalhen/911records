@@ -1,8 +1,9 @@
+import { OPERATOR_NAME, SITE_URL } from '@/lib/brand';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Analytics from '@/components/Analytics';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -26,10 +27,10 @@ export const viewport: Viewport = { colorScheme: 'light', width: 'device-width',
 const orgJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Cleartext Labs',
+  name: OPERATOR_NAME,
   url: SITE_URL,
   description:
-    'Cleartext Labs builds independent, citation-first tools over public records. 9/11 City Records is not affiliated with the City of New York.',
+    `${OPERATOR_NAME} builds independent, citation-first tools over public records. 9/11 City Records is not affiliated with the City of New York.`,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

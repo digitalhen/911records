@@ -1,21 +1,22 @@
+import { CONTACT_EMAIL, FORMER_HOST, OPERATOR_NAME, SITE_HOST, SITE_NAME } from '@/lib/brand';
 import Link from 'next/link';
 import { PageShell } from '@/components/info/PageShell';
 import { pageMetadata } from '@/lib/info/metadata';
 
 export async function generateMetadata() {
-  return pageMetadata('Privacy', 'What 911records.org and its ChatGPT app collect, why, who receives it, how long it is kept, and your choices.', '/privacy');
+  return pageMetadata('Privacy', `What ${SITE_NAME} and its ChatGPT app collect, why, who receives it, how long it is kept, and your choices.`, '/privacy');
 }
 
 export default function Privacy() {
   return (
     <PageShell prose>
       <h1>Privacy</h1>
-      <p className="subtitle">Last updated September 24, 2026 · Cleartext Labs</p>
+      <p className="subtitle">Last updated September 24, 2026 · {OPERATOR_NAME}</p>
 
       <section>
         <h2>Summary</h2>
-        <p>911records.org and the 9/11 Records app for ChatGPT and other AI assistants (together, “the service”) are operated by Cleartext Labs. The service has no accounts or sign-ups and never asks for your name, email address, phone number or payment details. The records themselves are public documents released by the City of New York.</p>
-        <p>This policy covers the website at 911records.org (and its former address 911records.nyc) and the connected-app endpoint at 911records.org/mcp. We do not sell personal information and do not use it for advertising profiles.</p>
+        <p>{SITE_NAME} and the 9/11 Records app for ChatGPT and other AI assistants (together, “the service”) are operated by {OPERATOR_NAME}. The service has no accounts or sign-ups and never asks for your name, email address, phone number or payment details. The records themselves are public documents released by the City of New York.</p>
+        <p>This policy covers the website at {SITE_NAME}{FORMER_HOST ? ` (and its former address ${FORMER_HOST})` : ''} and the connected-app endpoint at {SITE_HOST}/mcp. We do not sell personal information and do not use it for advertising profiles.</p>
       </section>
 
       <section id="chatgpt">
@@ -36,7 +37,7 @@ export default function Privacy() {
           <li><strong>Where they go.</strong> Search queries are converted into a search representation by an embedding model that runs on our own servers, and searched against our own index. Tool inputs are not sent to Anthropic, Google, advertisers or any other AI provider.</li>
           <li><strong>Retention.</strong> We do not store tool inputs or outputs in a database or log them. They are held in memory only while the request is processed and discarded when the response is sent. To prevent abuse, the requesting network address is kept in memory for about one minute to enforce a rate limit, then discarded.</li>
           <li><strong>The assistant provider.</strong> The assistant you use (for example, OpenAI for ChatGPT) receives our tool results and keeps them as part of your conversation under its own privacy policy and your settings there. See <a href="https://openai.com/policies/privacy-policy/">OpenAI’s privacy policy</a> to manage or delete ChatGPT conversations.</li>
-          <li><strong>The evidence panel.</strong> The document panel shown inside the assistant loads page scans and images from 911records.org. Those requests reach our servers and Cloudflare with standard connection information, described below. The panel contains no analytics, advertising or cookies of its own.</li>
+          <li><strong>The evidence panel.</strong> The document panel shown inside the assistant loads page scans and images from {SITE_NAME}. Those requests reach our servers and Cloudflare with standard connection information, described below. The panel contains no analytics, advertising or cookies of its own.</li>
         </ul>
         <p>Please do not include names, medical details or other personal information in requests to the app; it is not needed to search the records.</p>
       </section>
@@ -69,7 +70,7 @@ export default function Privacy() {
           <li><strong>The AI assistant you use</strong>, such as OpenAI’s ChatGPT, receives the results of the tools it calls.</li>
           <li><strong>Anyone with a link</strong> can open a short link or an Ask answer permalink.</li>
         </ul>
-        <p>The service runs on servers operated by Cleartext Labs. We may disclose information if required by law. We do not otherwise share it.</p>
+        <p>The service runs on servers operated by {OPERATOR_NAME}. We may disclose information if required by law. We do not otherwise share it.</p>
       </section>
 
       <section>
@@ -92,7 +93,7 @@ export default function Privacy() {
           <li>Opt out of Google Analytics with <a href="https://tools.google.com/dlpage/gaoptout">Google’s opt-out browser add-on</a>, or block scripts from googletagmanager.com and google-analytics.com in your browser.</li>
           <li>Turn off personalized ads in <a href="https://adssettings.google.com/">Google Ads Settings</a> or at <a href="https://www.aboutads.info/choices/">aboutads.info</a>.</li>
           <li>Clear case-folder saves and cookies at any time in your browser.</li>
-          <li>To ask about, correct or delete an Ask answer, short link or submission, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a> with the permalink or receipt reference. Because we hold no accounts, we need that reference to find it. Depending on where you live, you may have further rights to access or delete personal information; contact us at the same address to use them.</li>
+          <li>To ask about, correct or delete an Ask answer, short link or submission, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> with the permalink or receipt reference. Because we hold no accounts, we need that reference to find it. Depending on where you live, you may have further rights to access or delete personal information; contact us at the same address to use them.</li>
         </ul>
       </section>
 
@@ -115,12 +116,12 @@ export default function Privacy() {
 
       <section>
         <h2>Security</h2>
-        <p>Connections to the service are encrypted with HTTPS. Stored submissions are accessible only to Cleartext Labs. No method of transmission or storage is completely secure, which is one reason we collect as little as possible.</p>
+        <p>Connections to the service are encrypted with HTTPS. Stored submissions are accessible only to {OPERATOR_NAME}. No method of transmission or storage is completely secure, which is one reason we collect as little as possible.</p>
       </section>
 
       <section>
         <h2>Changes and contact</h2>
-        <p>If this policy changes, we will update this page and the date at the top. For privacy questions or requests, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a>. Cleartext Labs is independent and not affiliated with the City of New York.</p>
+        <p>If this policy changes, we will update this page and the date at the top. For privacy questions or requests, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. {OPERATOR_NAME} is independent and not affiliated with the City of New York.</p>
       </section>
     </PageShell>
   );

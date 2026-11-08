@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 export const HOST = 'https://sept11documents.cityofnewyork.us';
 export const SEARCH_URL = `${HOST}/api/v2/search`;
 export const contentUrl = (title) => `${HOST}/apps/content/September11_MD/${encodeURIComponent(title)}`;
-export const UA = 'sept11-docs-mirror/0.1 (contact: digitalhen@gmail.com)';
+// The City sees this contact on every request: a self-hosted mirror must set MIRROR_CONTACT to its own.
+export const UA = `sept11-docs-mirror/0.1 (contact: ${process.env.MIRROR_CONTACT?.trim() || 'digitalhen@gmail.com'})`;
 
 export const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const DATA = join(REPO, 'data');

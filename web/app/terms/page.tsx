@@ -1,20 +1,21 @@
+import { CONTACT_EMAIL, OPERATOR_NAME, SITE_NAME } from '@/lib/brand';
 import Link from 'next/link';
 import { PageShell } from '@/components/info/PageShell';
 import { pageMetadata } from '@/lib/info/metadata';
 
 export async function generateMetadata() {
-  return pageMetadata('Terms of Service', 'Terms for using 911records.org and its connected research tools, operated by Cleartext Labs.', '/terms');
+  return pageMetadata('Terms of Service', `Terms for using ${SITE_NAME} and its connected research tools, operated by ${OPERATOR_NAME}.`, '/terms');
 }
 
 export default function Terms() {
   return (
     <PageShell prose>
       <h1>Terms of Service</h1>
-      <p className="subtitle">Last updated September 15, 2026 · Cleartext Labs</p>
+      <p className="subtitle">Last updated September 15, 2026 · {OPERATOR_NAME}</p>
 
       <section>
         <h2>Using this service</h2>
-        <p>These terms apply to 911records.org and its connected research tools, including the MCP service. Cleartext Labs operates this independent project. It is not affiliated with or endorsed by the City of New York, the World Trade Center Health Program, or the September 11th Victim Compensation Fund.</p>
+        <p>These terms apply to {SITE_NAME} and its connected research tools, including the MCP service. {OPERATOR_NAME} operates this independent project. It is not affiliated with or endorsed by the City of New York, the World Trade Center Health Program, or the September 11th Victim Compensation Fund.</p>
         <p>By using the service, you agree to these terms. If you do not agree, please stop using the service. Access is currently free and does not require an account. A third-party application used to connect to the service may have its own fees and terms.</p>
       </section>
 
@@ -48,7 +49,7 @@ export default function Terms() {
       <section>
         <h2>Changes and contact</h2>
         <p>We may update these terms as the service changes. Updates will appear on this page with a revised date and apply to use after publication.</p>
-        <p>For questions about these terms or support, email <a href="mailto:support@cleartextlabs.com">support@cleartextlabs.com</a>. Please do not send sensitive personal documents.</p>
+        <p>For questions about these terms or support, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. Please do not send sensitive personal documents.</p>
       </section>
     </PageShell>
   );

@@ -1,3 +1,4 @@
+import { SITE_SLUG } from '@/lib/brand';
 import { captchaGate } from '@/lib/downloads/captcha';
 import { currentDownloads, downloadsOrigin } from '@/lib/downloads/catalog';
 export const dynamic = 'force-dynamic';
@@ -30,8 +31,8 @@ async function serve(request: Request, context: Context, method: 'GET' | 'HEAD')
     out.set('Content-Type', upstream.headers.get('content-type') || (file.endsWith('.zip') ? 'application/zip' : 'application/json'));
     const label = archive === catalog.full ? 'collection' : [archive?.agency, archive?.box || 'unlabelled', archive?.volume].filter(Boolean).join('-');
     const filename = archive
-      ? `911records-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 140)}-${(catalog.snapshot_date || 'current').replace(/[^0-9a-z-]/g, '')}.zip`
-      : '911records-manifest.json';
+      ? `${SITE_SLUG}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 140)}-${(catalog.snapshot_date || 'current').replace(/[^0-9a-z-]/g, '')}.zip`
+      : `${SITE_SLUG}-manifest.json`;
     out.set('Content-Disposition', `attachment; filename="${filename}"`);
     out.set('X-Content-Type-Options', 'nosniff');
     return new Response(method === 'HEAD' ? null : upstream.body, { status: upstream.status, headers: out });

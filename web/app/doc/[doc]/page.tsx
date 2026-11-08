@@ -1,3 +1,4 @@
+import { SITE_URL } from '@/lib/brand';
 import type { Metadata } from 'next';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { getDocument } from '@/lib/site';
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://911records.org';
+
 
 export default async function DocPage({ params, searchParams }: { params: Params; searchParams: Query }) {
   const { doc } = await params;

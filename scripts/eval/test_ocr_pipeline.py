@@ -19,7 +19,7 @@ class OCRPipelineTests(unittest.TestCase):
         self.assertIsNone(summaries.align_ids([{'id':99,'title':'unknown'}],[7]))
         self.assertIsNone(summaries.align_ids([{'id':1},{'id':1}],[1,2]))
         items=[dict(id=i,doc_type='report',folder='',box='',agency='',page_count=1,excerpt='sample') for i in range(1,21)]
-        with patch.object(summaries,'BACKEND','ollama'),patch.object(summaries,'call_ollama',return_value=json.dumps(exact)):
+        with patch.object(summaries,'BACKEND','ollama'),patch.object(summaries,'call_llm',return_value=summaries.llm.Reply(json.dumps(exact),0,0,False)):
             actual,_=summaries.call_model(None,items,summaries.Budget(1),summaries.StopSignal())
         self.assertEqual(actual,exact)
 

@@ -1,3 +1,4 @@
+import { SITE_NAME } from '@/lib/brand';
 import { formatDate } from '@/lib/dates';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -103,7 +104,7 @@ export async function DocumentViewer({ doc, page, highlight }: { doc: string; pa
   const hasImage = await fileExists(pageImageUrl(agency, volume, doc, page));
   const bates = sitePage?.bates || doc;
 
-  const citation = `NYC Law Department, ${bates}. Mirrored by 911records.org (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
+  const citation = `NYC Law Department, ${bates}. Mirrored by ${SITE_NAME} (independent project; not affiliated with the City of New York). Official record: ${docRow.official_url || 'see City portal'}.`;
 
   const jsonLdBreadcrumb = breadcrumbJsonLd([
     { name: 'Home', path: '/' },
