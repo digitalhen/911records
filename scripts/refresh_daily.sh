@@ -201,12 +201,14 @@ run_stage places_py .venv/bin/python scripts/embed/places.py
 # entirely, do it all in qwen"); the daily increment is small enough for the time box below.
 summary_scope=""
 if [ -n "$REPROCESS_OCR" ] || $FULL_OCR; then summary_scope="--changed-only"; fi
-for soft in "summaries_py env SUMMARIES_BACKEND=${SUMMARIES_BACKEND:-${LLM_PROVIDER:-ollama}} SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py env FACTS_BACKEND=${FACTS_BACKEND:-${LLM_PROVIDER:-ollama}} .venv/bin/python scripts/embed/facts.py"; do
+for soft in "summaries_py env SUMMARIES_BACKEND=${SUMMARIES_BACKEND:-${LLM_PROVIDER:-ollama}} SUMMARIES_BATCH=20 .venv/bin/python scripts/embed/summaries.py --workers 1 $summary_scope" "facts_py env FACTS_BACKEND=${FACTS_BACKEND:-${LLM_PROVIDER:-ollama}} FACTS_MAX_SECONDS=${SOFT_STAGE_SECS:-3600} .venv/bin/python scripts/embed/facts.py"; do
   set -- $soft; name=$1; shift
   log "== $name (non-fatal): $* =="
   # Time-boxed (SOFT_STAGE_SECS, default 3600 s): a capped API made summaries.py retry for ages.
   # 900 s was too short once the summary backlog grew (every daily run timed out from 2026-10-12);
   # an hour per stage still ends a 03:30 run well before morning. Unfinished work resumes next day.
+  # facts.py also gets the time box itself (FACTS_MAX_SECONDS) and stops its model calls 10 min early,
+  # so it always writes its outputs; the kill below is only a backstop.
   "$@" >> "$LOG" 2>&1 & soft_pid=$!
   ( sleep "${SOFT_STAGE_SECS:-3600}"; kill "$soft_pid" 2>/dev/null ) & watchdog=$!
   if wait "$soft_pid"; then log "-- $name ok --"; else log "-- $name FAILED or timed out (exit $?) -- non-fatal, continuing"; fi

@@ -52,7 +52,9 @@ Inspect error/deferred counts: a finished queue does not mean every engine call 
 A daily run gives each summary/fact stage one hour (`SOFT_STAGE_SECS`, default 3600); unfinished
 work resumes the next day. The full run uses a two-hour allowance for each summary/fact stage; facts still have a $3 model
 budget. These model stages are non-fatal, so inspect their completion before claiming all
-model-derived data is current. Embeddings and entity stages must succeed before publication.
+model-derived data is current. `facts.py` takes the same time box (`FACTS_MAX_SECONDS`) and stops starting model calls
+10 minutes before it, so it always writes `p4-facts.*`; unanswered pages wait for the next run. A batch
+whose reply is cut off is retried page by page; a page that fails alone is cached as having no model facts. Embeddings and entity stages must succeed before publication.
 
 Flags:
 - `--reprocess-all-ocr` — full OCR backfill and downstream refresh, without contacting the portal.
