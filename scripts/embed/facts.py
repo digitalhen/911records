@@ -116,7 +116,13 @@ LLM_BATCH_SIZE = 2           # pages per request — a table-dense page can hold
                               # (the first real run, 2026-09-14, truncated at batch size 3 / 4096
                               # output tokens on pages like a 13-analyte ICP-MS metals table).
 LLM_MAX_TOKENS = 8192
+LLM_SINGLE_MAX_TOKENS = 12288  # retry budget for one page on its own, after its batch was cut off
+                              # (still inside num_ctx=16384 with a 6,000-char page). A page that fails
+                              # even alone is cached as "no model facts" so it is never retried nightly:
+                              # until 2026-11-11 the same truncated batches were re-asked every night,
+                              # ate the refresh's hour and the stage was killed before writing anything.
 LLM_MAX_CHARS = 6000         # per-page text cap sent to the model
+DEADLINE_MARGIN_S = 600      # stop starting model calls this long before --max-seconds, to finish and write
 DEFAULT_BUDGET_USD = 3.0
 # Henry, 2026-11-05: "ideally avoid haiku" — Tier D now runs on the local qwen model via Ollama on
 # StudioMac by default (same model as summaries.py). FACTS_BACKEND=api restores the Anthropic path.
@@ -704,15 +710,21 @@ def _wait_for_memory(max_wait_s: int = 1800) -> bool:
     return True
 
 
-def _call_model(items: list[dict]) -> tuple[str, int, int, str]:
-    r = llm.chat(LLM, _build_prompt(items), system=SYSTEM_PROMPT, max_tokens=LLM_MAX_TOKENS, temperature=0.1, num_ctx=16384)
+def _call_model(items: list[dict], max_tokens: int = LLM_MAX_TOKENS) -> tuple[str, int, int, str]:
+    r = llm.chat(LLM, _build_prompt(items), system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.1, num_ctx=16384)
     return r.text, r.input_tokens, r.output_tokens, "max_tokens" if r.truncated else "end"
 
 
-def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_usd: float) -> tuple[list[dict], dict]:
-    """`candidates`: [{doc,page,bates,text,building_key}, ...]. Returns (facts, usage)."""
+def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_usd: float,
+                deadline: float = 0.0) -> tuple[list[dict], dict]:
+    """`candidates`: [{doc,page,bates,text,building_key}, ...]. Returns (facts, usage).
+
+    `deadline` (epoch seconds, 0 = none): no new model call starts after it; whatever is answered by
+    then is returned (and cached), so the caller still writes its outputs inside the refresh's time box.
+    """
     usage = {"candidates": len(candidates), "cache_hits": 0, "api_calls": 0, "input_tokens": 0,
-              "output_tokens": 0, "cost_usd": 0.0, "facts_extracted": 0, "stopped_on_budget": False}
+              "output_tokens": 0, "cost_usd": 0.0, "facts_extracted": 0, "stopped_on_budget": False,
+              "stopped_on_deadline": False, "split_retries": 0, "gave_up_pages": 0, "unasked": 0}
     facts: list[dict] = []
     if not candidates:
         return facts, usage
@@ -752,40 +764,72 @@ def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_
     for i, result_facts in from_cache.items():
         apply_result(i, result_facts)
 
+    def ask(batch: list[dict], label: str, max_tokens: int) -> list | None:
+        """One model call; the parsed list, or None on a call error or an unparseable reply."""
+        items = [{"id": b["id"], "doc": b["doc"], "page": b["page"], "text": b["trimmed"]} for b in batch]
+        try:
+            text, tok_in, tok_out, stop_reason = _call_model(items, max_tokens)
+        except Exception as e:
+            print(f"facts.py llm_extract: {label} model call ({LLM.describe()}) failed ({e}); leaving it unresolved", file=sys.stderr)
+            return None
+        # Count the spend regardless of what happens next — the call already cost real money
+        # even if the response doesn't parse (caught live on 2026-09-14's first real run).
+        usage["api_calls"] += 1
+        usage["input_tokens"] += tok_in
+        usage["output_tokens"] += tok_out
+        usage["cost_usd"] += LLM.cost(tok_in, tok_out)
+        try:
+            parsed = _parse_response(text)
+        except Exception as e:
+            note = " (response hit max_tokens, likely truncated)" if stop_reason == "max_tokens" else ""
+            print(f"facts.py llm_extract: {label} JSON parse failed ({e}){note}", file=sys.stderr)
+            return None
+        return parsed if isinstance(parsed, list) else None
+
+    def store(batch: list[dict], parsed: list) -> None:
+        by_id = {r.get("id"): r.get("facts") or [] for r in parsed if isinstance(r, dict)}
+        for b in batch:
+            result_facts = by_id.get(b["id"], [])
+            cache[b["cache_key"]] = result_facts
+            apply_result(b["id"], result_facts)
+
+    def out_of_time() -> bool:
+        return bool(deadline) and time.time() >= deadline
+
     if to_ask:
         for batch_num, start in enumerate(range(0, len(to_ask), LLM_BATCH_SIZE)):
             if LLM.paid and usage["cost_usd"] >= budget_usd:
                 usage["stopped_on_budget"] = True
                 break
+            if out_of_time():
+                usage["stopped_on_deadline"] = True
+                usage["unasked"] = len(to_ask) - start
+                print(f"facts.py llm_extract: time box reached; {usage['unasked']} pages left for the next run", file=sys.stderr)
+                break
             batch = to_ask[start:start + LLM_BATCH_SIZE]
-            items = [{"id": b["id"], "doc": b["doc"], "page": b["page"], "text": b["trimmed"]} for b in batch]
             if BACKEND == "ollama" and not _wait_for_memory():  # local model shares this machine's memory
                 print("facts.py llm_extract: memory pressure stayed high for 30 min; stopping model calls", file=sys.stderr)
                 usage["stopped_on_memory"] = True
                 break
-            try:
-                text, tok_in, tok_out, stop_reason = _call_model(items)
-            except Exception as e:
-                print(f"facts.py llm_extract: batch at {start} model call ({LLM.describe()}) failed ({e}); leaving it unresolved", file=sys.stderr)
-                continue
-            # Count the spend regardless of what happens next — the call already cost real money
-            # even if the response doesn't parse (caught live on 2026-09-14's first real run).
-            usage["api_calls"] += 1
-            usage["input_tokens"] += tok_in
-            usage["output_tokens"] += tok_out
-            usage["cost_usd"] += LLM.cost(tok_in, tok_out)
-            try:
-                parsed = _parse_response(text)
-            except Exception as e:
-                note = " (response hit max_tokens, likely truncated)" if stop_reason == "max_tokens" else ""
-                print(f"facts.py llm_extract: batch at {start} JSON parse failed ({e}){note}; leaving it unresolved",
-                      file=sys.stderr)
-                continue
-            by_id = {r.get("id"): r.get("facts") or [] for r in parsed if isinstance(r, dict)}
-            for b in batch:
-                result_facts = by_id.get(b["id"], [])
-                cache[b["cache_key"]] = result_facts
-                apply_result(b["id"], result_facts)
+            parsed = ask(batch, f"batch at {start}", LLM_MAX_TOKENS)
+            if parsed is not None:
+                store(batch, parsed)
+            else:
+                # Retry each page on its own with a larger output budget. A page that still fails is
+                # cached as "no model facts" (its rule tiers already found nothing), so it is not
+                # re-asked every night. A call error (network, Ollama down) is left for the next run.
+                for b in batch:
+                    if out_of_time():
+                        break
+                    usage["split_retries"] += 1
+                    single = ask([b], f"page {b['doc']} p{b['page']} alone", LLM_SINGLE_MAX_TOKENS)
+                    if single is not None:
+                        store([b], single)
+                    else:
+                        cache[b["cache_key"]] = []
+                        usage["gave_up_pages"] += 1
+                        print(f"facts.py llm_extract: page {b['doc']} p{b['page']} failed alone too; "
+                              "cached as no model facts", file=sys.stderr)
             if batch_num % 15 == 14:  # periodic save — a long run interrupted partway keeps its progress
                 _save_cache(cache)
         _save_cache(cache)
@@ -841,9 +885,13 @@ def main() -> int:
     ap.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD)
     ap.add_argument("--no-llm", action="store_true", help="skip Tier D entirely (rules only)")
     ap.add_argument("--limit-docs", type=int, default=0, help="process only the first N target documents (smoke test)")
+    ap.add_argument("--max-seconds", type=int, default=int(os.environ.get("FACTS_MAX_SECONDS") or 0),
+                    help="time box for the whole run (0 = none): model calls stop DEADLINE_MARGIN_S before it "
+                         "so the outputs are always written; unanswered pages wait for the next run")
     args = ap.parse_args()
 
     t0 = time.time()
+    deadline = t0 + max(60, args.max_seconds - DEADLINE_MARGIN_S) if args.max_seconds else 0.0
     doctypes = load_doctypes()
     page_status = load_page_status()
     mentions = load_all_page_mentions()
@@ -911,7 +959,7 @@ def main() -> int:
         # cutoff samples across many different documents/buildings/labs instead of exhausting itself
         # on whichever single binder happens to sort first.
         random.Random(34).shuffle(llm_candidates)
-        llm_facts, llm_usage = llm_extract(llm_candidates, mentions, args.budget_usd)
+        llm_facts, llm_usage = llm_extract(llm_candidates, mentions, args.budget_usd, deadline)
         facts.extend(llm_facts)
         tier_counts["D"] = len({(f["doc"], f["page"]) for f in llm_facts})
 
