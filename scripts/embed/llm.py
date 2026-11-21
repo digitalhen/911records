@@ -179,8 +179,13 @@ def chat(st: Stage, user: str, *, system: str | None = None, max_tokens: int = 4
     if st.provider == "openai":
         msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": user}]
         headers = {"Authorization": f"Bearer {st.api_key}"} if st.api_key else {}
-        data = _post_json(f"{st.base_url}/chat/completions",
-                          {"model": st.model, "messages": msgs, "max_completion_tokens": max_tokens}, headers, timeout)
+        body = {"model": st.model, "messages": msgs, "max_completion_tokens": max_tokens}
+        # Reasoning models (gpt-5*, o*) otherwise default to medium effort: hidden reasoning tokens are
+        # billed as output and can use up max_completion_tokens. S_REASONING_EFFORT > LLM_REASONING_EFFORT.
+        effort = _first(f"{st.name}_REASONING_EFFORT", "LLM_REASONING_EFFORT")
+        if effort:
+            body["reasoning_effort"] = effort
+        data = _post_json(f"{st.base_url}/chat/completions", body, headers, timeout)
         choice = (data.get("choices") or [{}])[0]
         usage = data.get("usage") or {}
         return Reply(str((choice.get("message") or {}).get("content") or ""), int(usage.get("prompt_tokens") or 0),

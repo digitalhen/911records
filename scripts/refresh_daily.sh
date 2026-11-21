@@ -136,6 +136,28 @@ mkdir "$loop_lock" || exit 1
 echo $$ > "$loop_lock/pid"
 trap 'rm -rf "$LOCK" "$loop_lock"' EXIT INT TERM HUP
 
+# Model inference (embeddings, summaries, facts, topic naming, canonicalisation) runs on the PC's
+# GPU, not this Mac (Henry, 2026-11-21: a local qwen run maxed the Mac and filled swap). Every
+# stage reaches Ollama through scripts/embed/llm.py, which honours OLLAMA_URL/EMBED_URL. If the PC
+# can't be reached the run stops: the site keeps serving yesterday's data rather than loading the
+# Mac. PC_OLLAMA=0 opts out (runs against the Mac's Ollama). We suspend the PC afterwards only
+# if we were the ones who woke it, so a PC someone is using stays on. Called just before the first
+# model stage (idempotent), so a run that has nothing to do never wakes the PC.
+pc_ready=false
+use_pc() {
+  $pc_ready && return 0
+  [ "${PC_OLLAMA:-1}" = 0 ] && { pc_ready=true; log "PC_OLLAMA=0: model inference on this Mac"; return 0; }
+  local pc_was_up=false
+  scripts/pc.sh status 2>/dev/null | grep -q '^ollama: {' && pc_was_up=true
+  if ! scripts/pc.sh wake >> "$LOG" 2>&1; then log "PC Ollama unreachable; stopping (PC_OLLAMA=0 to run on the Mac)"; exit 1; fi
+  scripts/pc.sh hold >> "$LOG" 2>&1
+  export OLLAMA_URL="${PC_OLLAMA_URL:-http://192.168.100.45:11434}" EMBED_URL="${PC_OLLAMA_URL:-http://192.168.100.45:11434}"
+  log "model inference on PC: $OLLAMA_URL (pc_was_up=$pc_was_up)"
+  if $pc_was_up; then pc_done='scripts/pc.sh release'; else pc_done='scripts/pc.sh sleep'; fi
+  trap 'rm -rf "$LOCK" "$loop_lock"; $pc_done >> "$LOG" 2>&1' EXIT INT TERM HUP
+  pc_ready=true
+}
+
 if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY || $FULL_OCR; then
   if $FULL_OCR; then
     run_stage extract_text node scripts/extract_text.mjs --jobs 2
@@ -148,6 +170,7 @@ if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY || $FULL_OCR; then
     run_stage ocr_apply .venv/bin/python scripts/eval/ocr_apply.py --staged "$REPROCESS_OCR" --backup "$REPROCESS_OCR/../backup"
   fi
   if ! $PUBLISH_ONLY; then
+    use_pc
     run_stage pages_py .venv/bin/python scripts/embed/pages.py
     run_stage entities_py .venv/bin/python scripts/embed/entities.py
     run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
@@ -155,6 +178,19 @@ if [ -n "$REPROCESS_OCR" ] || $PUBLISH_ONLY || $FULL_OCR; then
 elif ! $INDEX_ONLY; then
   run_stage enumerate node scripts/enumerate.mjs
   run_stage diff_catalog node scripts/diff_catalog.mjs
+
+  # Nothing new from the City portal -> nothing to do (Henry, 2026-11-21: the catalog sat unchanged
+  # 2026-11-05..19 yet every day re-ran ~1.5 h of OCR, model and publication stages). A model
+  # backlog (summaries/facts) is drained by a deliberate run, e.g. `--no-download`, not daily.
+  # FORCE_REFRESH=1 runs the full pipeline anyway.
+  latest_diff=$(ls -t data/catalog/diff-*.json 2>/dev/null | head -1)
+  changes=$( [ -n "$latest_diff" ] && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["counts"]; print(c["added"]+c["removed"]+c["changed"])' "$latest_diff" 2>/dev/null || echo unknown)
+  if [ "$changes" = 0 ] && [ "${FORCE_REFRESH:-0}" != 1 ]; then
+    log "no catalog changes ($(basename "$latest_diff")); nothing to do"
+    log "done"
+    exit 0
+  fi
+  log "catalog changes: $changes ($(basename "${latest_diff:-none}"))"
 
   if pid_is_live data/download.pid; then
     log "skip download: data/download.pid live (pid $(cat data/download.pid))"
@@ -176,12 +212,24 @@ elif ! $INDEX_ONLY; then
     log "skip ocr_pages: scripts/embed/ocr_pages.py not present yet (A1)"
   fi
   run_stage ocr_auto .venv/bin/python scripts/embed/ocr_auto.py --lock-owner "$$"
+  use_pc
   run_stage pages_py .venv/bin/python scripts/embed/pages.py
   run_stage entities_py .venv/bin/python scripts/embed/entities.py
   run_stage canonicalise .venv/bin/python scripts/embed/entities.py --canonicalise --llm
 
 else
   log "--index-only: skipping enumerate/diff/download/loop-cycle stages"
+fi
+
+# Summaries and facts run on OpenAI's cheapest model (Henry, 2026-11-21: "cheapest model"; tested:
+# gpt-5-nano with minimal reasoning, ~$0.08 per 1,000 summaries, 96% accepted by the name filter).
+# The key lives outside the repo in ~/openai.key. Without it they fall back to Ollama (the PC).
+if [ -z "${OPENAI_API_KEY:-}" ] && [ -s "$HOME/openai.key" ]; then export OPENAI_API_KEY="$(tr -d '\n\r ' < "$HOME/openai.key")"; fi
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  : "${LLM_PROVIDER:=openai}"
+  export SUMMARIES_LLM_MODEL="${SUMMARIES_LLM_MODEL:-gpt-5-nano}" FACTS_LLM_MODEL="${FACTS_LLM_MODEL:-gpt-5-nano}"
+  export LLM_REASONING_EFFORT="${LLM_REASONING_EFFORT:-minimal}"
+  export SUMMARIES_PRICE_IN_PER_MTOK=0.05 SUMMARIES_PRICE_OUT_PER_MTOK=0.40 FACTS_PRICE_IN_PER_MTOK=0.05 FACTS_PRICE_OUT_PER_MTOK=0.40
 fi
 
 # The publication-only suggestion checks can also need the model credential.
@@ -192,6 +240,7 @@ if ! $PUBLISH_ONLY; then
 # human-readable topic hierarchy (topics.py, named by the local qwen model via Ollama since
 # 2026-11-05, cached), then buildings/places for the map. All local except the topic naming calls.
 # Document types first: topics.py gives doctypes.py's lab_count_sheet records their own topic.
+use_pc
 run_stage doctypes_py .venv/bin/python scripts/embed/doctypes.py
 run_stage related_py .venv/bin/python scripts/embed/related.py
 run_stage topics_py .venv/bin/python scripts/embed/topics.py --write-to data/embed/related-topics.sqlite
