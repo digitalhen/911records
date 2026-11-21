@@ -715,6 +715,39 @@ def _call_model(items: list[dict], max_tokens: int = LLM_MAX_TOKENS) -> tuple[st
     return r.text, r.input_tokens, r.output_tokens, "max_tokens" if r.truncated else "end"
 
 
+_CENSORED = re.compile(r"^\s*(<|&lt;|less than|below)\s*([0-9]*\.?[0-9]+)", re.I)
+_NOT_DETECTED = {"nd", "n.d.", "not detected", "none detected", "bdl", "<dl", "<mdl", "<rl"}
+
+
+def _num(v):
+    """A float from an int/float or a plain numeric string ("0.0025", "1,200"); otherwise None."""
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(str(v).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def coerce_reading(value, limit_value, result) -> dict:
+    """Some models (gpt-5-nano, 2026-11-21) answer a reading as a string — "0.0025", "<0.01", "ND" —
+    where the schema wants a number; build_site_db then failed comparing str with float. Map them
+    onto the schema's own fields: a plain number stays the value; "<x" is a censored reading
+    (value None, limit_value x, result "below"); "ND"-style is below an unstated limit."""
+    out = {"value": _num(value), "limit_value": _num(limit_value), "result": result}
+    if isinstance(value, str) and out["value"] is None:
+        v = value.strip().lower()
+        m = _CENSORED.match(v)
+        if m:
+            out["limit_value"] = out["limit_value"] if out["limit_value"] is not None else float(m.group(2))
+            out["result"] = "below"
+        elif v in _NOT_DETECTED:
+            out["result"] = "below"
+    return out
+
+
 def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_usd: float,
                 deadline: float = 0.0) -> tuple[list[dict], dict]:
     """`candidates`: [{doc,page,bates,text,building_key}, ...]. Returns (facts, usage).
@@ -746,6 +779,7 @@ def llm_extract(candidates: list[dict], page_mentions_by_doc_page: dict, budget_
         for rf in result_facts or []:
             if not isinstance(rf, dict) or not rf.get("substance"):
                 continue
+            rf = {**rf, **coerce_reading(rf.get("value"), rf.get("limit_value"), rf.get("result"))}
             if rf.get("value") is None and rf.get("limit_value") is None and not rf.get("result"):
                 continue  # no reading and no censored-below-limit signal either — nothing to keep
             unit = canon_unit(rf.get("unit")) or (rf.get("unit") or None)
