@@ -151,7 +151,8 @@ use_pc() {
   scripts/pc.sh status 2>/dev/null | grep -q '^ollama: {' && pc_was_up=true
   if ! scripts/pc.sh wake >> "$LOG" 2>&1; then log "PC Ollama unreachable; stopping (PC_OLLAMA=0 to run on the Mac)"; exit 1; fi
   scripts/pc.sh hold >> "$LOG" 2>&1
-  export OLLAMA_URL="${PC_OLLAMA_URL:-http://192.168.100.45:11434}" EMBED_URL="${PC_OLLAMA_URL:-http://192.168.100.45:11434}"
+  local url; url=$(scripts/pc.sh url 2>>"$LOG") || { log "PC Ollama unreachable (no LAN or tunnel); stopping"; exit 1; }
+  export OLLAMA_URL="$url" EMBED_URL="$url"
   log "model inference on PC: $OLLAMA_URL (pc_was_up=$pc_was_up)"
   if $pc_was_up; then pc_done='scripts/pc.sh release'; else pc_done='scripts/pc.sh sleep'; fi
   trap 'rm -rf "$LOCK" "$loop_lock"; $pc_done >> "$LOG" 2>&1' EXIT INT TERM HUP
