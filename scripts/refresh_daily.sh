@@ -186,11 +186,19 @@ elif ! $INDEX_ONLY; then
   # FORCE_REFRESH=1 runs the full pipeline anyway.
   latest_diff=$(ls -t data/catalog/diff-*.json 2>/dev/null | head -1)
   changes=$( [ -n "$latest_diff" ] && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["counts"]; print(c["added"]+c["removed"]+c["changed"])' "$latest_diff" 2>/dev/null || echo unknown)
-  if [ "$changes" = 0 ] && [ "${FORCE_REFRESH:-0}" != 1 ]; then
+  # data/catalog/unpublished marks changes a run picked up but never published (a later stage
+  # failed). The next day's diff is against that day's snapshot, so it shows 0 changes; without
+  # the marker the skip above would drop those documents for good (2026-11-22: 818 new
+  # documents, pages_py failed, 11-23 and 11-24 skipped). Cleared only by a full run's "done".
+  if [ "$changes" = 0 ] && [ "${FORCE_REFRESH:-0}" != 1 ] && [ ! -e data/catalog/unpublished ]; then
     log "no catalog changes ($(basename "$latest_diff")); nothing to do"
     log "done"
     exit 0
   fi
+  if [ -e data/catalog/unpublished ]; then
+    log "unpublished changes from an earlier run: $(cat data/catalog/unpublished)"
+  fi
+  [ "$changes" != 0 ] && echo "$(basename "${latest_diff:-none}") ($changes)" >> data/catalog/unpublished
   log "catalog changes: $changes ($(basename "${latest_diff:-none}"))"
 
   if pid_is_live data/download.pid; then
@@ -297,4 +305,6 @@ else
   log "-- seed_reading FAILED (exit $rc) -- non-fatal, continuing (see the table above in this log)"
 fi
 
+# Everything through publication succeeded: the catalog changes picked up so far are live.
+$INDEX_ONLY || rm -f data/catalog/unpublished
 log "done"
