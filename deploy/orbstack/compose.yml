@@ -1,0 +1,152 @@
+# 911records on OrbStack's built-in Docker engine. The site runs on ONE host,
+# StudioMac (192.168.200.51), and nowhere else (Henry, 2026-11-25). Replaces the
+# Dokploy apps on StudioMac and MonsterMac; the MonsterMac copy is retired, not
+# a standby (the pattern Prospect moved to in its PR #1688).
+#
+#   docker --context orbstack compose -p sept11 \
+#     -f deploy/orbstack/compose.yml --env-file ~/sept11-orb/compose.env up -d
+#
+# Normally driven by deploy/orbstack/deploy.sh, not by hand.
+#
+#   web         the Next.js app (root Dockerfile, context web/). Stateless; web
+#               secrets only (web.env). Reads Postgres, OpenSearch and `files`.
+#   opensearch  the search index. Adopts the EXISTING volume
+#               sept11-docs_opensearch-host-data, so moving it here re-indexes
+#               nothing.
+#   files       nginx over the PDF / page-image / text / ZIP mirror on disk, plus
+#               the /ollama/ proxy to the host's Ollama (query embeddings).
+#   tunnel      cloudflared on a 911records-only tunnel -> http://web:3000.
+#               Starts only once web is healthy. Profile `tunnel`: off until
+#               ~/sept11-orb/tunnel.env holds the token.
+#
+# Processing is NOT here. scripts/refresh_daily.sh needs Apple Vision OCR
+# (scripts/eval/ocr_vision.swift, built with swiftc), wakes the PC GPU over
+# Wake-on-LAN/SSH (scripts/pc.sh), and works on the 209 GB data/ tree, so it
+# runs natively on StudioMac (crontab). It shares only the datastores with web:
+# Postgres (native, :5433), OpenSearch (127.0.0.1:9200) and the data/ tree that
+# `files` serves. web (+ tunnel) is the part that can move to AWS.
+#
+# Secrets live in host files outside the repo (chmod 600), never in git:
+#   ~/sept11-orb/web.env      DATABASE_URL, DATABASE_READ_URL, OPENSEARCH_*,
+#                             ANTHROPIC_API_KEY, TURNSTILE_*, DOWNLOAD_SESSION_SECRET, ...
+#   ~/sept11-orb/tunnel.env   TUNNEL_TOKEN
+#   ~/sept11-orb/opensearch.env  OPENSEARCH_INITIAL_ADMIN_PASSWORD
+#   ~/sept11-orb/compose.env  SEPT11_ORB_DIR, SEPT11_DATA_DIR, FILES_NGINX_CONF,
+#                             DATA_BIND, build args. Image tags and GIT_SHA come
+#                             from deploy.sh's environment.
+
+name: sept11
+
+services:
+  web:
+    image: sept11-web:${WEB_TAG:-current}
+    build:
+      context: ../../web
+      dockerfile: ../Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:?set in compose.env}
+        # Bare form on purpose: the Dockerfile ARG carries the live measurement
+        # id and `:-` would override it with an empty string (prospect #982).
+        NEXT_PUBLIC_GA_ID:
+        GIT_SHA: ${GIT_SHA:-}
+    restart: unless-stopped
+    mem_limit: 3g
+    memswap_limit: 3g
+    cpus: 2
+    env_file: ${SEPT11_ORB_DIR:?set in compose.env}/web.env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=2048
+      GIT_SHA: ${GIT_SHA:-}
+      # In-project datastores by default. WEB_*_URL in compose.env points web
+      # elsewhere (staging beside the old sept11-docs project, or AWS later).
+      OPENSEARCH_URL: ${WEB_OPENSEARCH_URL:-http://opensearch:9200}
+      FILES_URL: ${WEB_FILES_URL:-http://files:8911}
+      OLLAMA_URL: ${WEB_OLLAMA_URL:-http://files:8911/ollama}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Loopback only: the tunnel reaches web:3000 on the compose network.
+      - "127.0.0.1:${WEB_PORT:-3120}:3000"
+    healthcheck:
+      # Always 200 while the process serves (app/api/health/route.ts); deploy.sh
+      # also checks the body before accepting a new image.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  opensearch:
+    profiles: ["data"]
+    image: opensearchproject/opensearch:2.19.2
+    restart: unless-stopped
+    mem_limit: 6g
+    memswap_limit: 6g
+    # OPENSEARCH_INITIAL_ADMIN_PASSWORD (used only when the volume is first
+    # initialised; the existing volume keeps its own security index).
+    env_file: ${SEPT11_ORB_DIR}/opensearch.env
+    environment:
+      discovery.type: single-node
+      cluster.name: sept11-records
+      node.name: sept11-os-1
+      # Security plugin ON, HTTP TLS OFF: see docker-compose.host.yml.
+      plugins.security.ssl.http.enabled: 'false'
+      OPENSEARCH_JAVA_OPTS: '-Xms2g -Xmx2g'
+      bootstrap.memory_lock: 'true'
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      # The host pipeline indexes at 127.0.0.1:9200; web uses opensearch:9200.
+      # DATA_BIND (compose.env) is 0.0.0.0 only while the old Dokploy app in the
+      # ubuntu-production VM still reads 192.168.200.51:9200 during cutover;
+      # after it is retired, 127.0.0.1 keeps the index off the LAN.
+      - "${DATA_BIND:-127.0.0.1}:9200:9200"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+  files:
+    profiles: ["data"]
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${SEPT11_DATA_DIR:?set in compose.env}/downloads:/data/downloads:ro
+      - ${SEPT11_DATA_DIR}/pdf:/data/pdf:ro
+      - ${SEPT11_DATA_DIR}/pages:/data/pages:ro
+      - ${SEPT11_DATA_DIR}/text:/data/text:ro
+      # Absolute, from compose.env: a path inside a checkout deploy.sh moves (or
+      # a worktree) would leave the running container on a vanished file.
+      - ${FILES_NGINX_CONF:?set in compose.env}:/etc/nginx/nginx.conf:ro
+    ports:
+      # Same DATA_BIND rule as opensearch: host tools use 127.0.0.1:8911.
+      - "${DATA_BIND:-127.0.0.1}:8911:8911"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  tunnel:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2025.11.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: ${SEPT11_ORB_DIR}/tunnel.env
+    depends_on:
+      web:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  opensearch-data:
+    # The index the old sept11-docs project built. Never recreate it here.
+    external: true
+    name: sept11-docs_opensearch-host-data

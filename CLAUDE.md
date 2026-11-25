@@ -1,7 +1,9 @@
 # CLAUDE.md — 911records.nyc (this repo)
 
 Plan of record: `docs/PLAN.md`. Ops: `docs/RUNBOOK.md`. Rules for web agents: `docs/briefs/COMMON-web.md`.
-Pushing to `main` deploys to production on both Dokploy hosts.
+Pushing to `main` deploys to production: the web app runs as the `sept11` compose project on
+StudioMac's OrbStack Docker, rebuilt by a launchd loop with a health gate and rollback
+(`deploy/orbstack/README.md`). Processing (`scripts/refresh_daily.sh`) runs natively on the host.
 
 ## Release rule (Henry, 2026-09-14) — maintain with every release
 - `web/lib/releases.ts` holds `APP_VERSION` and `RELEASES`. **Every merge to `main` that changes

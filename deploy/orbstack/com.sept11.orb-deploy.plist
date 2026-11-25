@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 911records deploy loop. Install on StudioMac (README.md, cutover step):
+     cp deploy/orbstack/com.sept11.orb-deploy.plist ~/Library/LaunchAgents/
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sept11.orb-deploy.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sept11.orb-deploy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/henry/sept11-orb/src/deploy/orbstack/deploy.sh</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/henry/sept11-orb/launchd.out</string>
+  <key>StandardErrorPath</key><string>/Users/henry/sept11-orb/launchd.err</string>
+</dict>
+</plist>
