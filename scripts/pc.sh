@@ -34,8 +34,10 @@ tunnel() {
 }
 
 # Prints the base URL the pipeline should use: direct LAN if reachable, else the SSH tunnel.
+# Prefer the SSH tunnel: right after a wake :11434 can answer from the LAN and then stop
+# mid-job (Windows firewall), which killed the 2026-11-22 and 11-25 refreshes at pages_py.
 url() {
-  if direct_up; then echo "$OLLAMA"; elif tunnel; then echo "http://127.0.0.1:$TUNNEL_PORT"; else return 1; fi
+  if tunnel; then echo "http://127.0.0.1:$TUNNEL_PORT"; elif direct_up; then echo "$OLLAMA"; else return 1; fi
 }
 
 wake() {
